@@ -1,4 +1,4 @@
-﻿using CastleLogOverlayTool.Controls;
+﻿using CastleOverlayV2.Controls;
 using CastleOverlayV2.Models;
 using CastleOverlayV2.Plot;
 using CastleOverlayV2.Services;
@@ -9,15 +9,14 @@ using System.IO;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
-
-
 namespace CastleOverlayV2
 {
     public partial class MainForm : Form
     {
         private readonly PlotManager _plotManager;
 
-        
+        // ✅ New: ConfigService instance for Phase 4
+        private readonly ConfigService _configService;
 
         // ✅ Multi-run slots
         private RunData run1;
@@ -33,25 +32,25 @@ namespace CastleOverlayV2
             // Maximize the window on startup
             this.WindowState = FormWindowState.Maximized;
 
+            // ✅ Init ConfigService + load config
+            _configService = new ConfigService();
+            var config = _configService.Config;
+
             // Wire up the PlotManager with your FormsPlot control (must match your Designer)
             _plotManager = new PlotManager(formsPlot1);
             _plotManager.CursorMoved += OnCursorMoved;
             formsPlot1.Dock = DockStyle.Fill;
 
             // ✅ 1️⃣ Get all channel names — real list or hardcoded for now
-            var channelNames = new List<string> { "RPM", "Throttle", "Voltage", "Current" }; // Example
+            var channelNames = new List<string> { "RPM", "Throttle", "Voltage", "Current" };
 
-            // ✅ 2️⃣ Load default ON/OFF states from config
-            var config = ConfigService.Load(); // Assumes your ConfigService has a Load() method returning your Config model
+            // ✅ 2️⃣ Use config states for toggles
             var initialStates = config.ChannelVisibility ?? new Dictionary<string, bool>();
 
-            // ✅ 3️⃣ Create ChannelToggleBar, subscribe to toggle event, add to form
+            // ✅ 3️⃣ Create ChannelToggleBar
             _channelToggleBar = new ChannelToggleBar(channelNames, initialStates);
             _channelToggleBar.ChannelVisibilityChanged += OnChannelVisibilityChanged;
             Controls.Add(_channelToggleBar);
-
-            
-
         }
 
         /// <summary>
@@ -178,21 +177,24 @@ namespace CastleOverlayV2
             _plotManager.PlotRuns(runsToPlot);
         }
 
+        /// <summary>
+        /// ✅ Toggle changed — update plot and persist to config
+        /// </summary>
         private void OnChannelVisibilityChanged(string channelName, bool isVisible)
         {
             _plotManager.SetChannelVisibility(channelName, isVisible);
             _plotManager.RefreshPlot();
 
-            // Save updated state
-            var newStates = _channelToggleBar.GetChannelStates();
-            ConfigService.SaveChannelVisibility(newStates);
+            // ✅ Save updated state immediately
+            _configService.SetChannelVisibility(channelName, isVisible);
         }
 
+        /// <summary>
+        /// ✅ Hover data updates toggle bar
+        /// </summary>
         private void OnCursorMoved(Dictionary<string, double?[]> valuesAtCursor)
         {
             _channelToggleBar.UpdateMousePositionValues(valuesAtCursor);
         }
-
-
     }
 }
