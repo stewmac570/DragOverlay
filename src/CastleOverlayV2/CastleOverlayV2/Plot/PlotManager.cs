@@ -24,6 +24,10 @@ namespace CastleOverlayV2.Plot
         // ✅ Holds all scatter plottables for multi-log overlay
         private readonly List<Scatter> _scatters = new();
 
+
+        // ✅ NEW: Emit hover data for toggle bar
+        public event Action<Dictionary<string, double?[]>> CursorMoved;
+
         public PlotManager(FormsPlot plotControl)
         {
             _plot = plotControl ?? throw new ArgumentNullException(nameof(plotControl));
@@ -61,8 +65,9 @@ namespace CastleOverlayV2.Plot
 
                 foreach (var (channelLabel, ys) in GetChannels(run))
                 {
-                    var scatter = _plot.Plot.Add.Scatter(xs, ys);
-                    scatter.Label = $"{run.FileName} — {channelLabel}";
+                    Scatter scatter = _plot.Plot.Add.Scatter(xs, ys);
+
+                    scatter.Label = channelLabel; // ✅ Must match toggle bar channel name!
                     scatter.Color = ColorMap.GetColor(i);
                     scatter.LinePattern = LineStyleHelper.GetLinePattern(i);
 
@@ -99,6 +104,7 @@ namespace CastleOverlayV2.Plot
 
         /// <summary>
         /// Handles mouse move to keep vertical hover line following X.
+        /// Raises hover values for ChannelToggleBar.
         /// </summary>
         private void FormsPlot_MouseMove(object sender, MouseEventArgs e)
         {
@@ -110,8 +116,48 @@ namespace CastleOverlayV2.Plot
 
             _cursor.X = mouseCoord.X;
 
+            var valuesAtCursor = new Dictionary<string, double?[]>();
+
+            var channels = _scatters
+                .GroupBy(s => s.Label)
+                .ToDictionary(g => g.Key, g => g.ToList());
+
+            foreach (var kvp in channels)
+            {
+                string channelName = kvp.Key;
+                List<Scatter> scatters = kvp.Value;
+
+                var channelValues = new double?[3];
+
+                for (int i = 0; i < scatters.Count; i++)
+                {
+                    var scatter = scatters[i];
+
+                    if (!scatter.IsVisible)
+                        continue;
+
+                    // ✅ The real way: use GetScatterPoints()
+                    var points = scatter.Data.GetScatterPoints();
+
+                    if (points == null || points.Count == 0)
+                        continue;
+
+                    // Find the closest point by X
+                    var nearest = points.OrderBy(p => Math.Abs(p.X - mouseCoord.X)).First();
+                    channelValues[i] = nearest.Y;
+                }
+
+                valuesAtCursor[channelName] = channelValues;
+            }
+
+            CursorMoved?.Invoke(valuesAtCursor);
             _plot.Refresh();
         }
+
+
+
+
+
 
         /// <summary>
         /// Apply basic default plot settings.
@@ -146,6 +192,28 @@ namespace CastleOverlayV2.Plot
         {
             double max = values.Max();
             return max == 0 ? values.ToArray() : values.Select(v => v / max).ToArray();
+        }
+
+        /// <summary>
+        /// ✅ Toggle a channel’s visibility.
+        /// </summary>
+        public void SetChannelVisibility(string channelName, bool isVisible)
+        {
+            foreach (var scatter in _scatters)
+            {
+                if (scatter.Label == channelName)
+                {
+                    scatter.IsVisible = isVisible;
+                }
+            }
+        }
+
+        /// <summary>
+        /// ✅ Refresh the plot.
+        /// </summary>
+        public void RefreshPlot()
+        {
+            _plot.Refresh();
         }
     }
 }

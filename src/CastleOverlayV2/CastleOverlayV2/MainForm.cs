@@ -1,12 +1,15 @@
-﻿using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Threading.Tasks;
-using System.Windows.Forms;
+﻿using CastleLogOverlayTool.Controls;
 using CastleOverlayV2.Models;
 using CastleOverlayV2.Plot;
 using CastleOverlayV2.Services;
 using ScottPlot.WinForms;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+
+
 
 namespace CastleOverlayV2
 {
@@ -14,10 +17,14 @@ namespace CastleOverlayV2
     {
         private readonly PlotManager _plotManager;
 
+        
+
         // ✅ Multi-run slots
         private RunData run1;
         private RunData run2;
         private RunData run3;
+
+        private ChannelToggleBar _channelToggleBar;
 
         public MainForm()
         {
@@ -28,7 +35,23 @@ namespace CastleOverlayV2
 
             // Wire up the PlotManager with your FormsPlot control (must match your Designer)
             _plotManager = new PlotManager(formsPlot1);
+            _plotManager.CursorMoved += OnCursorMoved;
             formsPlot1.Dock = DockStyle.Fill;
+
+            // ✅ 1️⃣ Get all channel names — real list or hardcoded for now
+            var channelNames = new List<string> { "RPM", "Throttle", "Voltage", "Current" }; // Example
+
+            // ✅ 2️⃣ Load default ON/OFF states from config
+            var config = ConfigService.Load(); // Assumes your ConfigService has a Load() method returning your Config model
+            var initialStates = config.ChannelVisibility ?? new Dictionary<string, bool>();
+
+            // ✅ 3️⃣ Create ChannelToggleBar, subscribe to toggle event, add to form
+            _channelToggleBar = new ChannelToggleBar(channelNames, initialStates);
+            _channelToggleBar.ChannelVisibilityChanged += OnChannelVisibilityChanged;
+            Controls.Add(_channelToggleBar);
+
+            
+
         }
 
         /// <summary>
@@ -154,5 +177,22 @@ namespace CastleOverlayV2
 
             _plotManager.PlotRuns(runsToPlot);
         }
+
+        private void OnChannelVisibilityChanged(string channelName, bool isVisible)
+        {
+            _plotManager.SetChannelVisibility(channelName, isVisible);
+            _plotManager.RefreshPlot();
+
+            // Save updated state
+            var newStates = _channelToggleBar.GetChannelStates();
+            ConfigService.SaveChannelVisibility(newStates);
+        }
+
+        private void OnCursorMoved(Dictionary<string, double?[]> valuesAtCursor)
+        {
+            _channelToggleBar.UpdateMousePositionValues(valuesAtCursor);
+        }
+
+
     }
 }
