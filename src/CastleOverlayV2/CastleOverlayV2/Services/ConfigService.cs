@@ -1,53 +1,91 @@
-﻿using CastleOverlayV2.Models;
-using Newtonsoft.Json;
-using System;
-using System.Collections.Generic;
+﻿using System;
 using System.IO;
-using System.Xml;
+using Newtonsoft.Json;
+using CastleOverlayV2.Models;
 
 namespace CastleOverlayV2.Services
 {
-    public static class ConfigService
+    /// <summary>
+    /// Handles loading and saving the user's config.json.
+    /// </summary>
+    public class ConfigService
     {
-        private static readonly string ConfigFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "config", "config.json");
+        private readonly string _configFilePath;
+        private Config _config;
 
-        public static Config Load()
+        /// <summary>
+        /// Current in-memory Config.
+        /// </summary>
+        public Config Config => _config;
+
+        /// <summary>
+        /// Initializes the ConfigService with the default config file path.
+        /// </summary>
+        public ConfigService()
         {
-            string folder = Path.GetDirectoryName(ConfigFilePath);
-            if (!Directory.Exists(folder))
-            {
-                Directory.CreateDirectory(folder);
-            }
-
-            if (!File.Exists(ConfigFilePath))
-            {
-                return new Config(); // fresh defaults
-            }
-
-            string json = File.ReadAllText(ConfigFilePath);
-            return JsonConvert.DeserializeObject<Config>(json) ?? new Config();
+            // Relative to your working directory: /Config/config.json
+            _configFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Config", "config.json");
+            Load();
         }
 
-
-        public static void Save(Config config)
+        /// <summary>
+        /// Loads config.json into memory.
+        /// Creates a new config if the file does not exist.
+        /// </summary>
+        public void Load()
         {
-            string folder = Path.GetDirectoryName(ConfigFilePath);
-
-            if (!Directory.Exists(folder))
+            if (File.Exists(_configFilePath))
             {
-                Directory.CreateDirectory(folder);
+                string json = File.ReadAllText(_configFilePath);
+                _config = JsonConvert.DeserializeObject<Config>(json) ?? new Config();
             }
-
-            string json = JsonConvert.SerializeObject(config, Newtonsoft.Json.Formatting.Indented);
-            File.WriteAllText(ConfigFilePath, json);
+            else
+            {
+                _config = new Config();
+                Save(); // Create initial file if missing
+            }
         }
 
-
-        public static void SaveChannelVisibility(Dictionary<string, bool> channelVisibility)
+        /// <summary>
+        /// Saves the current config state back to config.json.
+        /// </summary>
+        public void Save()
         {
-            var config = Load();
-            config.ChannelVisibility = channelVisibility;
-            Save(config);
+            string json = JsonConvert.SerializeObject(_config, Formatting.Indented);
+            string directory = Path.GetDirectoryName(_configFilePath);
+
+            if (!Directory.Exists(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            File.WriteAllText(_configFilePath, json);
+        }
+
+        /// <summary>
+        /// Updates the ON/OFF state for a specific channel, then saves.
+        /// </summary>
+        public void SetChannelVisibility(string channelName, bool isVisible)
+        {
+            if (_config.ChannelVisibility.ContainsKey(channelName))
+            {
+                _config.ChannelVisibility[channelName] = isVisible;
+            }
+            else
+            {
+                _config.ChannelVisibility.Add(channelName, isVisible);
+            }
+
+            Save();
+        }
+
+        /// <summary>
+        /// Updates the launch point alignment threshold, then saves.
+        /// </summary>
+        public void SetAlignmentThreshold(double threshold)
+        {
+            _config.AlignmentThreshold = threshold;
+            Save();
         }
     }
 }

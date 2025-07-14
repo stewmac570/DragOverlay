@@ -1,11 +1,15 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Drawing;
-using System.Linq;
-using System.Windows.Forms;
+﻿using CastleOverlayV2.Controls;
 using CastleOverlayV2.Models;
+using CastleOverlayV2.Plot;
+using CastleOverlayV2.Services;
+using ScottPlot.WinForms;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Threading.Tasks;
+using System.Windows.Forms;
 
-namespace CastleLogOverlayTool.Controls
+namespace CastleOverlayV2.Controls
 {
     public partial class ChannelToggleBar : UserControl
     {
