@@ -547,4 +547,177 @@ UI styling — Deferred
 
 ------------------------------------------------------------------
 
+📄 2025-07-14 — Phase 4: Config & Defaults Complete
+Scope:
+
+Added local config.json in /Config/ to store user preferences.
+
+Implemented Models/Config.cs to map the JSON structure for channel ON/OFF states and alignment threshold.
+
+Created Services/ConfigService.cs to handle safe load/save with Newtonsoft.Json (no syntax guessing).
+
+Updated MainForm.cs to:
+
+Load config at startup.
+
+Initialize ChannelToggleBar with saved channel states.
+
+Save toggle state changes instantly back to config.json (Castle Link 2 style).
+
+Verified that toggles persist correctly across sessions.
+
+Fixed namespace alignment issues (CastleOverlayV2) to prevent CS0234/CS0246 errors.
+
+Ensured full multi-log overlay and hover cursor behavior remain stable.
+
+Files Changed:
+
+src/Models/Config.cs
+
+src/Services/ConfigService.cs
+
+src/Controls/ChannelToggleBar.cs
+
+src/MainForm.cs
+
+Git:
+
+New branch: feature/phase-4-config
+
+Clean commit: feat: Add config.json load/save for channel toggle persistence (#phase-4)
+
+Tagged as: v0.4-phase-4-config
+
+Outcome:
+✔️ User preferences load and save as expected.
+✔️ Matches Castle Link 2 toggle bar behavior exactly.
+✔️ No partial snippets — entire blocks delivered.
+✔️ Verified with real test logs, stable multi-run overlay, and hover data.
+
+Lessons:
+
+Always align folder structure and namespaces to avoid type resolution errors.
+
+Use small test commits to keep each phase rollback-safe.
+
+Never guess JSON serialization — confirm with pinned docs.
+
+
+----------------------------------------------------------
+
+
+Goal for Phase 5.2
+Redesign the ChannelToggleBar layout to match Castle Link 2’s compact, readable data panel.
+
+Blocks should align horizontally and wrap naturally (or spread evenly) to avoid wasted space.
+
+The toggle blocks should:
+
+pgsql
+Copy
+Edit
+Show []         Show []
+<name>         <name>
+log1           log1
+log2           log2
+log3           log3
+Each block must still:
+
+Update live hover values.
+
+Toggle channels on/off.
+
+Save visibility states to config.json.
+
+✅ What you started with
+From your last stable Phase 3:
+
+A basic vertical FlowLayoutPanel stacking each channel block top-down.
+
+Functional toggling and hover worked.
+
+The design was too wide and loose, with extra margin between blocks.
+
+✅ Key changes delivered in this chat
+1️⃣ Rebuilt the layout
+Switched to an outer TableLayoutPanel:
+
+Single row, N columns (one per channel).
+
+ColumnStyle = Percent evenly distributes space.
+
+Ensures all blocks spread evenly across the bottom — no big empty right side.
+
+Replaced FlowLayoutPanel (which couldn’t force even spread).
+
+2️⃣ Compact ChannelRow block
+Each channel block uses an inner TableLayoutPanel:
+
+5 rows: Show [] checkbox, channel name, Log 1–3 values.
+
+Tight vertical stacking with no wasted space.
+
+Added FontStyle.Bold:
+
+Channel name and log hover values are now bold for readability.
+
+3️⃣ Left spacing improvements
+Added Padding and Margin on ChannelRow to:
+
+Nudge the block’s content slightly inward from the cell edge.
+
+Prevent the “Show” checkbox from hugging the left side.
+
+row.Margin used for spacing outside each block.
+
+ChannelRow.Padding used for spacing inside each block.
+
+4️⃣ Top alignment tweaks
+Switched row.Anchor from AnchorStyles.None to AnchorStyles.Top:
+
+Makes each block sit at the top of its cell instead of vertically centered.
+
+Added comments showing how Anchor and Margin affect vertical positioning.
+
+5️⃣ Closing the plot gap
+Explained how the ScottPlot Plot.Layout(bottom: ...) setting affects the vertical space between the X-axis labels and the toggle bar.
+
+Recommended reducing the plot’s bottom layout margin (e.g., from default 75 → 40) to pull the plot area closer to the toggles.
+
+6️⃣ Detailed inline comments
+Delivered the full /src/Controls/ChannelToggleBar.cs with inline // 👉 comments for:
+
+Docking.
+
+Anchoring.
+
+Margin vs. Padding.
+
+Practical examples for how to adjust spacing.
+
+✅ Functional behavior preserved
+ChannelToggleBar still raises ChannelVisibilityChanged to MainForm.
+
+MainForm calls _plotManager.SetChannelVisibility and saves state via ConfigService.
+
+UpdateMousePositionValues still updates the bold hover data per channel.
+
+📊 Final structure
+File: /src/Controls/ChannelToggleBar.cs
+Key design:
+
+Outer TableLayoutPanel: full-width, one row, equal percent columns.
+
+Inner ChannelRow: auto-size, bold labels, top-anchored.
+
+Live hover values & toggles: fully stable.
+
+No syntax guesswork: verified WinForms Anchor, Margin, Padding.
+
+✅ Phase 5.2 is now DONE
+This matches your pinned STRUCTURE.md and Castle Link 2’s tight, clear channel toggle behavior.
+
+
+------------------------------------------------------------------------
+
 
