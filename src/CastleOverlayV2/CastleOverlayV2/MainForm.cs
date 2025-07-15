@@ -41,8 +41,20 @@ namespace CastleOverlayV2
             _plotManager.CursorMoved += OnCursorMoved;
             formsPlot1.Dock = DockStyle.Fill;
 
-            // ✅ 1️⃣ Get all channel names — real list or hardcoded for now
-            var channelNames = new List<string> { "RPM", "Throttle", "Voltage", "Current" };
+            var channelNames = new List<string>
+{
+    "Speedee",          // Or "RPM" — match your label!
+    "Throttle",
+    "Voltage",
+    "Current",
+    "Ripple",
+    "PowerOut",
+    "MotorTemp",
+    "MotorTiming",
+    "Acceleration",
+    "GovGain"
+};
+
 
             // ✅ 2️⃣ Use config states for toggles
             var initialStates = config.ChannelVisibility ?? new Dictionary<string, bool>();
