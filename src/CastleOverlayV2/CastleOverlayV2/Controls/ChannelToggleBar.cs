@@ -25,7 +25,6 @@ namespace CastleOverlayV2.Controls
 
         public ChannelToggleBar(List<string> channelNames, Dictionary<string, bool> initialStates)
         {
-            //InitializeComponent();
             Dock = DockStyle.Bottom;
             AutoSize = true;
             AutoSizeMode = AutoSizeMode.GrowAndShrink;
@@ -34,12 +33,14 @@ namespace CastleOverlayV2.Controls
             {
                 Dock = DockStyle.Fill,
                 AutoSize = true,
-                FlowDirection = FlowDirection.LeftToRight,
-                WrapContents = true
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                FlowDirection = FlowDirection.TopDown, // ✅ Stack rows vertically
+                WrapContents = false // ✅ Do NOT wrap horizontally
             };
 
             foreach (var channel in channelNames)
             {
+                Console.WriteLine($"Building toggle for: {channel}"); // Debug!
                 var row = new ChannelRow(channel, initialStates.ContainsKey(channel) && initialStates[channel]);
                 row.ToggleChanged += OnToggleChanged;
                 layout.Controls.Add(row);
@@ -48,6 +49,7 @@ namespace CastleOverlayV2.Controls
 
             Controls.Add(layout);
         }
+
 
         private void OnToggleChanged(string channelName, bool isVisible)
         {

@@ -13,20 +13,35 @@ namespace CastleOverlayV2.Plot
     /// <summary>
     /// Manages the ScottPlot chart for displaying multiple Castle runs.
     /// Supports up to 3 runs with Castle colors, line styles, legend, and hover cursor.
+    /// Includes per-channel scaling factors for single-Y-axis tuning.
     /// </summary>
     public class PlotManager
     {
         private readonly FormsPlot _plot;
 
-        // ✅ The vertical hover cursor line
+        // ✅ Hover cursor line
         private VerticalLine _cursor;
 
-        // ✅ Holds all scatter plottables for multi-log overlay
+        // ✅ All scatters for multi-log overlay
         private readonly List<Scatter> _scatters = new();
 
-
-        // ✅ NEW: Emit hover data for toggle bar
+        // ✅ Emit hover data for toggle bar
         public event Action<Dictionary<string, double?[]>> CursorMoved;
+
+        // ✅ Per-channel scale factors (Phase 5.1 — hardcoded)
+        private readonly Dictionary<string, double> _channelScales = new()
+        {
+            ["Speed"] = 1.0,
+            ["Throttle"] = 1.0,
+            ["Voltage"] = 0.1,
+            ["Current"] = 0.5,
+            ["Ripple"] = 1.0,
+            ["PowerOut"] = 0.5,
+            ["MotorTemp"] = 0.2,
+            ["MotorTiming"] = 1.0,
+            ["Acceleration"] = 2.0,
+            ["GovGain"] = 1.0
+        };
 
         public PlotManager(FormsPlot plotControl)
         {
@@ -38,7 +53,7 @@ namespace CastleOverlayV2.Plot
         }
 
         /// <summary>
-        /// Plot multiple runs with Castle colors and line styles.
+        /// Plot multiple runs with Castle colors, line styles, and per-channel scaling.
         /// </summary>
         public void PlotRuns(List<RunData> runs)
         {
@@ -50,7 +65,7 @@ namespace CastleOverlayV2.Plot
             _plot.Plot.Clear();
             _scatters.Clear();
 
-            // ✅ Always recreate the vertical line after clearing
+            // ✅ Always recreate hover line
             _cursor = _plot.Plot.Add.VerticalLine(0);
             _cursor.LinePattern = ScottPlot.LinePattern.Dashed;
             _cursor.Color = ScottPlot.Colors.Black;
@@ -66,9 +81,8 @@ namespace CastleOverlayV2.Plot
                 foreach (var (channelLabel, ys) in GetChannels(run))
                 {
                     Scatter scatter = _plot.Plot.Add.Scatter(xs, ys);
-
-                    scatter.Label = channelLabel; // ✅ Must match toggle bar channel name!
-                    scatter.Color = ColorMap.GetColor(i);
+                    scatter.Label = channelLabel; // Must match toggle bar name
+                    scatter.Color = ColorMap.GetColor(i); // Run-based colors
                     scatter.LinePattern = LineStyleHelper.GetLinePattern(i);
 
                     _scatters.Add(scatter);
@@ -92,7 +106,7 @@ namespace CastleOverlayV2.Plot
         }
 
         /// <summary>
-        /// Phase 1 fallback: plot a single run.
+        /// Single run fallback.
         /// </summary>
         public void LoadRun(RunData run)
         {
@@ -103,8 +117,7 @@ namespace CastleOverlayV2.Plot
         }
 
         /// <summary>
-        /// Handles mouse move to keep vertical hover line following X.
-        /// Raises hover values for ChannelToggleBar.
+        /// Keep hover line synced with X and emit cursor data.
         /// </summary>
         private void FormsPlot_MouseMove(object sender, MouseEventArgs e)
         {
@@ -136,13 +149,10 @@ namespace CastleOverlayV2.Plot
                     if (!scatter.IsVisible)
                         continue;
 
-                    // ✅ The real way: use GetScatterPoints()
                     var points = scatter.Data.GetScatterPoints();
-
                     if (points == null || points.Count == 0)
                         continue;
 
-                    // Find the closest point by X
                     var nearest = points.OrderBy(p => Math.Abs(p.X - mouseCoord.X)).First();
                     channelValues[i] = nearest.Y;
                 }
@@ -154,13 +164,8 @@ namespace CastleOverlayV2.Plot
             _plot.Refresh();
         }
 
-
-
-
-
-
         /// <summary>
-        /// Apply basic default plot settings.
+        /// Apply default plot labels.
         /// </summary>
         private void SetupPlotDefaults()
         {
@@ -169,33 +174,32 @@ namespace CastleOverlayV2.Plot
         }
 
         /// <summary>
-        /// Returns all Castle channels for a single run, normalized.
+        /// Return all channels for a run, scaled per factor.
         /// </summary>
         private IEnumerable<(string Label, double[] Ys)> GetChannels(RunData run)
         {
-            yield return ("Speed", Normalize(run.DataPoints.Select(dp => dp.Speed)));
-            yield return ("Throttle", Normalize(run.DataPoints.Select(dp => dp.Throttle)));
-            yield return ("Voltage", Normalize(run.DataPoints.Select(dp => dp.Voltage)));
-            yield return ("Current", Normalize(run.DataPoints.Select(dp => dp.Current)));
-            yield return ("Ripple", Normalize(run.DataPoints.Select(dp => dp.Ripple)));
-            yield return ("PowerOut", Normalize(run.DataPoints.Select(dp => dp.PowerOut)));
-            yield return ("MotorTemp", Normalize(run.DataPoints.Select(dp => dp.MotorTemp)));
-            yield return ("MotorTiming", Normalize(run.DataPoints.Select(dp => dp.MotorTiming)));
-            yield return ("Acceleration", Normalize(run.DataPoints.Select(dp => dp.Acceleration)));
-            yield return ("GovGain", Normalize(run.DataPoints.Select(dp => dp.GovGain)));
+            yield return ("Speed", ScaleChannel(run.DataPoints.Select(dp => dp.Speed), _channelScales["Speed"]));
+            yield return ("Throttle", ScaleChannel(run.DataPoints.Select(dp => dp.Throttle), _channelScales["Throttle"]));
+            yield return ("Voltage", ScaleChannel(run.DataPoints.Select(dp => dp.Voltage), _channelScales["Voltage"]));
+            yield return ("Current", ScaleChannel(run.DataPoints.Select(dp => dp.Current), _channelScales["Current"]));
+            yield return ("Ripple", ScaleChannel(run.DataPoints.Select(dp => dp.Ripple), _channelScales["Ripple"]));
+            yield return ("PowerOut", ScaleChannel(run.DataPoints.Select(dp => dp.PowerOut), _channelScales["PowerOut"]));
+            yield return ("MotorTemp", ScaleChannel(run.DataPoints.Select(dp => dp.MotorTemp), _channelScales["MotorTemp"]));
+            yield return ("MotorTiming", ScaleChannel(run.DataPoints.Select(dp => dp.MotorTiming), _channelScales["MotorTiming"]));
+            yield return ("Acceleration", ScaleChannel(run.DataPoints.Select(dp => dp.Acceleration), _channelScales["Acceleration"]));
+            yield return ("GovGain", ScaleChannel(run.DataPoints.Select(dp => dp.GovGain), _channelScales["GovGain"]));
         }
 
         /// <summary>
-        /// Normalize channel values to [0, 1] for clean scaling.
+        /// Scale a channel’s values by factor.
         /// </summary>
-        private double[] Normalize(IEnumerable<double> values)
+        private double[] ScaleChannel(IEnumerable<double> values, double factor)
         {
-            double max = values.Max();
-            return max == 0 ? values.ToArray() : values.Select(v => v / max).ToArray();
+            return values.Select(v => v * factor).ToArray();
         }
 
         /// <summary>
-        /// ✅ Toggle a channel’s visibility.
+        /// Toggle channel visibility.
         /// </summary>
         public void SetChannelVisibility(string channelName, bool isVisible)
         {
@@ -209,10 +213,19 @@ namespace CastleOverlayV2.Plot
         }
 
         /// <summary>
-        /// ✅ Refresh the plot.
+        /// Refresh plot.
         /// </summary>
         public void RefreshPlot()
         {
+            _plot.Refresh();
+        }
+
+        /// <summary>
+        /// Manually re-fit axes to visible data.
+        /// </summary>
+        public void FitToData()
+        {
+            _plot.Plot.Axes.AutoScale();
             _plot.Refresh();
         }
     }
