@@ -43,7 +43,7 @@ namespace CastleOverlayV2
 
             var channelNames = new List<string>
 {
-    "Speedee",          // Or "RPM" — match your label!
+    "Speed",          // Or "RPM" — match your label!
     "Throttle",
     "Voltage",
     "Current",
