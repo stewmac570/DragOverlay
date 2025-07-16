@@ -720,4 +720,38 @@ This matches your pinned STRUCTURE.md and Castle Link 2’s tight, clear channel
 
 ------------------------------------------------------------------------
 
+## [Phase 5.2] Toggle Bar Polish & Multi-Axis Overlay
+
+**Date:** 2024-XX-XX (fill in today’s date)
+
+**Feature Branch:** `feature/phase-5-2-toggle-bar-polish`
+
+### Summary:
+- Implemented full Castle Link–style **multi-axis overlay** for all **10 core channels**:
+  - Speed (RPM)
+  - Throttle (ms)
+  - Voltage (V)
+  - Current (A)
+  - Ripple (V)
+  - PowerOut (W)
+  - MotorTemp (°C)
+  - MotorTiming (deg)
+  - Acceleration (g)
+  - GovGain (%)
+- Each channel now uses its **own hidden Y-axis**, locked to real-unit ranges with `LockedVertical` AxisRules.
+- Axes visuals (labels, ticks, frame lines) fully hidden for a **clean Castle Link–style plot**.
+- Ensured **true-unit hover behavior** — all plots show real raw log values, no forced scale factors.
+- Synced `PlotRuns` loop to map each `channelLabel` to its correct Y-axis in **left-to-right toggle bar order**.
+- Verified toggle bar toggles visibility correctly for all channels.
+- Updated `GetChannelsWithRaw` to return **raw-only** values — removed any leftover scaling.
+
+### Files Updated:
+- `src/CastleOverlayV2/CastleOverlayV2/Plot/PlotManager.cs`
+
+### Next:
+- Merge into `develop` once toggle bar UX polish is verified.
+- Phase 5.3 will focus on final hover styles, color consistency, and save/export preview.
+
+------------------------------------------------------------------------------
+
 
