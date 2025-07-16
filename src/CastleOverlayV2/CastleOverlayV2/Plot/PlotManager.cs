@@ -265,16 +265,22 @@ namespace CastleOverlayV2.Plot
 
             // === ✅ FINAL PLOT SETTINGS ===
             _plot.Plot.Axes.AutoScale();            // respects AxisRules
-            _plot.Plot.ShowLegend();
-            _plot.Plot.Legend.Location = Alignment.UpperRight;
+                                                    // === ✅ Fully hide ALL axes so they take no space
+                                                    // === ✅ Fully hide all axes
+            foreach (var axis in _plot.Plot.Axes.GetAxes())
+                axis.IsVisible = false;
+
+            // === ✅ Keep same visual space as initial empty plot
+            PixelPadding padding = new(left: 40, right: 40, top: 50, bottom: 50);
+            _plot.Plot.Layout.Fixed(padding);
+
+            // === ✅ Hide or keep legend
+            _plot.Plot.Legend.IsVisible = false;
+
             _plot.Refresh();
+
+
         }
-
-
-
-
-
-
         /// <summary>
         /// Single run fallback.
         /// </summary>
