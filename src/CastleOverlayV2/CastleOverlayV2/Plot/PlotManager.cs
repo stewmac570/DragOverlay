@@ -235,7 +235,7 @@ namespace CastleOverlayV2.Plot
                     // === ✅ Create the scatter plot for this channel ===
                     Scatter scatter = _plot.Plot.Add.Scatter(xs, ysToPlot);
                     scatter.Label = channelLabel;                   // label must match your toggle bar
-                    scatter.Color = ColorMap.GetColor(i);           // color for this run
+                    scatter.Color = ChannelColorMap.GetColor(channelLabel);
                     scatter.LinePattern = LineStyleHelper.GetLinePattern(i); // line style for this run
                     scatter.Axes.XAxis = xAxis;                     // always map to the Time axis
 

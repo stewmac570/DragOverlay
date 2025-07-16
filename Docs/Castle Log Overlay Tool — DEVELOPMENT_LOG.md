@@ -754,4 +754,31 @@ This matches your pinned STRUCTURE.md and Castle Link 2’s tight, clear channel
 
 ------------------------------------------------------------------------------
 
+### 2025-07-16 — Phase 5.x: Full Axes Hide and Fixed Layout for Fullwidth Plot
+
+✅ Goal:
+- Fully hide all axes and axis labels for a clean Castle Link–style chart.
+- Remove all reserved layout space so the plot area stays 100% edge-to-edge.
+- Keep hover cursor and multi-channel overlays fully functional.
+
+✅ Work Done:
+- Updated `PlotManager.cs` → `PlotRuns()`:
+  - Added loop to set `IsVisible = false` on all axes to remove them from the render flow.
+  - Switched to `PixelPadding` + `Layout.Fixed()` to enforce explicit pixel padding instead of ScottPlot’s auto-layout.
+  - Set final `PixelPadding` to match initial empty plot spacing, ensuring plot area remains stable whether empty or with multi-run overlay.
+- Verified hover cursor, multi-channel overlays, and AxisRules still work with hidden axes.
+- Left legend `IsVisible = false` to prevent overlap — can reposition in future phases if needed.
+
+✅ Files Changed:
+- `src/CastleOverlayV2/CastleOverlayV2/Plot/PlotManager.cs`
+- `Docs/DEVELOPMENT_LOG.md` updated to record fix and approach.
+
+✅ Next:
+- Polish toggle bar alignment now that plot area is stable.
+- Adjust button and sidebar layout to match new fullwidth behavior.
+
+Feature Branch: `feature/phase-5-x-axis-hide-fullwidth`
+Tag: `v0.5-phase-5-x-axis-hide-fullwidth`
+
+-----------------------------------------------------------------------------------------
 
