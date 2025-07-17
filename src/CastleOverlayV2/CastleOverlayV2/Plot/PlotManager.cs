@@ -2,6 +2,7 @@
 using CastleOverlayV2.Utils;
 using ScottPlot;
 using ScottPlot.AxisRules;
+using ScottPlot.Colormaps;
 using ScottPlot.Plottables;
 using ScottPlot.WinForms;
 using System;
@@ -35,6 +36,15 @@ namespace CastleOverlayV2.Plot
         // ✅ Emit hover data for toggle bar
         public event Action<Dictionary<string, double?[]>> CursorMoved;
 
+        private Dictionary<Scatter, int> _scatterRunMap = new();
+
+        //private Dictionary<int, bool> _runVisibility = new();
+
+        // Track whether each run (0, 1, 2) is visible
+        private readonly Dictionary<int, bool> _runVisibility = new();
+
+        //Toggle visibility state for a specific run
+       
         // ✅ Per-channel scale factors (Phase 5.1 — hardcoded)
         private readonly Dictionary<string, double> _channelScales = new()
         {
@@ -84,6 +94,11 @@ namespace CastleOverlayV2.Plot
             // === ✅ X AXIS: Time ===
             var xAxis = _plot.Plot.Axes.Bottom;
             xAxis.Label.Text = "Time (s)";
+            xAxis.TickGenerator = new ScottPlot.TickGenerators.NumericAutomatic(); // ✅ Use default generator
+
+
+
+
 
             //-----------------------------------------------------------//
             // === ✅ Y AXIS: Throttle ===
@@ -214,6 +229,10 @@ namespace CastleOverlayV2.Plot
             // Loops through every loaded log (1 or more Castle runs)
             for (int i = 0; i < runs.Count; i++)
             {
+
+                if (!_runVisibility.ContainsKey(i))
+                    _runVisibility[i] = true;
+
                 var run = runs[i];
                 if (run == null || run.DataPoints.Count == 0)
                     continue;
@@ -237,7 +256,15 @@ namespace CastleOverlayV2.Plot
                     scatter.Label = channelLabel;                   // label must match your toggle bar
                     scatter.Color = ChannelColorMap.GetColor(channelLabel);           // color for this run
                     scatter.LinePattern = LineStyleHelper.GetLinePattern(i); // line style for this run
+                    scatter.LineWidth = (float)LineStyleHelper.GetLineWidth(i); // ⬅️ Set per-log thickness
                     scatter.Axes.XAxis = xAxis;                     // always map to the Time axis
+                    _scatterRunMap[scatter] = i; // ✅ manually track run index
+
+                    bool isChannelVisible = _channelVisibility.TryGetValue(channelLabel, out var chanVis) ? chanVis : true;
+                    bool isRunVisible = _runVisibility.TryGetValue(i, out var runVis) ? runVis : true;
+                    scatter.IsVisible = isChannelVisible && isRunVisible;
+
+
 
                     //-----------------------------------------------------------//
                     // === ✅ Map this channel to its correct hidden or visible Y-axis ===
@@ -254,7 +281,10 @@ namespace CastleOverlayV2.Plot
                     else if (channelLabel == "Acceleration") scatter.Axes.YAxis = accelAxis;
                     else scatter.Axes.YAxis = throttleAxis; // fallback
 
-                    scatter.IsVisible = _channelVisibility.TryGetValue(channelLabel, out var vis) ? vis : true;
+                    bool channelOn = _channelVisibility.TryGetValue(channelLabel, out var vis) ? vis : true;
+                    bool runOn = _runVisibility.ContainsKey(i) ? _runVisibility[i] : true;
+                    scatter.IsVisible = channelOn && runOn;
+
 
 
                     //-----------------------------------------------------------//
@@ -266,19 +296,22 @@ namespace CastleOverlayV2.Plot
 
 
             // === ✅ FINAL PLOT SETTINGS ===
-            _plot.Plot.Axes.AutoScale();            // respects AxisRules
-                                                    // === ✅ Fully hide ALL axes so they take no space
-                                                    // === ✅ Fully hide all axes
-            foreach (var axis in _plot.Plot.Axes.GetAxes())
-                axis.IsVisible = false;
 
-            // === ✅ Keep same visual space as initial empty plot
-            PixelPadding padding = new(left: 40, right: 40, top: 50, bottom: 50);
+            // Auto-scale axes based on plotted data and axis rules
+            _plot.Plot.Axes.AutoScale(); // Respects LockedVertical and other axis rules
+
+            // DO NOT hide all axes globally — individual axes already styled (ticks/labels hidden as needed)
+            // foreach (var axis in _plot.Plot.Axes.GetAxes())
+            //     axis.IsVisible = false;
+
+            // Maintain consistent padding around the plot area
+            PixelPadding padding = new(left: 40, right: 40, top: 10, bottom: 50);
             _plot.Plot.Layout.Fixed(padding);
 
-            // === ✅ Hide or keep legend
+            // Optionally hide the legend (unless needed later)
             _plot.Plot.Legend.IsVisible = false;
 
+            // Refresh the plot with all changes
             _plot.Refresh();
 
 
@@ -369,7 +402,14 @@ namespace CastleOverlayV2.Plot
         /// </summary>
         private void SetupPlotDefaults()
         {
+            // ✅ Set the title once
             _plot.Plot.Title("Castle Log Overlay Tool");
+
+            // ✅ Give space for the title
+            PixelPadding padding = new(left: 40, right: 40, top: 10, bottom: 50);
+            _plot.Plot.Layout.Fixed(padding);
+
+            // ✅ Add any other permanent styles here
             _plot.Plot.XLabel("Time (s)");
         }
 
@@ -414,20 +454,43 @@ namespace CastleOverlayV2.Plot
             return values.Select(v => ((v - 1.5) / 0.5) * factor).ToArray();
         }
 
+        public void ToggleRunVisibility(int runIndex, bool isVisibleNow)
+        {
+            _runVisibility[runIndex] = isVisibleNow;
+
+            foreach (var scatter in _scatters)
+            {
+                if (_scatterRunMap.TryGetValue(scatter, out int tag) && tag == runIndex)
+                {
+                    string channel = scatter.Label;
+                    bool channelOn = _channelVisibility.TryGetValue(channel, out bool vis) ? vis : true;
+                    scatter.IsVisible = isVisibleNow && channelOn;
+                }
+            }
+
+            _plot.Refresh();
+        }
 
         /// <summary>
         /// Toggle channel visibility.
         /// </summary>
         public void SetChannelVisibility(string channelName, bool isVisible)
         {
+            _channelVisibility[channelName] = isVisible;
+
             foreach (var scatter in _scatters)
             {
-                if (scatter.Label == channelName)
+                if (scatter.Label == channelName && _scatterRunMap.TryGetValue(scatter, out int runIndex))
                 {
-                    scatter.IsVisible = isVisible;
+                    bool runVisible = _runVisibility.ContainsKey(runIndex) ? _runVisibility[runIndex] : true;
+                    scatter.IsVisible = runVisible && isVisible;
                 }
             }
+
+            _plot.Refresh();
         }
+
+
 
         /// <summary>
         /// Refresh plot.
@@ -452,6 +515,49 @@ namespace CastleOverlayV2.Plot
         {
             _channelVisibility = visibilityMap ?? new();
         }
+        
+
+        public bool ToggleRunVisibility(int runIndex)
+        {
+            bool currentlyVisible = _runVisibility.ContainsKey(runIndex) ? _runVisibility[runIndex] : true;
+            bool newState = !currentlyVisible;
+            _runVisibility[runIndex] = newState;
+
+            foreach (var scatter in _scatters)
+            {
+                if (_scatterRunMap.TryGetValue(scatter, out int tag) && tag == runIndex)
+                {
+                    string channel = scatter.Label;
+                    bool channelOn = _channelVisibility.TryGetValue(channel, out bool vis) ? vis : true;
+
+                    // ✅ Only show if both channel and run are active
+                    scatter.IsVisible = newState && channelOn;
+                }
+            }
+
+            _plot.Refresh();
+            return newState;
+        }
+        public void ResetEmptyPlot()
+        {
+            _plot.Plot.Clear();
+            _plot.Plot.Axes.Rules.Clear();
+
+            // ✅ Invisible dummy line to prevent auto-resize bugs
+            var dummy = _plot.Plot.Add.Signal(new double[] { 0, 0 });
+            dummy.Color = ScottPlot.Colors.Transparent;
+            dummy.LineWidth = 0;
+
+            // ✅ Maintain layout (title space)
+            PixelPadding padding = new(left: 40, right: 40, top: 10, bottom: 50);
+            _plot.Plot.Layout.Fixed(padding);
+
+            // ✅ Any runtime-only settings
+            _plot.Plot.Legend.IsVisible = false;
+
+            _plot.Refresh();
+        }
+
 
     }
 }

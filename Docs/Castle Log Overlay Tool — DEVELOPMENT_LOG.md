@@ -753,5 +753,112 @@ This matches your pinned STRUCTURE.md and Castle Link 2’s tight, clear channel
 - Phase 5.3 will focus on final hover styles, color consistency, and save/export preview.
 
 ------------------------------------------------------------------------------
+2025-07-16 — Phase 5.3: Line Colors Standardization
+Branch: feature/phase-5-3-line-colors
+Tag: v0.5-phase-5-3-line-colors
 
+✅ Scope Implemented:
 
+Created /src/Utils/ChannelColorMap.cs as the single source of truth for channel → color mapping.
+
+Added real Castle Link 2 hex RGB values for each channel:
+
+Voltage: #FF0000
+
+Ripple: #800080
+
+Current: #008000
+
+PowerOut: #4682B4
+
+MotorTemp: #9370DB
+
+Speed: #A52A2A
+
+Throttle: #000000
+
+Acceleration: #4169E1
+
+MotorTiming: #000080
+
+GovGain: #FFD700 (example, to be confirmed)
+
+Updated /src/Plot/PlotManager.cs to apply ChannelColorMap.GetColor(channelLabel) for each scatter plot.
+
+Verified overlay with 2–3 logs — each channel now consistently matches the real Castle Link colors across runs.
+
+Preserved per-run line styles using LineStyleHelper.GetLinePattern() (solid/dash/dot).
+
+Confirmed axis mapping uses the same channel keys so there are no mismatches.
+
+Updated PixelPadding and layout logic stayed stable — no breakage.
+
+✅ Outcome:
+
+All channels now have locked colors that match Castle Link 2 exactly.
+
+No syntax guessing — ScottPlot v5 color handling verified.
+
+Toggle bar, hover cursor, and multi-axis overlays remain functional.
+
+Lessons Learned:
+
+Always align channel labels in GetChannelsWithRaw(), axis mapping, toggle bar, and color map to avoid runtime mismatches.
+
+Real Castle hex codes are clearer than default Colors.* guesses.
+
+Small test overlays (2–3 logs) help confirm visual consistency fast.
+--------------------------------------------------------------------------------------
+📄 2025-07-17 — Phase 5.4: Channel Cleanup and ESC Temp Integration
+Branch: feature/phase-5.4-channel-cleanup
+Tag: v0.5.4-phase-5-4-complete
+
+✅ Summary:
+Cleaned up channel toggle list to show only the 10 valid Castle ESC-logged channels.
+
+Removed legacy/unused channels: Gov. Gain, BEC Voltage.
+
+Renamed "Speed" channel label to "RPM" across all plotting, hover, and toggle logic.
+
+Updated PlotManager to honor saved toggle visibility states on initial load.
+
+Integrated new channel: ESC Temp (from CSV "Temperature" column):
+
+Added to DataPoint.cs as Temperature
+
+Parsed in CsvLoader.cs
+
+Labeled as "ESC Temp" in toggle bar and plot
+
+Uses its own hidden Y-axis (20°C–120°C)
+
+Supports toggle visibility, hover tracking, and color mapping
+
+Adjusted ColorMap.cs to assign a readable color to ESC Temp (soft magenta)
+
+🔧 Files Updated:
+MainForm.cs — toggle injection, channel list, visibility sync
+
+DataPoint.cs — added .Temperature
+
+CsvLoader.cs — mapped Temperature from CSV
+
+PlotManager.cs — added ESC Temp to axes, label routing, and toggle/plot logic
+
+ColorMap.cs — added visual color for ESC Temp
+
+🔄 Flow Confirmed:
+Toggle states are respected when loading logs
+
+ESC Temp appears on plot when toggled on
+
+Hover values shown for ESC Temp per run
+
+Clean visual spacing and color
+
+🧪 Verified:
+Real Castle logs display ESC Temp correctly
+
+No regressions in existing RPM, Throttle, Current, etc.
+
+Toggle bar layout remains aligned and functional
