@@ -43,17 +43,18 @@ namespace CastleOverlayV2
 
             var channelNames = new List<string>
 {
-    "Speed",          // Or "RPM" — match your label!
+    "RPM",
     "Throttle",
     "Voltage",
     "Current",
     "Ripple",
     "PowerOut",
     "MotorTemp",
+    "ESC Temp",       // ✅ NEW
     "MotorTiming",
-    "Acceleration",
-    "GovGain"
+    "Acceleration"
 };
+
 
 
             // ✅ 2️⃣ Use config states for toggles
@@ -185,6 +186,10 @@ namespace CastleOverlayV2
             if (run1 != null) runsToPlot.Add(run1);
             if (run2 != null) runsToPlot.Add(run2);
             if (run3 != null) runsToPlot.Add(run3);
+
+            // ✅ Inject saved toggle states before plotting
+            var visibilityMap = _channelToggleBar.GetChannelStates();
+            _plotManager.SetInitialChannelVisibility(visibilityMap);
 
             _plotManager.PlotRuns(runsToPlot);
         }

@@ -38,7 +38,7 @@ namespace CastleOverlayV2.Plot
         // ✅ Per-channel scale factors (Phase 5.1 — hardcoded)
         private readonly Dictionary<string, double> _channelScales = new()
         {
-            ["Speed"] = 1.0,
+            ["RPM"] = 1.0,
             ["Throttle"] = 1.0,
             ["Voltage"] = 0.1,
             ["Current"] = 0.5,
@@ -47,7 +47,7 @@ namespace CastleOverlayV2.Plot
             ["MotorTemp"] = 0.2,
             ["MotorTiming"] = 1.0,
             ["Acceleration"] = 2.0,
-            ["GovGain"] = 1.0
+            
         };
 
         public PlotManager(FormsPlot plotControl)
@@ -100,8 +100,8 @@ namespace CastleOverlayV2.Plot
 
             // === ✅ Y AXIS: Speed (RPM) ===
             var rpmAxis = _plot.Plot.Axes.AddRightAxis();
-            rpmAxis.LabelText = "Motor RPM";
-            var rpmRule = new LockedVertical(rpmAxis, 0, 160000);
+            rpmAxis.LabelText = "RPM";
+            var rpmRule = new LockedVertical(rpmAxis, 0, 200000);
             _plot.Plot.Axes.Rules.Add(rpmRule);
             rpmAxis.TickLabelStyle.IsVisible = false;
             rpmAxis.Label.IsVisible = false;
@@ -125,7 +125,7 @@ namespace CastleOverlayV2.Plot
             // === ✅ Y AXIS: Current ===
             var currentAxis = _plot.Plot.Axes.AddRightAxis();
             currentAxis.LabelText = "Current (A)";
-            var currentRule = new LockedVertical(currentAxis, 0, 700);
+            var currentRule = new LockedVertical(currentAxis, 0, 800);
             _plot.Plot.Axes.Rules.Add(currentRule);
             currentAxis.TickLabelStyle.IsVisible = false;
             currentAxis.Label.IsVisible = false;
@@ -149,13 +149,26 @@ namespace CastleOverlayV2.Plot
             // === ✅ Y AXIS: PowerOut ===
             var powerAxis = _plot.Plot.Axes.AddLeftAxis();
             powerAxis.Label.Text = "Power Out (W)";
-            var powerRule = new LockedVertical(powerAxis, 0, 8000);
+            var powerRule = new LockedVertical(powerAxis, 0, 110);
             _plot.Plot.Axes.Rules.Add(powerRule);
             powerAxis.TickLabelStyle.IsVisible = false;
             powerAxis.Label.IsVisible = false;
             powerAxis.MajorTickStyle.Length = 0;
             powerAxis.MinorTickStyle.Length = 0;
             powerAxis.FrameLineStyle.Width = 0;
+            //-----------------------------------------------------------//
+
+            // === ✅ Y AXIS: ESCTemp ===
+            var escTempAxis = _plot.Plot.Axes.AddRightAxis();
+            escTempAxis.LabelText = "ESC Temp (°C)";
+            var escTempRule = new LockedVertical(escTempAxis, 20, 120);
+            _plot.Plot.Axes.Rules.Add(escTempRule);
+            escTempAxis.TickLabelStyle.IsVisible = false;
+            escTempAxis.Label.IsVisible = false;
+            escTempAxis.MajorTickStyle.Length = 0;
+            escTempAxis.MinorTickStyle.Length = 0;
+            escTempAxis.FrameLineStyle.Width = 0;
+
             //-----------------------------------------------------------//
 
             // === ✅ Y AXIS: MotorTemp ===
@@ -194,20 +207,7 @@ namespace CastleOverlayV2.Plot
             accelAxis.FrameLineStyle.Width = 0;
             //-----------------------------------------------------------//
 
-            // === ✅ Y AXIS: GovGain ===
-            var govAxis = _plot.Plot.Axes.AddRightAxis();
-            govAxis.LabelText = "Gov Gain (%)";
-            var govRule = new LockedVertical(govAxis, 0, 100);
-            _plot.Plot.Axes.Rules.Add(govRule);
-            govAxis.TickLabelStyle.IsVisible = false;
-            govAxis.Label.IsVisible = false;
-            govAxis.MajorTickStyle.Length = 0;
-            govAxis.MinorTickStyle.Length = 0;
-            govAxis.FrameLineStyle.Width = 0;
-            //-----------------------------------------------------------//
-
-
-
+  
             // === ✅ PLOT ALL RUNS ===
             //-----------------------------------------------------------//
             // === ✅ PLOT EACH RUN ===
@@ -235,24 +235,26 @@ namespace CastleOverlayV2.Plot
                     // === ✅ Create the scatter plot for this channel ===
                     Scatter scatter = _plot.Plot.Add.Scatter(xs, ysToPlot);
                     scatter.Label = channelLabel;                   // label must match your toggle bar
-                    scatter.Color = ColorMap.GetColor(i);           // color for this run
+                    scatter.Color = ChannelColorMap.GetColor(channelLabel);           // color for this run
                     scatter.LinePattern = LineStyleHelper.GetLinePattern(i); // line style for this run
                     scatter.Axes.XAxis = xAxis;                     // always map to the Time axis
 
                     //-----------------------------------------------------------//
                     // === ✅ Map this channel to its correct hidden or visible Y-axis ===
                     // This keeps each channel using its own true-unit scale.
-                    if (channelLabel == "Speed") scatter.Axes.YAxis = rpmAxis;
+                    if (channelLabel == "RPM") scatter.Axes.YAxis = rpmAxis;
                     else if (channelLabel == "Throttle") scatter.Axes.YAxis = throttleAxis;
                     else if (channelLabel == "Voltage") scatter.Axes.YAxis = voltageAxis;
                     else if (channelLabel == "Current") scatter.Axes.YAxis = currentAxis;
                     else if (channelLabel == "Ripple") scatter.Axes.YAxis = rippleAxis;
                     else if (channelLabel == "PowerOut") scatter.Axes.YAxis = powerAxis;
+                    else if (channelLabel == "ESC Temp") scatter.Axes.YAxis = escTempAxis;
                     else if (channelLabel == "MotorTemp") scatter.Axes.YAxis = motorTempAxis;
                     else if (channelLabel == "MotorTiming") scatter.Axes.YAxis = motorTimingAxis;
                     else if (channelLabel == "Acceleration") scatter.Axes.YAxis = accelAxis;
-                    else if (channelLabel == "GovGain") scatter.Axes.YAxis = govAxis;
                     else scatter.Axes.YAxis = throttleAxis; // fallback
+
+                    scatter.IsVisible = _channelVisibility.TryGetValue(channelLabel, out var vis) ? vis : true;
 
 
                     //-----------------------------------------------------------//
@@ -381,16 +383,16 @@ namespace CastleOverlayV2.Plot
                 => run.DataPoints.Select(selector).ToArray();
 
             // === ✅ ALL CHANNELS: Use raw data only ===
-            yield return ("Speed", GetRaw(dp => dp.Speed), GetRaw(dp => dp.Speed));
+            yield return ("RPM", GetRaw(dp => dp.Speed), GetRaw(dp => dp.Speed));
             yield return ("Throttle", GetRaw(dp => dp.Throttle), GetRaw(dp => dp.Throttle));
             yield return ("Voltage", GetRaw(dp => dp.Voltage), GetRaw(dp => dp.Voltage));
             yield return ("Current", GetRaw(dp => dp.Current), GetRaw(dp => dp.Current));
             yield return ("Ripple", GetRaw(dp => dp.Ripple), GetRaw(dp => dp.Ripple));
             yield return ("PowerOut", GetRaw(dp => dp.PowerOut), GetRaw(dp => dp.PowerOut));
+            yield return ("ESC Temp", GetRaw(dp => dp.Temperature), GetRaw(dp => dp.Temperature));
             yield return ("MotorTemp", GetRaw(dp => dp.MotorTemp), GetRaw(dp => dp.MotorTemp));
             yield return ("MotorTiming", GetRaw(dp => dp.MotorTiming), GetRaw(dp => dp.MotorTiming));
             yield return ("Acceleration", GetRaw(dp => dp.Acceleration), GetRaw(dp => dp.Acceleration));
-            yield return ("GovGain", GetRaw(dp => dp.GovGain), GetRaw(dp => dp.GovGain));
         }
 
 
@@ -443,5 +445,13 @@ namespace CastleOverlayV2.Plot
             _plot.Plot.Axes.AutoScale();
             _plot.Refresh();
         }
+
+        private Dictionary<string, bool> _channelVisibility = new();
+
+        public void SetInitialChannelVisibility(Dictionary<string, bool> visibilityMap)
+        {
+            _channelVisibility = visibilityMap ?? new();
+        }
+
     }
 }

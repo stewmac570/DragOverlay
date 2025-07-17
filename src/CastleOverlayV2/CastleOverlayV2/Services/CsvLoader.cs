@@ -105,6 +105,9 @@ namespace CastleOverlayV2.Services
                             continue;
                         }
 
+                        // ✅ Fallback for legacy logs where RPM might be called "Speed"
+                        string rpmField = csv.HeaderRecord.Contains("RPM") ? "RPM" : "Speed";
+
                         var point = new DataPoint
                         {
                             Time = rowIndex * 0.05,
@@ -113,12 +116,13 @@ namespace CastleOverlayV2.Services
                             Voltage = csv.GetField<double>("Voltage"),
                             Ripple = csv.GetField<double>("Ripple"),
                             Current = csv.GetField<double>("Current"),
-                            Speed = csv.GetField<double>("Speed"),
+                            Speed = csv.GetField<double>(rpmField),  // ✅ use fallback-safe field
+                            Temperature = csv.GetField<double>("Temperature"),
                             MotorTemp = csv.GetField<double>("Temperature"),
                             MotorTiming = csv.GetField<double>("Motor Timing."),
                             Acceleration = csv.GetField<double>("Acceleration."),
-                            GovGain = csv.GetField<double>("Gov. Gain")
                         };
+
 
                         runData.DataPoints.Add(point);
                         log.WriteLine($"Row {rowIndex}: ADDED — Time={point.Time:F2} Speed={point.Speed}");

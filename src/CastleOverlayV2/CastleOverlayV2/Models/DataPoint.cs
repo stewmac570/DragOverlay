@@ -14,6 +14,7 @@ namespace CastleOverlayV2.Models
         public double Ripple { get; set; }
         public double Current { get; set; }
         public double Speed { get; set; }
+        public double Temperature { get; set; }
         public double MotorTemp { get; set; }
         public double MotorTiming { get; set; }
         public double Acceleration { get; set; }

@@ -1,19 +1,32 @@
 ﻿using ScottPlot;
+using System.Collections.Generic;
 
 namespace CastleOverlayV2.Utils
 {
-    public static class ColorMap
+    public static class ChannelColorMap
     {
-        public static ScottPlot.Color GetColor(int index)
+        private static readonly Dictionary<string, ScottPlot.Color> ChannelColors = new()
         {
-            // Replace with real Castle colors
-            return index switch
-            {
-                0 => Colors.Blue,
-                1 => Colors.Red,
-                2 => Colors.Green,
-                _ => Colors.Black
-            };
+            { "Voltage", new ScottPlot.Color(255, 0, 0) },        // #FF0000
+            { "Ripple", new ScottPlot.Color(128, 0, 128) },       // #800080
+            { "Current", new ScottPlot.Color(0, 128, 0) },        // #008000
+            { "PowerOut", new ScottPlot.Color(70, 130, 180) },    // #4682B4
+            { "MotorTemp", new ScottPlot.Color(147, 112, 219) },  // #9370DB
+            { "RPM", new ScottPlot.Color(165, 42, 42) },        // #A52A2A
+            { "Throttle", new ScottPlot.Color(0, 0, 0) },         // #000000
+            { "Acceleration", new ScottPlot.Color(65, 105, 225) },// #4169E1
+            { "MotorTiming", new ScottPlot.Color(0, 0, 128) },    // #000080
+            { "ESC Temp", new ScottPlot.Color(255, 0, 250) } // #FFFF00FF
+        };
+
+        public static ScottPlot.Color GetColor(string channelName)
+        {
+            if (ChannelColors.TryGetValue(channelName, out var color))
+                return color;
+
+            throw new KeyNotFoundException(
+                $"Channel '{channelName}' is not mapped in ChannelColorMap."
+            );
         }
     }
 }
