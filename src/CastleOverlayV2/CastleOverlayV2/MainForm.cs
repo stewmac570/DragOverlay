@@ -6,6 +6,7 @@ using ScottPlot.WinForms;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
@@ -29,6 +30,16 @@ namespace CastleOverlayV2
         {
             InitializeComponent();
 
+            // ✅ Disable all toggle/delete buttons at startup
+            btnToggleRun1.Enabled = false;
+            btnDeleteRun1.Enabled = false;
+
+            btnToggleRun2.Enabled = false;
+            btnDeleteRun2.Enabled = false;
+
+            btnToggleRun3.Enabled = false;
+            btnDeleteRun3.Enabled = false;
+
             // Maximize the window on startup
             this.WindowState = FormWindowState.Maximized;
 
@@ -38,23 +49,23 @@ namespace CastleOverlayV2
 
             // Wire up the PlotManager with your FormsPlot control (must match your Designer)
             _plotManager = new PlotManager(formsPlot1);
+            _plotManager.ResetEmptyPlot();
             _plotManager.CursorMoved += OnCursorMoved;
             formsPlot1.Dock = DockStyle.Fill;
 
             var channelNames = new List<string>
-{
-    "RPM",
-    "Throttle",
-    "Voltage",
-    "Current",
-    "Ripple",
-    "PowerOut",
-    "MotorTemp",
-    "ESC Temp",       // ✅ NEW
-    "MotorTiming",
-    "Acceleration"
-};
-
+                {
+                    "RPM",
+                    "Throttle",
+                    "Voltage",
+                    "Current",
+                    "Ripple",
+                    "PowerOut",
+                    "MotorTemp",
+                    "ESC Temp",       
+                    "MotorTiming",
+                    "Acceleration"
+                };
 
 
             // ✅ 2️⃣ Use config states for toggles
@@ -111,6 +122,8 @@ namespace CastleOverlayV2
             {
                 run1 = await Task.Run(() => CsvLoader.Load(filePath));
                 Console.WriteLine($"=== Run1 loaded — points: {run1.DataPoints.Count} ===");
+                btnToggleRun1.Enabled = true;
+                btnDeleteRun1.Enabled = true;
                 PlotAllRuns();
             }
             catch (Exception ex)
@@ -133,6 +146,8 @@ namespace CastleOverlayV2
             {
                 run2 = await Task.Run(() => CsvLoader.Load(filePath));
                 Console.WriteLine($"=== Run2 loaded — points: {run2.DataPoints.Count} ===");
+                btnToggleRun2.Enabled = true;
+                btnDeleteRun2.Enabled = true;
                 PlotAllRuns();
             }
             catch (Exception ex)
@@ -155,6 +170,8 @@ namespace CastleOverlayV2
             {
                 run3 = await Task.Run(() => CsvLoader.Load(filePath));
                 Console.WriteLine($"=== Run3 loaded — points: {run3.DataPoints.Count} ===");
+                btnToggleRun3.Enabled = true;
+                btnDeleteRun3.Enabled = true;
                 PlotAllRuns();
             }
             catch (Exception ex)
@@ -213,5 +230,84 @@ namespace CastleOverlayV2
         {
             _channelToggleBar.UpdateMousePositionValues(valuesAtCursor);
         }
+
+        private void ToggleRun1Button_Click(object sender, EventArgs e)
+        {
+            bool isNowVisible = _plotManager.ToggleRunVisibility(0);
+            btnToggleRun1.Text = isNowVisible ? "Hide" : "Show";
+        }
+
+
+        private void ToggleRun2Button_Click(object sender, EventArgs e)
+        {
+            ToggleRunVisibility(1, btnToggleRun2);
+        }
+
+        private void ToggleRun3Button_Click(object sender, EventArgs e)
+        {
+            ToggleRunVisibility(2, btnToggleRun3);
+        }
+        private void ToggleRunVisibility(int runIndex, Button toggleButton)
+        {
+            bool isVisibleNow = _plotManager.ToggleRunVisibility(runIndex);
+            toggleButton.Text = isVisibleNow ? "Hide" : "Show";
+        }
+
+        private void DeleteRun1Button_Click(object sender, EventArgs e)
+        {
+            DeleteRun(0);
+        }
+
+        private void DeleteRun2Button_Click(object sender, EventArgs e)
+        {
+            DeleteRun(1);
+        }
+
+        private void DeleteRun3Button_Click(object sender, EventArgs e)
+        {
+            DeleteRun(2);
+        }
+
+        private void DeleteRun(int runIndex)
+        {
+         
+            // Optional: reset button states
+            switch (runIndex)
+            {
+                case 0:
+                    run1 = null;
+                    btnLoadRun1.Enabled = true;
+                    btnToggleRun1.Enabled = false;
+                    btnDeleteRun1.Enabled = false;
+                    btnToggleRun1.Text = "Hide";
+                    break;
+                case 1:
+                    run2 = null;
+                    btnLoadRun2.Enabled = true;
+                    btnToggleRun2.Enabled = false;
+                    btnDeleteRun2.Enabled = false;
+                    btnToggleRun2.Text = "Hide";
+                    break;
+                case 2:
+                    run3 = null;
+                    btnLoadRun3.Enabled = true;
+                    btnToggleRun3.Enabled = false;
+                    btnDeleteRun3.Enabled = false;
+                    btnToggleRun3.Text = "Hide";
+                    break;
+            }
+
+
+            var activeRuns = new List<RunData>();
+            if (run1 != null) activeRuns.Add(run1);
+            if (run2 != null) activeRuns.Add(run2);
+            if (run3 != null) activeRuns.Add(run3);
+
+            _plotManager.PlotRuns(activeRuns);
+
+        }
+
+
+
     }
 }
