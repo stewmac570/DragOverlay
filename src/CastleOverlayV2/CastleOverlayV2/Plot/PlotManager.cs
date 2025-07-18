@@ -75,6 +75,14 @@ namespace CastleOverlayV2.Plot
         public void PlotRuns(List<RunData> runs)
         {
             // === ✅ SAFETY CHECK ===
+            if (runs == null || runs.Count == 0 || runs.All(r => r == null || r.DataPoints.Count == 0))
+            {
+                Console.WriteLine("No valid runs to plot. Resetting plot.");
+                ResetEmptyPlot();
+                return;
+            }
+
+
             if (runs == null || runs.Count == 0)
                 throw new ArgumentException("No runs to plot.");
 
