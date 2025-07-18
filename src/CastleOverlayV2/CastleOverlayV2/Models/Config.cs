@@ -8,6 +8,8 @@ namespace CastleOverlayV2.Models
     /// </summary>
     public class Config
     {
+        public bool IsFourPoleMode { get; set; } = false;
+
         /// <summary>
         /// Stores ON/OFF toggle states for each channel.
         /// Key: channel name (e.g., "RPM"), Value: true (ON) or false (OFF)
@@ -24,6 +26,8 @@ namespace CastleOverlayV2.Models
         /// Constructor — initializes empty defaults if needed.
         /// </summary>
         public Config()
+
+
         {
         }
     }

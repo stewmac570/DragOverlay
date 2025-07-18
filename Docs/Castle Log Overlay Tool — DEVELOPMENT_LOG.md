@@ -914,3 +914,190 @@ PlotManager.cs: ResetEmptyPlot() and SetupPlotDefaults() now use clean, minimal 
 Verified title alignment using Axes.Title.FullFigureCenter = true.
 -----------------------------------------------------------------------
 
+2025-07-18 — Phase 5.6: Auto Trim Logs Based on ESC Power Spike
+Branch: feature/phase-5.6-auto-trim
+Tag: v0.5.6-phase-5-6-auto-trim
+
+✅ Summary:
+Added auto-trim logic to detect drag pass start from ESC logs and discard unrelated pre/post session data.
+
+Trigger point: first sample where Throttle rises above 1.60ms, indicating user-initiated launch.
+
+Trim window: keeps samples from -0.5s before throttle spike to +2.5s after.
+
+Resets all DataPoint.Time values so launch occurs at 0.00s on X-axis.
+
+Only activates on logs with >3000 rows to avoid trimming already clipped data.
+
+Handles invalid Castle data formats (e.g. Power-Out = "14.902b") with string sanitization and safe parsing.
+
+🛠️ File Changes:
+CsvLoader.cs:
+
+Added DetectDragStartIndex() (throttle rise based).
+
+Added AutoTrim() with configurable trim window and clean time zeroing.
+
+Replaced all GetField<double> calls with null-safe wrappers to prevent parsing errors.
+
+Updated while (csv.Read()) loop to sanitize and load Castle-formatted data cleanly.
+
+🧪 Verified:
+Logs trimmed as expected
+
+Time zero aligns exactly with throttle increase
+
+Fully compatible with full or partial Castle logs
+
+Output overlays perfectly with Castle Link 2 visual behavior
+
+----------------------------------------------------------------
+
+2025-07-18 — Phase 5.7: ToggleBar UI Cleanup
+Branch: feature/phase-5-7-togglebar-ui-cleanup
+Tag: v0.5.7-phase-5-7-complete
+
+✅ Scope Implemented:
+
+Replaced old checkbox toggles with Show / Hide buttons per channel.
+
+Styled the toggle buttons to match the Run buttons (Load / Hide / Delete) for UI consistency.
+
+Switched from CheckBox to Button logic inside each ChannelRow.
+
+Retained all event wiring (ChannelVisibilityChanged) and config saving.
+
+Increased font size and boldness for:
+
+Channel names (e.g., “RPM”)
+
+Log values (Log 1 / 2 / 3)
+
+Verified layout stays in tight vertical stacks per channel with minimal padding.
+
+Preserved full multi-column layout across bottom of form.
+
+📁 Files Updated:
+
+src/Controls/ChannelToggleBar.cs
+
+🧪 Validated:
+
+All channels show correct hover data.
+
+Toggle buttons work and reflect visibility state.
+
+ConfigService saves states correctly.
+
+ScottPlot overlays update live on toggle.
+
+✅ Outcome:
+
+Toggle bar now matches Castle Link 2 in structure and clarity.
+
+UI layout finalized and polished.
+
+Ready for merge to develop or release staging.
+
+---------------------------------------------------------------------
+ 2025-07-18 — Phase 5.8: Safe Delete Handling
+Branch: feature/phase-5-8-safe-delete
+Tag: v0.5.8-phase-5-8-safe-delete
+
+✅ Scope Implemented
+
+Fixed crash when the user deleted all loaded runs.
+
+Root cause: PlotRuns(...) assumed runs.Count > 0 and tried to plot even if all entries were null.
+
+Added a defensive guard at the top of PlotRuns(...):
+
+csharp
+Copy
+Edit
+if (runs == null || runs.Count == 0 || runs.All(r => r == null || r.DataPoints.Count == 0))
+{
+    Console.WriteLine("No valid runs to plot. Resetting plot.");
+    ResetEmptyPlot();
+    return;
+}
+Ensures a clean fallback to ResetEmptyPlot() when no valid data remains.
+
+No changes needed in MainForm.cs — deletion logic is untouched.
+
+🧪 Verified Behavior
+
+Plot resets when Run 1, 2, and 3 are deleted.
+
+No exceptions thrown.
+
+UI buttons disable correctly.
+
+Hover and layout remain functional after reset.
+
+🗂️ Files Updated
+
+src/Plot/PlotManager.cs
+
+✅ Outcome
+
+Matches Castle Link 2 behavior when all runs are cleared.
+
+Prevents accidental crashes in live tuning sessions.
+
+Fully isolated in its own branch and safe to merge.
+-------------------------------------------
+
+2025-07-18 — Phase 5.9: RPM 2P / 4P Mode Toggle
+Branch: feature/phase-5-9-rpm-pole-toggle
+Tag: v0.5.9-phase-5-9-complete
+
+✅ Summary
+Added a user-facing toggle to switch between 2 Pole (standard) and 4 Pole mode for RPM channel interpretation.
+When in 4 Pole mode:
+
+All RPM values are halved
+
+Plot and hover values adjust accordingly
+
+Y-axis scale is also halved to preserve visual plot shape
+
+The setting is saved to config.json and auto-loaded on startup
+
+✅ UI Updates
+Added a 2 Pole / 4 Pole button below the RPM toggle block
+
+Reflects current mode with button text
+
+All 3 log values update live on hover
+
+RPM values now show commas for readability (e.g., 64,980)
+
+Other channels retain 2-decimal precision
+
+🧠 Implementation Notes
+ChannelToggleBar.cs raises a RpmModeChanged(bool) event
+
+MainForm.cs listens and:
+
+Updates _plotManager.SetFourPoleMode(...)
+
+Persists state to ConfigService.SetRpmMode(...)
+
+PlotManager.cs scales RPM values on plot and on hover using _isFourPoleMode
+
+Config.cs includes new field: IsFourPoleMode
+
+🗂️ Files Changed
+ChannelToggleBar.cs — new button + event wiring
+
+MainForm.cs — handles event, sets mode, saves to config
+
+PlotManager.cs — applies 0.5 scale to plot + hover
+
+Config.cs — adds IsFourPoleMode
+
+ConfigService.cs — adds SetRpmMode()
+
+-------------------------------------------------------------------------
+
