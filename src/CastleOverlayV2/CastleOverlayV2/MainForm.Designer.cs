@@ -12,11 +12,9 @@
         private System.Windows.Forms.Button btnToggleRun1;
         private System.Windows.Forms.Button btnToggleRun2;
         private System.Windows.Forms.Button btnToggleRun3;
-        private Button btnDeleteRun1;
-        private Button btnDeleteRun2;
-        private Button btnDeleteRun3;
-
-
+        private System.Windows.Forms.Button btnDeleteRun1;
+        private System.Windows.Forms.Button btnDeleteRun2;
+        private System.Windows.Forms.Button btnDeleteRun3;
 
         protected override void Dispose(bool disposing)
         {
@@ -120,7 +118,10 @@
             this.Controls.Add(this.formsPlot1);
             this.Controls.Add(this.topButtonPanel);
             this.Name = "MainForm";
-            this.Text = "Castle Log Overlay Tool — Phase 1";
+            this.Text = "DragOverlay";
+
+
+
             this.ResumeLayout(false);
             this.PerformLayout();
 
@@ -134,7 +135,6 @@
                 };
             }
         }
-
 
         #endregion
     }

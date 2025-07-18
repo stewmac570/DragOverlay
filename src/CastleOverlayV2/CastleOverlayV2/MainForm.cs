@@ -10,6 +10,8 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.Linq;
+using System.Reflection;
+using System.IO;
 
 namespace CastleOverlayV2
 {
@@ -33,6 +35,12 @@ namespace CastleOverlayV2
         public MainForm()
         {
             InitializeComponent();
+
+            string iconPath = Path.Combine(Application.StartupPath, "DragOverlay.ico");
+            this.Icon = new Icon(iconPath);
+
+
+
 
             // ✅ Disable all toggle/delete buttons at startup
             btnToggleRun1.Enabled = false;

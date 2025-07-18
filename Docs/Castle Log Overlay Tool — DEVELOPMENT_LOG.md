@@ -1101,3 +1101,219 @@ ConfigService.cs — adds SetRpmMode()
 
 -------------------------------------------------------------------------
 
+App Naming
+You chose DragOverlay as the official name — clean, clear, and focused on its function: overlaying Castle ESC logs for drag racing.
+
+✅ Icon Design Process
+❌ First Attempt:
+Generated a circular icon with squiggly waveform lines, arrow, and lightning.
+
+You rejected it completely — not clean, not Castle-like.
+
+🔁 Clarification:
+You provided clear direction: blue background, Castle-style color scheme, clean line, no squiggles, no text.
+
+✅ Final Design:
+You uploaded a reference mockup:
+
+Castle tower icon under an angled white line.
+
+Clean dark blue background (Castle branding).
+
+No text, no extras.
+
+🎯 Final Result:
+I generated a flat, square icon with:
+
+Sharp white angled line
+
+Castle tower centered underneath
+
+Castle-style deep blue background
+
+Matches the mockup and Castle branding exactly
+--------------------------------------------------------------------------
+
+ Goal
+You wanted your custom .ico (DragOverlay.ico) to:
+
+Show in the top-left title bar
+
+Show in the taskbar
+
+Show on the .exe file icon in File Explorer
+
+🔍 Problems Encountered
+You had the .ico in the correct folder but:
+
+Used the wrong <ApplicationIcon> path
+
+Built in Debug instead of Release
+
+Windows cached the old icon, making it look like nothing changed.
+
+You were manually loading the icon via MainForm.cs, which overrode the proper embedded icon from .csproj.
+
+✅ Fixes Implemented
+1. Cleaned up .csproj:
+Set the icon properly:
+
+xml
+Copy
+Edit
+<ApplicationIcon>DragOverlay.ico</ApplicationIcon>
+<ItemGroup>
+  <Content Include="DragOverlay.ico" />
+</ItemGroup>
+2. Fixed the .ico file:
+I generated a valid multi-resolution .ico (DragOverlay_MultiRes.ico)
+
+You replaced the original with this fixed one
+
+3. Removed incorrect C# icon code:
+We deleted this from MainForm.cs:
+
+csharp
+Copy
+Edit
+var stream = ...
+this.Icon = new Icon(stream);
+Because it conflicted with the .csproj setting.
+
+4. Rebuilt properly:
+You:
+
+Switched to Release mode
+
+Cleaned and rebuilt the solution
+
+Ran the .exe from bin\Release\net8.0-windows\
+
+🧠 Key Takeaways
+✅ What Works	💡 How It Works
+.exe icon visible	<ApplicationIcon> in .csproj
+Taskbar + Title Bar	Embedded via build — not runtime C#
+.ico actually loads	Must contain 16x16, 32x32, 256x256 sizes
+Windows shows update	Requires rename or Explorer cache refresh
+
+
+--------------------------------------------------------------------------
+ Goal:
+You wanted the app to show a custom icon:
+
+In the top-left of the app window
+
+In the Windows taskbar
+
+And be embedded in the .exe as the default app icon
+
+🔧 What Was Done:
+1. Checked .csproj
+Confirmed your .ico reference:
+
+xml
+Copy
+Edit
+<ApplicationIcon>Resources\DragOverlay.ico</ApplicationIcon>
+Updated it to use the correct path and added this:
+
+xml
+Copy
+Edit
+<ItemGroup>
+  <Content Include="Resources\DragOverlay.ico">
+    <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+  </Content>
+</ItemGroup>
+✅ This ensures the icon is copied to the output folder for runtime loading.
+
+2. Updated MainForm.Designer.cs
+Replaced the broken file-path loading that crashed
+
+Added this inside InitializeComponent():
+
+csharp
+Copy
+Edit
+this.Icon = new System.Drawing.Icon("Resources\\DragOverlay.ico");
+✅ This displays your icon at runtime (window + taskbar).
+
+3. Bypassed .resx / Resource Manager
+Confirmed you’re using .NET 8, which removed the old Resource tab UI
+
+Skipped embedding in Properties.Resources
+
+Instead, directly load from the file in /Resources/, which is simpler and stable
+
+💥 Final Outcome
+✅ App now loads and runs without crashing
+
+✅ Icon shows top-left, taskbar, and .exe thumbnail
+
+✅ No broken resource references or Visual Studio weirdness
+
+✅ Pure WinForms-compatible solution that works with .NET 8
+
+
+
+--------------------------------------------------------------------------
+Goal: Add a Custom App + Taskbar Icon to Castle Log Overlay Tool
+🧩 Step-by-Step Work Done
+1️⃣ Prepared Icon File
+Verified you had DragOverlay.ico placed in:
+src/CastleOverlayV2/CastleOverlayV2/Resources/
+
+2️⃣ Added Icon to Project
+Used Solution Explorer to:
+
+Add the .ico file to the project
+
+Set:
+
+Build Action → Content
+
+Copy to Output Directory → Copy if newer
+
+3️⃣ Assigned Icon to MainForm
+Updated MainForm.cs to load the icon at runtime:
+
+csharp
+Copy
+Edit
+string iconPath = Path.Combine(Application.StartupPath, "DragOverlay.ico");
+this.Icon = new Icon(iconPath);
+Moved the .ico file to project root to ensure it copies directly to:
+
+python
+Copy
+Edit
+bin\Debug\net8.0-windows\
+4️⃣ Assigned Icon to .EXE File
+Opened project properties → Application tab
+
+Set DragOverlay.ico as the Win32 application icon
+
+5️⃣ Tested and Verified
+Built and launched the app
+
+Confirmed icon appears:
+
+In the app window
+
+In the Windows taskbar
+
+On the .exe file in Explorer
+
+In Alt+Tab switcher
+
+🏁 Final Result
+Your app now shows a fully integrated custom icon, just like Castle Link — matching visual branding across:
+
+✔️ Title bar
+✔️ Taskbar
+✔️ Executable
+✔️ Runtime UI
+
+
+-----------------------------------------------------------------
+
