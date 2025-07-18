@@ -124,7 +124,9 @@ namespace CastleOverlayV2.Plot
             // === ✅ Y AXIS: Speed (RPM) ===
             var rpmAxis = _plot.Plot.Axes.AddRightAxis();
             rpmAxis.LabelText = "RPM";
-            var rpmRule = new LockedVertical(rpmAxis, 0, 200000);
+            double rpmMax = _isFourPoleMode ? 100000 : 200000;
+            var rpmRule = new LockedVertical(rpmAxis, 0, rpmMax);
+
             _plot.Plot.Axes.Rules.Add(rpmRule);
             rpmAxis.TickLabelStyle.IsVisible = false;
             rpmAxis.Label.IsVisible = false;
@@ -258,6 +260,10 @@ namespace CastleOverlayV2.Plot
                     // This keeps your overlay in real Castle Link units (RPM, volts, ms)
                     double[] ysToPlot = rawYs;
 
+                    if (_isFourPoleMode && channelLabel == "RPM")
+                        ysToPlot = rawYs.Select(v => v * 0.5).ToArray();
+
+
                     //-----------------------------------------------------------//
                     // === ✅ Create the scatter plot for this channel ===
                     Scatter scatter = _plot.Plot.Add.Scatter(xs, ysToPlot);
@@ -389,7 +395,9 @@ namespace CastleOverlayV2.Plot
                     // Use raw Y for hover
                     if (_rawYMap.TryGetValue(scatter, out var rawYs) && index >= 0 && index < rawYs.Length)
                     {
-                        channelValues[i] = rawYs[index];
+                        double value = rawYs[index];
+                        channelValues[i] = (channelName == "RPM" && _isFourPoleMode) ? value * 0.5 : value;
+
                     }
                     else
                     {
@@ -564,6 +572,13 @@ namespace CastleOverlayV2.Plot
             _plot.Plot.Legend.IsVisible = false;
 
             _plot.Refresh();
+        }
+
+        private bool _isFourPoleMode = false;
+
+        public void SetFourPoleMode(bool isFourPole)
+        {
+            _isFourPoleMode = isFourPole;
         }
 
 

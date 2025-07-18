@@ -9,6 +9,7 @@ using System.IO;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using System.Linq;
 
 namespace CastleOverlayV2
 {
@@ -25,6 +26,9 @@ namespace CastleOverlayV2
         private RunData run3;
 
         private ChannelToggleBar _channelToggleBar;
+
+        private bool _isFourPoleMode = false;
+
 
         public MainForm()
         {
@@ -74,7 +78,12 @@ namespace CastleOverlayV2
             // ✅ 3️⃣ Create ChannelToggleBar
             _channelToggleBar = new ChannelToggleBar(channelNames, initialStates);
             _channelToggleBar.ChannelVisibilityChanged += OnChannelVisibilityChanged;
+            _channelToggleBar.RpmModeChanged += OnRpmModeChanged;
             Controls.Add(_channelToggleBar);
+            // ✅ Apply saved RPM mode from config.json
+            _isFourPoleMode = config.IsFourPoleMode;
+            _plotManager.SetFourPoleMode(_isFourPoleMode);
+
         }
 
         /// <summary>
@@ -305,6 +314,14 @@ namespace CastleOverlayV2
 
             _plotManager.PlotRuns(activeRuns);
 
+        }
+        private void OnRpmModeChanged(bool isFourPole)
+        {
+            _isFourPoleMode = isFourPole;
+            _plotManager.SetFourPoleMode(_isFourPoleMode);
+            _plotManager.PlotRuns(new List<RunData> { run1, run2, run3 }.Where(r => r != null).ToList());
+
+            _configService.SetRpmMode(isFourPole); // ✅ persist to config.json
         }
 
 

@@ -1,4 +1,6 @@
-﻿using System;
+﻿// File: /src/Controls/ChannelToggleBar.cs
+
+using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
@@ -10,12 +12,14 @@ namespace CastleOverlayV2.Controls
     {
         public event Action<string, bool> ChannelVisibilityChanged;
 
+        // ✅ New: Event to inform MainForm of 2P/4P switch
+        public event Action<bool> RpmModeChanged;
+
         private readonly Dictionary<string, ChannelRow> _channelRows = new();
 
         public ChannelToggleBar(List<string> channelNames, Dictionary<string, bool> initialStates)
         {
             Dock = DockStyle.Bottom;
-
             AutoSize = false;
 
             var layout = new TableLayoutPanel
@@ -35,8 +39,15 @@ namespace CastleOverlayV2.Controls
             for (int i = 0; i < channelNames.Count; i++)
             {
                 var channel = channelNames[i];
-                var row = new ChannelRow(channel, initialStates.ContainsKey(channel) && initialStates[channel]);
+                bool initialVisible = initialStates.ContainsKey(channel) && initialStates[channel];
+
+                var row = new ChannelRow(channel, initialVisible);
                 row.ToggleChanged += OnToggleChanged;
+
+                if (channel == "RPM")
+                {
+                    row.RpmModeChanged += (is4P) => RpmModeChanged?.Invoke(is4P);
+                }
 
                 row.Anchor = AnchorStyles.Top;
                 row.Margin = new Padding(4, 10, 4, 0);
@@ -77,8 +88,14 @@ namespace CastleOverlayV2.Controls
 
             public event Action<string, bool> ToggleChanged;
 
+            // ✅ Only used for RPM row
+            public event Action<bool> RpmModeChanged;
+
             private readonly Label[] _valueLabels = new Label[3];
             private readonly Button _toggleButton;
+            private readonly Button _rpmModeButton;
+
+            private bool _isFourPole = false;
 
             public ChannelRow(string channelName, bool initialState)
             {
@@ -92,7 +109,7 @@ namespace CastleOverlayV2.Controls
                 var layout = new TableLayoutPanel
                 {
                     ColumnCount = 1,
-                    RowCount = 5,
+                    RowCount = 6,
                     AutoSize = true,
                     AutoSizeMode = AutoSizeMode.GrowAndShrink,
                     CellBorderStyle = TableLayoutPanelCellBorderStyle.None,
@@ -118,7 +135,7 @@ namespace CastleOverlayV2.Controls
                 };
                 layout.Controls.Add(_toggleButton, 0, 0);
 
-                // Row 1: Channel name — bold, large
+                // Row 1: Channel name
                 var nameLabel = new Label
                 {
                     Text = channelName,
@@ -129,7 +146,7 @@ namespace CastleOverlayV2.Controls
                 };
                 layout.Controls.Add(nameLabel, 0, 1);
 
-                // Rows 2–4: Log 1–3 values — bold, larger
+                // Rows 2–4: Log 1–3 values
                 for (int i = 0; i < 3; i++)
                 {
                     var lbl = new Label
@@ -144,6 +161,25 @@ namespace CastleOverlayV2.Controls
                     layout.Controls.Add(lbl, 0, i + 2);
                 }
 
+                // ✅ Row 5: 2P / 4P switch — only visible for RPM
+                if (channelName == "RPM")
+                {
+                    _rpmModeButton = new Button
+                    {
+                        Text = "2 Pole",
+                        AutoSize = true,
+                        Anchor = AnchorStyles.Top,
+                        Margin = new Padding(5, 5, 5, 2)
+                    };
+                    _rpmModeButton.Click += (s, e) =>
+                    {
+                        _isFourPole = !_isFourPole;
+                        _rpmModeButton.Text = _isFourPole ? "4 Pole" : "2 Pole";
+                        RpmModeChanged?.Invoke(_isFourPole);
+                    };
+                    layout.Controls.Add(_rpmModeButton, 0, 5);
+                }
+
                 Controls.Add(layout);
             }
 
@@ -152,7 +188,12 @@ namespace CastleOverlayV2.Controls
                 for (int i = 0; i < 3; i++)
                 {
                     if (i < values.Length && values[i].HasValue)
-                        _valueLabels[i].Text = values[i].Value.ToString("F2");
+                        if (ChannelName == "RPM")
+                            _valueLabels[i].Text = values[i].Value.ToString("N0"); // Comma, no decimals
+                        else
+                            _valueLabels[i].Text = values[i].Value.ToString("F2"); // Default precision
+
+
                     else
                         _valueLabels[i].Text = "—";
                 }

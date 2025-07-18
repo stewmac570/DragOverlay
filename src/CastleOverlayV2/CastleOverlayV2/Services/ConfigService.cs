@@ -87,5 +87,12 @@ namespace CastleOverlayV2.Services
             _config.AlignmentThreshold = threshold;
             Save();
         }
+
+        public void SetRpmMode(bool isFourPole)
+        {
+            _config.IsFourPoleMode = isFourPole;
+            Save();
+        }
+
     }
 }
