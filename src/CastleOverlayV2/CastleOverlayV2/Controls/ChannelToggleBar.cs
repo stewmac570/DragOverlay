@@ -15,27 +15,20 @@ namespace CastleOverlayV2.Controls
         public ChannelToggleBar(List<string> channelNames, Dictionary<string, bool> initialStates)
         {
             Dock = DockStyle.Bottom;
-            // 👉 Dock at bottom: keeps your toggle bar stuck to the bottom of the form.
-            // No need to change this — to adjust gap ABOVE the bar, you tweak the plot.
 
-            AutoSize = false; // ✅ TableLayoutPanel handles sizing
+            AutoSize = false;
 
-            // ✅ Outer TableLayoutPanel: single row, N columns, equal percent widths
             var layout = new TableLayoutPanel
             {
-                Dock = DockStyle.Fill,  // 👉 This makes the TableLayout fill the ChannelToggleBar area.
+                Dock = DockStyle.Fill,
                 RowCount = 1,
                 ColumnCount = channelNames.Count,
                 Margin = new Padding(0),
                 Padding = new Padding(0)
-                // 👉 Keep Padding = 0 to avoid extra space above your channel rows.
-                // To create a larger gap BETWEEN the toggle bar and the plot, adjust the plot's Layout(bottom).
             };
 
             for (int i = 0; i < channelNames.Count; i++)
-            {
                 layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f / channelNames.Count));
-            }
 
             layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
@@ -45,18 +38,10 @@ namespace CastleOverlayV2.Controls
                 var row = new ChannelRow(channel, initialStates.ContainsKey(channel) && initialStates[channel]);
                 row.ToggleChanged += OnToggleChanged;
 
-                // 👉 This controls how each ChannelRow block sits in its TableLayout cell:
                 row.Anchor = AnchorStyles.Top;
-                // Use AnchorStyles.Top to pin the block to the top of its cell, reducing vertical gap.
-                // Use AnchorStyles.None to center vertically instead.
-
                 row.Margin = new Padding(4, 10, 4, 0);
-                // 👉 This margin controls space AROUND each block.
-                // - Reduce top margin to pull blocks up.
-                // - Add bottom margin if you want more gap below each block.
 
                 layout.Controls.Add(row, i, 0);
-
                 _channelRows[channel] = row;
             }
 
@@ -73,9 +58,7 @@ namespace CastleOverlayV2.Controls
             foreach (var kvp in channelValuesAtCursor)
             {
                 if (_channelRows.TryGetValue(kvp.Key, out var row))
-                {
                     row.UpdateValues(kvp.Value);
-                }
             }
         }
 
@@ -85,29 +68,26 @@ namespace CastleOverlayV2.Controls
         }
 
         /// <summary>
-        /// ✅ One channel block with tight vertical stack, bold text, and left spacing
+        /// One vertical channel block with Show/Hide button, bold labels
         /// </summary>
         private class ChannelRow : UserControl
         {
             public string ChannelName { get; }
-            public bool IsVisible => _toggle.Checked;
+            public bool IsVisible { get; private set; }
 
             public event Action<string, bool> ToggleChanged;
 
             private readonly Label[] _valueLabels = new Label[3];
-            private readonly CheckBox _toggle;
+            private readonly Button _toggleButton;
 
             public ChannelRow(string channelName, bool initialState)
             {
                 ChannelName = channelName;
+                IsVisible = initialState;
 
                 AutoSize = true;
                 AutoSizeMode = AutoSizeMode.GrowAndShrink;
-
                 Padding = new Padding(2, 2, 5, 2);
-                // 👉 This controls INNER padding of each ChannelRow block.
-                // - Reduce top Padding to move content up inside its block.
-                // - Increase left Padding to shift content right.
 
                 var layout = new TableLayoutPanel
                 {
@@ -120,31 +100,36 @@ namespace CastleOverlayV2.Controls
                     Padding = new Padding(0)
                 };
 
-                // Row 0: Show checkbox
-                _toggle = new CheckBox
+                // Row 0: Show/Hide button
+                _toggleButton = new Button
                 {
-                    Checked = initialState,
-                    Text = "Show",
+                    Text = IsVisible ? "Hide" : "Show",
                     AutoSize = true,
                     Anchor = AnchorStyles.Top,
-                    Margin = new Padding(5, 0, 0, 0)
-                    // 👉 This margin moves just the checkbox right, so it doesn't hug the left edge.
+                    BackColor = SystemColors.ControlLight,
+                    FlatStyle = FlatStyle.Standard,
+                    Margin = new Padding(5, 0, 5, 2)
                 };
-                _toggle.CheckedChanged += (s, e) => ToggleChanged?.Invoke(ChannelName, _toggle.Checked);
-                layout.Controls.Add(_toggle, 0, 0);
+                _toggleButton.Click += (s, e) =>
+                {
+                    IsVisible = !IsVisible;
+                    _toggleButton.Text = IsVisible ? "Hide" : "Show";
+                    ToggleChanged?.Invoke(ChannelName, IsVisible);
+                };
+                layout.Controls.Add(_toggleButton, 0, 0);
 
-                // Row 1: Channel name — bold
+                // Row 1: Channel name — bold, large
                 var nameLabel = new Label
                 {
                     Text = channelName,
                     TextAlign = ContentAlignment.MiddleCenter,
                     AutoSize = true,
                     Anchor = AnchorStyles.None,
-                    Font = new Font(SystemFonts.DefaultFont, FontStyle.Bold)
+                    Font = new Font(SystemFonts.DefaultFont.FontFamily, 10, FontStyle.Bold)
                 };
                 layout.Controls.Add(nameLabel, 0, 1);
 
-                // Rows 2–4: Log 1–3 values — bold
+                // Rows 2–4: Log 1–3 values — bold, larger
                 for (int i = 0; i < 3; i++)
                 {
                     var lbl = new Label
@@ -153,7 +138,7 @@ namespace CastleOverlayV2.Controls
                         TextAlign = ContentAlignment.MiddleCenter,
                         AutoSize = true,
                         Anchor = AnchorStyles.None,
-                        Font = new Font(SystemFonts.DefaultFont, FontStyle.Bold)
+                        Font = new Font(SystemFonts.DefaultFont.FontFamily, 10, FontStyle.Bold)
                     };
                     _valueLabels[i] = lbl;
                     layout.Controls.Add(lbl, 0, i + 2);
