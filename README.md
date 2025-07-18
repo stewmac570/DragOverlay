@@ -1,5 +1,9 @@
 # DragOverlay
 
+![MIT License](https://img.shields.io/badge/license-MIT-green)
+![.NET](https://img.shields.io/badge/.NET-8.0-blue)
+![Platform](https://img.shields.io/badge/platform-Windows-lightgrey)
+
 **DragOverlay** is a lightweight Windows tool built for RC drag racers using Castle ESCs. It overlays up to **3 Castle log files**, aligns them to launch, and presents a clean ScottPlot-based chart — with Castle Link 2–style colors, and toggles.
 
 ---
