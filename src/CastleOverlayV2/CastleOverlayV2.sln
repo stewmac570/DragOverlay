@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.14.36121.58 d17.14
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CastleOverlayV2", "CastleOverlayV2\CastleOverlayV2.csproj", "{09E9688C-8B33-4548-BF82-1722495878ED}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CastleOverlayV2", "CastleOverlayV2.csproj", "{05C5FBB5-3F51-904D-7AA1-049B7FA00091}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -11,15 +11,15 @@ Global
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{09E9688C-8B33-4548-BF82-1722495878ED}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{09E9688C-8B33-4548-BF82-1722495878ED}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{09E9688C-8B33-4548-BF82-1722495878ED}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{09E9688C-8B33-4548-BF82-1722495878ED}.Release|Any CPU.Build.0 = Release|Any CPU
+		{05C5FBB5-3F51-904D-7AA1-049B7FA00091}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{05C5FBB5-3F51-904D-7AA1-049B7FA00091}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{05C5FBB5-3F51-904D-7AA1-049B7FA00091}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{05C5FBB5-3F51-904D-7AA1-049B7FA00091}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
-		SolutionGuid = {7206FAB8-9E09-4887-B681-52B2F85F648F}
+		SolutionGuid = {2317DEC7-E176-4A5C-8901-F4CA9521AE82}
 	EndGlobalSection
 EndGlobal
