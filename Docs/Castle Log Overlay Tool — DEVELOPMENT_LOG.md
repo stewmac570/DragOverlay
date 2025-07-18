@@ -862,3 +862,55 @@ Real Castle logs display ESC Temp correctly
 No regressions in existing RPM, Throttle, Current, etc.
 
 Toggle bar layout remains aligned and functional
+----------------------------------------------------------------------------------
+📄 2025-07-17 — Phase 5.5: UI Initialization & Title Alignment Fixes
+Branch: feature/phase-5-5-ui-title-align
+Tag: v0.5.5-phase-5-5-complete
+
+✅ Summary of Fixes and Improvements:
+
+🔧 Run Buttons Disabled at Startup:
+Added logic in MainForm constructor to disable Toggle/Remove buttons for Run 1–3 until a log is loaded. Prevents UI confusion.
+
+🔁 Run Buttons Reactivate Correctly:
+Verified that buttons are re-enabled only after a log is successfully loaded into that slot.
+
+🧼 Title Alignment and Top Margin Cleanup:
+
+Reduced top padding in ResetEmptyPlot() and SetupPlotDefaults() to 10 for tight alignment with title.
+
+Ensured the title no longer disappears or gets clipped by layout.
+
+Moved padding logic consistently into both reset and setup methods.
+
+Removed unnecessary duplicate layout padding calls that were overriding intended top space.
+
+🖼️ ScottPlot Title Visibility Restored:
+
+Discovered that too much top padding was pushing the title out of view.
+
+Final fix: use .Layout.Fixed(top: 10) and center title relative to figure using:
+
+csharp
+Copy
+Edit
+_plot.Plot.Axes.Title.FullFigureCenter = true;
+🧪 Validated Behavior:
+
+All 3 run slots now properly start disabled.
+
+Buttons update consistently after log loads or deletions.
+
+Title always visible, properly centered, and aligned with toggle bar and button rows.
+
+Plot area consistent whether log is loaded or not — no UI jumping or collapse.
+
+✅ Files Updated:
+
+MainForm.cs: startup logic for disabling run buttons, post-load reactivation.
+
+PlotManager.cs: ResetEmptyPlot() and SetupPlotDefaults() now use clean, minimal PixelPadding(top: 10).
+
+Verified title alignment using Axes.Title.FullFigureCenter = true.
+-----------------------------------------------------------------------
+

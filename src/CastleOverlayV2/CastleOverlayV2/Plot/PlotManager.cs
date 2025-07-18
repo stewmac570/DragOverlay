@@ -201,7 +201,7 @@ namespace CastleOverlayV2.Plot
             // === ✅ Y AXIS: MotorTiming ===
             var motorTimingAxis = _plot.Plot.Axes.AddRightAxis();
             motorTimingAxis.LabelText = "Motor Timing (deg)";
-            var motorTimingRule = new LockedVertical(motorTimingAxis, 0, 70);
+            var motorTimingRule = new LockedVertical(motorTimingAxis, 0, 120);
             _plot.Plot.Axes.Rules.Add(motorTimingRule);
             motorTimingAxis.TickLabelStyle.IsVisible = false;
             motorTimingAxis.Label.IsVisible = false;
