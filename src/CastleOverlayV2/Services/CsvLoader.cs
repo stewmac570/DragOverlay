@@ -37,6 +37,7 @@ namespace CastleOverlayV2.Services
             File.WriteAllText("C:\\Temp\\csvloader_test.txt", "CsvLoader reached file open");
             StreamWriter log = null;
 
+
 if (_configService.IsDebugLoggingEnabled())
 {
     try
