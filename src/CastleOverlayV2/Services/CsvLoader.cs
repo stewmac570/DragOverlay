@@ -5,6 +5,7 @@ using CsvHelper;
 using CsvHelper.Configuration;
 using System.Globalization;
 using System.IO;
+using System.Diagnostics;
 
 namespace CastleOverlayV2.Services
 {
@@ -12,7 +13,7 @@ namespace CastleOverlayV2.Services
     {
         public static RunData Load(string filePath)
         {
-            Console.WriteLine("=== CsvLoader.Load() ENTERED ===");
+            Debug.WriteLine("=== CsvLoader.Load() ENTERED ===");
 
             var runData = new RunData
             {
@@ -26,14 +27,25 @@ namespace CastleOverlayV2.Services
                 TrimOptions = TrimOptions.Trim,
                 Delimiter = ","
             };
+
             File.WriteAllText("C:\\Temp\\csvloader_test.txt", "CsvLoader reached file open");
 
             var logPath = Path.Combine(Directory.GetCurrentDirectory(), "debug_log.txt");
-            using (var log = new StreamWriter(logPath, false))
+            StreamWriter log = null;
+
+            try
+            {
+                log = new StreamWriter(logPath, false);
+                log.WriteLine("=== CSV LOAD DEBUG START ===");
+            }
+            catch (IOException ex)
+            {
+                Debug.WriteLine($"[DEBUG] Could not open log file: {ex.Message}");
+                log = null;
+            }
+
             using (var reader = new StreamReader(filePath))
             {
-                log.WriteLine("=== CSV LOAD DEBUG START ===");
-
                 // ✅ Skip metadata lines starting with '#'
                 int skipMax = 1000;
                 int skipCount = 0;
@@ -48,20 +60,25 @@ namespace CastleOverlayV2.Services
                     {
                         reader.ReadLine();
                         skipCount++;
+
+                        log?.WriteLine($"[DEBUG] Skipped metadata line {skipCount}");
                     }
-                    else break;
+                    else
+                    {
+                        break;
+                    }
                 }
 
-                log.WriteLine($"Skipped {skipCount} metadata lines.");
+                log?.WriteLine($"Skipped {skipCount} metadata lines.");
 
                 using (var csv = new CsvReader(reader, config))
                 {
                     csv.Read();
                     csv.ReadHeader();
-                    log.WriteLine($"Header: {string.Join(", ", csv.HeaderRecord)}");
+                    log?.WriteLine($"Header: {string.Join(", ", csv.HeaderRecord)}");
 
                     csv.Read(); // skip flags row
-                    log.WriteLine("Skipped flags row.");
+                    log?.WriteLine("Skipped flags row.");
 
                     int rowIndex = 0;
                     int rowMax = 10000;
@@ -71,7 +88,7 @@ namespace CastleOverlayV2.Services
                     {
                         if (rowIndex > rowMax)
                         {
-                            log.WriteLine("Row limit hit!");
+                            log?.WriteLine("Row limit hit!");
                             break;
                         }
 
@@ -87,7 +104,7 @@ namespace CastleOverlayV2.Services
                         if (!launchPointFound && powerOut >= 5.0)
                         {
                             launchPointFound = true;
-                            log.WriteLine($"Launch found at row {rowIndex}");
+                            log?.WriteLine($"Launch found at row {rowIndex}");
                         }
 
                         if (!launchPointFound)
@@ -124,39 +141,91 @@ namespace CastleOverlayV2.Services
                         };
 
                         runData.DataPoints.Add(point);
-                        log.WriteLine($"Row {rowIndex}: ADDED — Time={point.Time:F2} Speed={point.Speed}");
+                        log?.WriteLine($"Row {rowIndex}: ADDED — Time={point.Time:F2} Speed={point.Speed}");
                         rowIndex++;
                     }
 
-
-                    log.WriteLine($"=== TOTAL POINTS LOADED: {runData.DataPoints.Count} ===");
+                    log?.WriteLine($"=== TOTAL POINTS LOADED: {runData.DataPoints.Count} ===");
                 }
             }
 
-            // ✅ Auto-trim logic only if long run
-            if (runData.DataPoints.Count > 3000)
+            // ✅ Trim logic based on data
+            if (runData.DataPoints.Count > 100 && runData.DataPoints[^1].Time - runData.DataPoints[0].Time > 3.0)
             {
                 int launchIndex = DetectDragStartIndex(runData.DataPoints);
-                runData.DataPoints = AutoTrim(runData.DataPoints, launchIndex);
+                Debug.WriteLine($"[DEBUG] LaunchIndex: {launchIndex}");
+
+                if (launchIndex == -1)
+                {
+                    MessageBox.Show(
+                        "No drag pass detected in this log.\nAuto-trim was skipped.",
+                        "DragOverlay",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning
+                    );
+                }
+                else
+                {
+                    runData.DataPoints = AutoTrim(runData.DataPoints, launchIndex);
+
+                    Debug.WriteLine($"[DEBUG] Trimmed Count: {runData.DataPoints.Count}");
+                    Debug.WriteLine($"[DEBUG] First Point Time: {runData.DataPoints[0].Time}");
+                    Debug.WriteLine($"[DEBUG] Last Point Time: {runData.DataPoints[^1].Time}");
+                }
+            }
+            else
+            {
+                Debug.WriteLine("[DEBUG] Skipping AutoTrim: log too short or too brief.");
             }
 
-            Console.WriteLine($"=== CsvLoader.Load() EXIT — Rows: {runData.DataPoints.Count} ===");
+            log?.WriteLine($"=== CsvLoader.Load() EXIT — Rows: {runData.DataPoints.Count} ===");
+            log?.Close();
+
+            Debug.WriteLine($"=== CsvLoader.Load() EXIT — Rows: {runData.DataPoints.Count} ===");
             return runData;
         }
 
+
         private static int DetectDragStartIndex(List<DataPoint> data)
         {
-            for (int i = 1; i < data.Count; i++) // start at 1 to check previous
+            for (int i = 1; i < data.Count; i++)
             {
-                double prev = data[i - 1].Throttle;
-                double curr = data[i].Throttle;
+                double prevThrottle = data[i - 1].Throttle;
+                double currThrottle = data[i].Throttle;
 
-                if (prev <= 1.60 && curr > 1.60)
+                double currPower = data[i].PowerOut;
+                double currRPM = data[i].Speed;
+                double currAccel = data[i].Acceleration;
+                double currCurrent = data[i].Current;
+
+                // Rule 1: classic throttle spike
+                if (prevThrottle <= 1.65 && currThrottle > 1.65 && currPower > 10 && currAccel > 1.0)
+
+                {
+                    Debug.WriteLine($"DetectDragStartIndex: Launch detected (throttle spike) at row {i}");
                     return i;
+                }
+
+                // Rule 2: fallback — high power event
+                int triggerScore = 0;
+                if (currPower > 65.0) triggerScore++;
+                if (currRPM > 5000) triggerScore++;
+                if (currAccel > 1.0) triggerScore++;
+                if (currThrottle > 40.0) triggerScore++;
+                if (currCurrent > 5.0) triggerScore++;
+
+                if (triggerScore >= 3)
+                {
+                    Debug.WriteLine($"DetectDragStartIndex: Launch detected (fallback triggerScore={triggerScore}) at row {i}");
+                    return i;
+                }
             }
 
+            Debug.WriteLine("DetectDragStartIndex: ❌ No drag pass detected.");
             return -1;
         }
+
+
 
 
         private static List<DataPoint> AutoTrim(List<DataPoint> data, int index)
