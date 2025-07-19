@@ -1,5 +1,3 @@
-using System;
-using System.Windows.Forms;
 using CastleOverlayV2.Services;
 
 namespace CastleOverlayV2
@@ -17,7 +15,7 @@ namespace CastleOverlayV2
 
             // Initialize logger (only logs if enabled in config.json)
             Logger.Init(configService.IsDebugLoggingEnabled());
-            Logger.Log("App started - Build " + configService.GetBuildNumber());
+            Logger.Log($"App started — Build {configService.GetBuildNumber()}");
 
             // Start the app with config injected into MainForm
             Application.Run(new MainForm(configService));

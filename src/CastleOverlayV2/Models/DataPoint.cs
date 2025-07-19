@@ -1,10 +1,6 @@
-﻿// File: /src/Models/DataPoint.cs
-
-namespace CastleOverlayV2.Models
+﻿namespace CastleOverlayV2.Models
 {
-    /// <summary>
-    /// Represents one row of parsed data from the Castle .csv log.
-    /// </summary>
+
     public class DataPoint
     {
         public double Time { get; set; }
@@ -18,7 +14,5 @@ namespace CastleOverlayV2.Models
         public double MotorTemp { get; set; }
         public double MotorTiming { get; set; }
         public double Acceleration { get; set; }
-        public double GovGain { get; set; }
-
     }
 }

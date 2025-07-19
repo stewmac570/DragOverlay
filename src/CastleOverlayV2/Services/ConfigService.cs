@@ -43,8 +43,17 @@ namespace CastleOverlayV2.Services
         {
             if (File.Exists(_configFilePath))
             {
-                string json = File.ReadAllText(_configFilePath);
-                _config = JsonConvert.DeserializeObject<Config>(json) ?? new Config();
+                try
+                {
+                    string json = File.ReadAllText(_configFilePath);
+                    _config = JsonConvert.DeserializeObject<Config>(json) ?? new Config();
+                }
+                catch
+                {
+                    // If file is corrupted, fall back and overwrite
+                    _config = new Config();
+                    Save();
+                }
             }
             else
             {
@@ -52,6 +61,7 @@ namespace CastleOverlayV2.Services
                 Save(); // Create initial file if missing
             }
         }
+
 
         /// <summary>
         /// Saves the current config state back to config.json.

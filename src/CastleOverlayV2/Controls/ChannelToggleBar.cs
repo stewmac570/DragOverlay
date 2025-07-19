@@ -93,8 +93,7 @@ namespace CastleOverlayV2.Controls
 
             private readonly Label[] _valueLabels = new Label[3];
             private readonly Button _toggleButton;
-            private readonly Button _rpmModeButton;
-
+            
             private bool _isFourPole = false;
 
             public ChannelRow(string channelName, bool initialState)
@@ -164,25 +163,25 @@ namespace CastleOverlayV2.Controls
                 // ✅ Row 5: 2P / 4P switch — only visible for RPM
                 if (channelName == "RPM")
                 {
-                    _rpmModeButton = new Button
+                    var rpmModeButton = new Button
                     {
                         Text = "2 Pole",
                         AutoSize = true,
                         Anchor = AnchorStyles.Top,
                         Margin = new Padding(5, 5, 5, 2)
                     };
-                    _rpmModeButton.Click += (s, e) =>
+                    rpmModeButton.Click += (s, e) =>
                     {
                         _isFourPole = !_isFourPole;
-                        _rpmModeButton.Text = _isFourPole ? "4 Pole" : "2 Pole";
+                        rpmModeButton.Text = _isFourPole ? "4 Pole" : "2 Pole";
                         RpmModeChanged?.Invoke(_isFourPole);
                     };
-                    layout.Controls.Add(_rpmModeButton, 0, 5);
+                    layout.Controls.Add(rpmModeButton, 0, 5);
+
+
+                    Controls.Add(layout);
                 }
-
-                Controls.Add(layout);
             }
-
             public void UpdateValues(double?[] values)
             {
                 for (int i = 0; i < 3; i++)
