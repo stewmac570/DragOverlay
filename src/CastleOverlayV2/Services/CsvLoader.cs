@@ -52,23 +52,6 @@ namespace CastleOverlayV2.Services
                 }
             }
 
-
-            if (_configService.IsDebugLoggingEnabled())
-{
-    try
-    {
-        string logPath = Path.Combine(Directory.GetCurrentDirectory(), "debug_log.txt");
-        log = new StreamWriter(logPath, false);
-        log.WriteLine("=== CSV LOAD DEBUG START ===");
-    }
-                catch (IOException ex)
-                {
-                    Logger.Log($"[Logger Init] Failed to open log file: {ex.Message}");
-                    log = null;
-                }
-
-            }
-
             using (var reader = new StreamReader(filePath))
             {
                 // ✅ Skip metadata lines starting with '#'
