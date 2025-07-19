@@ -14,7 +14,7 @@ namespace CastleOverlayV2.Models
         /// Stores ON/OFF toggle states for each channel.
         /// Key: channel name (e.g., "RPM"), Value: true (ON) or false (OFF)
         /// </summary>
-        public Dictionary<string, bool> ChannelVisibility { get; set; } = new Dictionary<string, bool>();
+        public Dictionary<string, bool> ChannelVisibility { get; set; }
 
         /// <summary>
         /// Launch point alignment threshold (e.g., Power-Out or Current threshold).
@@ -22,13 +22,28 @@ namespace CastleOverlayV2.Models
         /// </summary>
         public double AlignmentThreshold { get; set; } = 1.0;
 
+        public bool EnableDebugLogging { get; set; } = false;
+
+        public string BuildNumber { get; set; } = "1.01";
+
         /// <summary>
-        /// Constructor — initializes empty defaults if needed.
+        /// Constructor — initializes default visibility states for all known channels.
         /// </summary>
         public Config()
-
-
         {
+            ChannelVisibility = new Dictionary<string, bool>
+            {
+                { "RPM", true },
+                { "Throttle", true },
+                { "Voltage", true },
+                { "Current", true },
+                { "Ripple", true },
+                { "PowerOut", true },
+                { "MotorTemp", true },
+                { "ESC Temp", true },
+                { "MotorTiming", true },
+                { "Acceleration", true }
+            };
         }
     }
 }

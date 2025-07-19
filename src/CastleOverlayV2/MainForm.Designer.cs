@@ -118,7 +118,7 @@
             this.Controls.Add(this.formsPlot1);
             this.Controls.Add(this.topButtonPanel);
             this.Name = "MainForm";
-            this.Text = "DragOverlay";
+            this.Text = "DragOverlay V1";
 
 
 

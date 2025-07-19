@@ -9,9 +9,15 @@ using System.Diagnostics;
 
 namespace CastleOverlayV2.Services
 {
-    public static class CsvLoader
+    public class CsvLoader
     {
-        public static RunData Load(string filePath)
+        private readonly ConfigService _configService;
+
+        public CsvLoader(ConfigService configService)
+        {
+            _configService = configService;
+        }
+        public RunData Load(string filePath)
         {
             Debug.WriteLine("=== CsvLoader.Load() ENTERED ===");
 
@@ -29,20 +35,24 @@ namespace CastleOverlayV2.Services
             };
 
             File.WriteAllText("C:\\Temp\\csvloader_test.txt", "CsvLoader reached file open");
-
-            var logPath = Path.Combine(Directory.GetCurrentDirectory(), "debug_log.txt");
             StreamWriter log = null;
 
-            try
-            {
-                log = new StreamWriter(logPath, false);
-                log.WriteLine("=== CSV LOAD DEBUG START ===");
-            }
-            catch (IOException ex)
-            {
-                Debug.WriteLine($"[DEBUG] Could not open log file: {ex.Message}");
-                log = null;
-            }
+          StreamWriter log = null;
+
+if (_configService.IsDebugLoggingEnabled())
+{
+    try
+    {
+        string logPath = Path.Combine(Directory.GetCurrentDirectory(), "debug_log.txt");
+        log = new StreamWriter(logPath, false);
+        log.WriteLine("=== CSV LOAD DEBUG START ===");
+    }
+    catch (IOException ex)
+    {
+        Debug.WriteLine($"[DEBUG] Could not open log file: {ex.Message}");
+        log = null;
+    }
+}
 
             using (var reader = new StreamReader(filePath))
             {
@@ -200,25 +210,25 @@ namespace CastleOverlayV2.Services
 
                 // Rule 1: classic throttle spike
                 if (prevThrottle <= 1.65 && currThrottle > 1.65 && currPower > 10 && currAccel > 1.0)
+{
+    Debug.WriteLine($"DetectDragStartIndex: Launch detected (throttle spike) at row {i}");
+    return i;
+}
 
-                {
-                    Debug.WriteLine($"DetectDragStartIndex: Launch detected (throttle spike) at row {i}");
-                    return i;
-                }
+// Rule 2: fallback — high power event
+int triggerScore = 0;
+if (currPower > 65.0) triggerScore++;
+if (currRPM > 5000) triggerScore++;
+if (currAccel > 1.0) triggerScore++;
+if (currThrottle > 40.0) triggerScore++;
+if (currCurrent > 5.0) triggerScore++;
 
-                // Rule 2: fallback — high power event
-                int triggerScore = 0;
-                if (currPower > 65.0) triggerScore++;
-                if (currRPM > 5000) triggerScore++;
-                if (currAccel > 1.0) triggerScore++;
-                if (currThrottle > 40.0) triggerScore++;
-                if (currCurrent > 5.0) triggerScore++;
+if (triggerScore >= 3)
+{
+    Debug.WriteLine($"DetectDragStartIndex: Launch detected (fallback triggerScore={triggerScore}) at row {i}");
+    return i;
+}
 
-                if (triggerScore >= 3)
-                {
-                    Debug.WriteLine($"DetectDragStartIndex: Launch detected (fallback triggerScore={triggerScore}) at row {i}");
-                    return i;
-                }
             }
 
             Debug.WriteLine("DetectDragStartIndex: ❌ No drag pass detected.");

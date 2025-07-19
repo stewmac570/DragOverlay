@@ -1,17 +1,26 @@
+using System;
+using System.Windows.Forms;
+using CastleOverlayV2.Services;
+
 namespace CastleOverlayV2
 {
     internal static class Program
     {
-        /// <summary>
-        ///  The main entry point for the application.
-        /// </summary>
         [STAThread]
         static void Main()
         {
-            // To customize application configuration such as set high DPI settings or default font,
-            // see https://aka.ms/applicationconfiguration.
+            // Initialize application settings (DPI, fonts, etc.)
             ApplicationConfiguration.Initialize();
-            Application.Run(new MainForm());
+
+            // Load config
+            var configService = new ConfigService();
+
+            // Initialize logger (only logs if enabled in config.json)
+            Logger.Init(configService.IsDebugLoggingEnabled());
+            Logger.Log("App started - Build " + configService.GetBuildNumber());
+
+            // Start the app with config injected into MainForm
+            Application.Run(new MainForm(configService));
         }
     }
 }

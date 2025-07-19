@@ -32,19 +32,30 @@ namespace CastleOverlayV2
         private bool _isFourPoleMode = false;
 
 
-        public MainForm()
+        public MainForm(ConfigService configService)
         {
+            _configService = configService;
+
             InitializeComponent();
 
-            string iconPath = Path.Combine(Application.StartupPath, "DragOverlay.ico");
-            this.Icon = new Icon(iconPath);
+            var iconStream = Assembly.GetExecutingAssembly()
+                .GetManifestResourceStream("CastleOverlayV2.Resources.DragOverlay.ico");
+
+            if (iconStream != null)
+            {
+                this.Icon = new Icon(iconStream);
+            }
+
+            string buildNumber = _configService.GetBuildNumber();  // already implemented
+            this.Text = $"DragOverlay — Build {buildNumber}";
 
 
-
+            Logger.Log("MainForm initialized");
 
             // ✅ Disable all toggle/delete buttons at startup
             btnToggleRun1.Enabled = false;
             btnDeleteRun1.Enabled = false;
+
 
             btnToggleRun2.Enabled = false;
             btnDeleteRun2.Enabled = false;
@@ -112,10 +123,9 @@ namespace CastleOverlayV2
 
                     try
                     {
-                        RunData run = await Task.Run(() => CsvLoader.Load(filePath));
-                        Console.WriteLine($"=== Load() finished — points: {run.DataPoints.Count} ===");
-
-                        _plotManager.LoadRun(run);
+                        var loader = new CsvLoader(_configService);
+                        run1 = await Task.Run(() => loader.Load(filePath));
+       
                     }
                     catch (Exception ex)
                     {
@@ -130,6 +140,9 @@ namespace CastleOverlayV2
         /// </summary>
         private async void LoadRun1Button_Click(object sender, EventArgs e)
         {
+           
+            File.AppendAllText("C:\\Temp\\debug_log.txt", "LoadRun1Button_Click triggered\n");
+
             Console.WriteLine("=== LoadRun1Button_Click started ===");
 
             string filePath = GetCsvFilePath();
@@ -137,7 +150,18 @@ namespace CastleOverlayV2
 
             try
             {
-                run1 = await Task.Run(() => CsvLoader.Load(filePath));
+                var loader = new CsvLoader(_configService);
+                run1 = await Task.Run(() => loader.Load(filePath));
+
+                if (run1 != null && run1.DataPoints.Count > 0)
+                {
+                    Logger.Log($"Loaded log: Run 1 - {Path.GetFileName(filePath)} - {run1.DataPoints.Count} rows");
+                }
+                else
+                {
+                    Logger.Log("Run 1 load failed or empty data.");
+                }
+
                 Console.WriteLine($"=== Run1 loaded — points: {run1.DataPoints.Count} ===");
                 btnToggleRun1.Enabled = true;
                 btnDeleteRun1.Enabled = true;
@@ -148,6 +172,7 @@ namespace CastleOverlayV2
                 Console.WriteLine($"=== ERROR in Run1: {ex.Message}");
             }
         }
+
 
         /// <summary>
         /// ✅ New: Load Run 2 slot
@@ -161,7 +186,17 @@ namespace CastleOverlayV2
 
             try
             {
-                run2 = await Task.Run(() => CsvLoader.Load(filePath));
+                var loader = new CsvLoader(_configService);
+                run2 = await Task.Run(() => loader.Load(filePath));
+                if (run2 != null && run2.DataPoints.Count > 0)
+                {
+                    Logger.Log($"Loaded log: Run 2 - {Path.GetFileName(filePath)} - {run2.DataPoints.Count} rows");
+                }
+                else
+                {
+                    Logger.Log("Run 2 load failed or empty data.");
+                }
+
                 Console.WriteLine($"=== Run2 loaded — points: {run2.DataPoints.Count} ===");
                 btnToggleRun2.Enabled = true;
                 btnDeleteRun2.Enabled = true;
@@ -185,7 +220,17 @@ namespace CastleOverlayV2
 
             try
             {
-                run3 = await Task.Run(() => CsvLoader.Load(filePath));
+                var loader = new CsvLoader(_configService);
+                run3 = await Task.Run(() => loader.Load(filePath));
+                if (run3 != null && run3.DataPoints.Count > 0)
+                {
+                    Logger.Log($"Loaded log: Run 3 - {Path.GetFileName(filePath)} - {run3.DataPoints.Count} rows");
+                }
+                else
+                {
+                    Logger.Log("Run 3 load failed or empty data.");
+                }
+
                 Console.WriteLine($"=== Run3 loaded — points: {run3.DataPoints.Count} ===");
                 btnToggleRun3.Enabled = true;
                 btnDeleteRun3.Enabled = true;

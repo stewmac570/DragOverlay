@@ -2,6 +2,7 @@
 using System.IO;
 using Newtonsoft.Json;
 using CastleOverlayV2.Models;
+using CastleOverlayV2.Services;
 
 namespace CastleOverlayV2.Services
 {
@@ -23,10 +24,16 @@ namespace CastleOverlayV2.Services
         /// </summary>
         public ConfigService()
         {
-            // Relative to your working directory: /Config/config.json
-            _configFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Config", "config.json");
+            string appDataPath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "DragOverlay");
+
+            Directory.CreateDirectory(appDataPath);
+            _configFilePath = Path.Combine(appDataPath, "config.json");
+
             Load();
         }
+
 
         /// <summary>
         /// Loads config.json into memory.
@@ -93,6 +100,11 @@ namespace CastleOverlayV2.Services
             _config.IsFourPoleMode = isFourPole;
             Save();
         }
+
+        public bool IsDebugLoggingEnabled() => _config?.EnableDebugLogging ?? false;
+
+        public string GetBuildNumber() => _config?.BuildNumber ?? "unknown";
+
 
     }
 }
