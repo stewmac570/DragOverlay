@@ -9,9 +9,15 @@ using System.Diagnostics;
 
 namespace CastleOverlayV2.Services
 {
-    public static class CsvLoader
+    public class CsvLoader
     {
-        public static RunData Load(string filePath)
+        private readonly ConfigService _configService;
+
+        public CsvLoader(ConfigService configService)
+        {
+            _configService = configService;
+        }
+        public RunData Load(string filePath)
         {
             Debug.WriteLine("=== CsvLoader.Load() ENTERED ===");
 
@@ -29,20 +35,23 @@ namespace CastleOverlayV2.Services
             };
 
             File.WriteAllText("C:\\Temp\\csvloader_test.txt", "CsvLoader reached file open");
-
-            var logPath = Path.Combine(Directory.GetCurrentDirectory(), "debug_log.txt");
             StreamWriter log = null;
 
-            try
+            if (_configService.IsDebugLoggingEnabled())
             {
-                log = new StreamWriter(logPath, false);
-                log.WriteLine("=== CSV LOAD DEBUG START ===");
+                try
+                {
+                    string logPath = Path.Combine(Directory.GetCurrentDirectory(), "debug_log.txt");
+                    log = new StreamWriter(logPath, false);
+                    log.WriteLine("=== CSV LOAD DEBUG START ===");
+                }
+                catch (IOException ex)
+                {
+                    Debug.WriteLine($"[DEBUG] Could not open log file: {ex.Message}");
+                    log = null;
+                }
             }
-            catch (IOException ex)
-            {
-                Debug.WriteLine($"[DEBUG] Could not open log file: {ex.Message}");
-                log = null;
-            }
+
 
             using (var reader = new StreamReader(filePath))
             {

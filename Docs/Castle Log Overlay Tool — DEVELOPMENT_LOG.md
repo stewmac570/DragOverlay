@@ -1317,3 +1317,131 @@ Your app now shows a fully integrated custom icon, just like Castle Link — mat
 
 -----------------------------------------------------------------
 
+2025-07-19 — Auto-Trim Detection Improvements
+Feature branch: feature/auto-trim-improvements
+File modified: CsvLoader.cs
+
+Summary:
+Improved launch detection in DetectDragStartIndex(...) to reduce false positives.
+
+New rule requires:
+
+Throttle spike > 1.65
+
+PowerOut > 10
+
+Acceleration > 1.0
+
+Prevents short static spikes from triggering auto-trim prematurely (e.g. row 380 in recent logs).
+
+Added debug log output to debug_log.txt
+
+MessageBox added if no drag pass is found
+
+CSV metadata skip and field parsing now cleaner and more defensive.
+
+Outcome:
+Auto-trim now correctly isolates 2.5s drag passes from full ESC logs.
+
+Debugging visibility improved via Output window and log file.
+
+Staged for PR: feature/auto-trim-improvements → main
+
+-------------------------------------------------------------------------------
+
+DragOverlay Installer Finalization Summary
+🧩 1. Config System Fixed
+ConfigService.cs now:
+
+Creates config.json on first launch if missing
+
+Handles deserialization errors gracefully with try/catch
+
+Config.cs updated to:
+
+Pre-fill all 10 expected channel names in ChannelVisibility
+
+Guarantee valid defaults (IsFourPoleMode, BuildNumber, etc.)
+
+Ensures:
+
+Clean first run
+
+Safe upgrade path
+
+No startup crashes from malformed JSON
+
+🐞 2. Debug Logging Toggle
+EnableDebugLogging now respected in CsvLoader
+
+CsvLoader refactored from static to instance-based with ConfigService injection
+
+App only writes debug_log.txt if logging is enabled
+
+Manual override supported via:
+
+arduino
+Copy
+Edit
+AppData\Roaming\DragOverlay\config.json
+🖼️ 3. App Icon Fix
+Embedded icon (DragOverlay.ico) now:
+
+Loads from embedded resource stream in MainForm.cs
+
+Is no longer dependent on .csproj <ApplicationIcon> failures
+
+Works in title bar, taskbar, and .exe consistently
+
+Duplicate .ico files removed
+
+Build Action = Embedded Resource is enforced
+
+🧪 4. Build Version in Title
+BuildNumber pulled from config.json
+
+Shown in app title via:
+
+csharp
+Copy
+Edit
+this.Text = $"DragOverlay V1 — Build {buildNumber}";
+Lets you track what's deployed in the installer easily
+
+🗃️ 5. Inno Setup Integration
+.iss script updated to:
+
+Copy published files and icon cleanly
+
+Remove unused .ico copy rules
+
+Support safe launch on install
+
+Final DragOverlayInstaller_0.5.10.exe:
+
+Creates shortcuts with proper icon
+
+Preserves config if upgrading
+
+Launches correctly after install
+
+🧼 6. Error Recovery
+Fixed issue where invalid JSON (e.g., False instead of false) silently broke startup
+
+Added error-proof Load() handling in config
+
+Confirmed corrupted or missing config now resets cleanly
+
+🎯 Current Status: ✅ READY TO SHIP
+💻 Local build: working
+
+🧪 Installer: tested
+
+🗂 Config: self-healing
+
+🧩 Icon: reliable
+
+📊 Log loading: stable
+
+🛠 First-run behavior: clean
+---------------------------------------------------------------------------------
