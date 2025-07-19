@@ -24,7 +24,7 @@ namespace CastleOverlayV2.Plot
 
         // ✅ Hover cursor line
         private VerticalLine _cursor;
-        private IScatterSource xs;
+        
 
         // ✅ All scatters for multi-log overlay
         private readonly List<Scatter> _scatters = new();
@@ -77,7 +77,6 @@ namespace CastleOverlayV2.Plot
             // === ✅ SAFETY CHECK ===
             if (runs == null || runs.Count == 0 || runs.All(r => r == null || r.DataPoints.Count == 0))
             {
-                Console.WriteLine("No valid runs to plot. Resetting plot.");
                 ResetEmptyPlot();
                 return;
             }
@@ -86,7 +85,7 @@ namespace CastleOverlayV2.Plot
             if (runs == null || runs.Count == 0)
                 throw new ArgumentException("No runs to plot.");
 
-            Console.WriteLine($"=== PlotRuns: {runs.Count} runs ===");
+            
 
             // === ✅ CLEAN RESET ===
             _plot.Plot.Clear();
@@ -103,9 +102,6 @@ namespace CastleOverlayV2.Plot
             var xAxis = _plot.Plot.Axes.Bottom;
             xAxis.Label.Text = "Time (s)";
             xAxis.TickGenerator = new ScottPlot.TickGenerators.NumericAutomatic(); // ✅ Use default generator
-
-
-
 
 
             //-----------------------------------------------------------//
@@ -453,22 +449,6 @@ namespace CastleOverlayV2.Plot
 
 
 
-        /// <summary>
-        /// Scale a channel’s values by factor.
-        /// </summary>
-        private double[] ScaleChannel(IEnumerable<double> values, double factor)
-        {
-            return values.Select(v => v * factor).ToArray();
-        }
-
-        /// <summary>
-        /// Normalize Castle Link PWM to deviation from neutral.
-        /// 1.5 ms = 0; 2.0 ms = +1; 1.0 ms = -1.
-        /// </summary>
-        private double[] ScaleThrottleChannel(IEnumerable<double> values, double factor)
-        {
-            return values.Select(v => ((v - 1.5) / 0.5) * factor).ToArray();
-        }
 
         public void ToggleRunVisibility(int runIndex, bool isVisibleNow)
         {

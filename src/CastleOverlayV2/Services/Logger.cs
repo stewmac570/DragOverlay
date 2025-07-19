@@ -30,7 +30,8 @@ namespace CastleOverlayV2.Services
 
             try
             {
-                File.AppendAllText(_logPath, $"{DateTime.Now:HH:mm:ss} - {message}\n");
+                File.AppendAllText(_logPath, $"{DateTime.Now:HH:mm:ss} - {message}{Environment.NewLine}");
+
             }
             catch
             {

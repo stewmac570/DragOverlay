@@ -1,11 +1,7 @@
-﻿// File: /src/Services/CsvLoader.cs
-
-using CastleOverlayV2.Models;
+﻿using CastleOverlayV2.Models;
 using CsvHelper;
 using CsvHelper.Configuration;
 using System.Globalization;
-using System.IO;
-using System.Diagnostics;
 
 namespace CastleOverlayV2.Services
 {
@@ -19,7 +15,7 @@ namespace CastleOverlayV2.Services
         }
         public RunData Load(string filePath)
         {
-            Debug.WriteLine("=== CsvLoader.Load() ENTERED ===");
+            Logger.Log("CsvLoader.Load() entered.");
 
             var runData = new RunData
             {
@@ -34,10 +30,30 @@ namespace CastleOverlayV2.Services
                 Delimiter = ","
             };
 
-            File.WriteAllText("C:\\Temp\\csvloader_test.txt", "CsvLoader reached file open");
             StreamWriter log = null;
 
-if (_configService.IsDebugLoggingEnabled())
+            if (_configService.IsDebugLoggingEnabled())
+            {
+                try
+                {
+                    string logPath = Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                        "DragOverlay",
+                        "debug_log.txt"
+                    );
+
+                    log = new StreamWriter(logPath, false);
+                    log.WriteLine($"[CsvLoader] Load started at {DateTime.Now}");
+                    log.WriteLine($"File: {filePath}");
+                }
+                catch (IOException ex)
+                {
+                    // Fallback: don't crash if log can't be written
+                }
+            }
+
+
+            if (_configService.IsDebugLoggingEnabled())
 {
     try
     {
@@ -45,12 +61,13 @@ if (_configService.IsDebugLoggingEnabled())
         log = new StreamWriter(logPath, false);
         log.WriteLine("=== CSV LOAD DEBUG START ===");
     }
-    catch (IOException ex)
-    {
-        Debug.WriteLine($"[DEBUG] Could not open log file: {ex.Message}");
-        log = null;
-    }
-}
+                catch (IOException ex)
+                {
+                    Logger.Log($"[Logger Init] Failed to open log file: {ex.Message}");
+                    log = null;
+                }
+
+            }
 
             using (var reader = new StreamReader(filePath))
             {
@@ -161,7 +178,8 @@ if (_configService.IsDebugLoggingEnabled())
             if (runData.DataPoints.Count > 100 && runData.DataPoints[^1].Time - runData.DataPoints[0].Time > 3.0)
             {
                 int launchIndex = DetectDragStartIndex(runData.DataPoints);
-                Debug.WriteLine($"[DEBUG] LaunchIndex: {launchIndex}");
+                Logger.Log($"CsvLoader: LaunchIndex = {launchIndex}");
+
 
                 if (launchIndex == -1)
                 {
@@ -176,20 +194,25 @@ if (_configService.IsDebugLoggingEnabled())
                 {
                     runData.DataPoints = AutoTrim(runData.DataPoints, launchIndex);
 
-                    Debug.WriteLine($"[DEBUG] Trimmed Count: {runData.DataPoints.Count}");
-                    Debug.WriteLine($"[DEBUG] First Point Time: {runData.DataPoints[0].Time}");
-                    Debug.WriteLine($"[DEBUG] Last Point Time: {runData.DataPoints[^1].Time}");
+                    Logger.Log($"CsvLoader: Trimmed count = {runData.DataPoints.Count}");
+
+                    Logger.Log($"CsvLoader: First Point Time = {runData.DataPoints[0].Time:F2}");
+
+                    Logger.Log($"CsvLoader: Last Point Time = {runData.DataPoints[^1].Time:F2}");
+
                 }
             }
             else
             {
-                Debug.WriteLine("[DEBUG] Skipping AutoTrim: log too short or too brief.");
+                Logger.Log("CsvLoader: Skipping AutoTrim — log too short or too brief.");
+
             }
 
             log?.WriteLine($"=== CsvLoader.Load() EXIT — Rows: {runData.DataPoints.Count} ===");
             log?.Close();
 
-            Debug.WriteLine($"=== CsvLoader.Load() EXIT — Rows: {runData.DataPoints.Count} ===");
+            Logger.Log($"CsvLoader.Load() exit — Rows: {runData.DataPoints.Count}");
+
             return runData;
         }
 
@@ -209,8 +232,8 @@ if (_configService.IsDebugLoggingEnabled())
                 // Rule 1: classic throttle spike
                 if (prevThrottle <= 1.65 && currThrottle > 1.65 && currPower > 10 && currAccel > 1.0)
 {
-    Debug.WriteLine($"DetectDragStartIndex: Launch detected (throttle spike) at row {i}");
-    return i;
+                    Logger.Log($"DetectDragStartIndex: Launch detected (throttle spike) at row {i}");
+                    return i;
 }
 
 // Rule 2: fallback — high power event
@@ -223,18 +246,15 @@ if (currCurrent > 5.0) triggerScore++;
 
 if (triggerScore >= 3)
 {
-    Debug.WriteLine($"DetectDragStartIndex: Launch detected (fallback triggerScore={triggerScore}) at row {i}");
-    return i;
+                    Logger.Log($"DetectDragStartIndex: Fallback launch detected (triggerScore={triggerScore}) at row {i}");
+                    return i;
 }
 
             }
 
-            Debug.WriteLine("DetectDragStartIndex: ❌ No drag pass detected.");
+            Logger.Log("DetectDragStartIndex: No drag pass detected.");
             return -1;
         }
-
-
-
 
         private static List<DataPoint> AutoTrim(List<DataPoint> data, int index)
         {

@@ -2,16 +2,8 @@
 using CastleOverlayV2.Models;
 using CastleOverlayV2.Plot;
 using CastleOverlayV2.Services;
-using ScottPlot.WinForms;
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Text;
-using System.Threading.Tasks;
-using System.Windows.Forms;
-using System.Linq;
 using System.Reflection;
-using System.IO;
+
 
 namespace CastleOverlayV2
 {
@@ -110,7 +102,7 @@ namespace CastleOverlayV2
         /// </summary>
         private async void LoadCsvButton_Click(object sender, EventArgs e)
         {
-            Console.WriteLine("=== LoadCsvButton_Click started ===");
+            Logger.Log("LoadCsvButton_Click started");
 
             using (var openFileDialog = new OpenFileDialog())
             {
@@ -118,7 +110,7 @@ namespace CastleOverlayV2
 
                 if (openFileDialog.ShowDialog() == DialogResult.OK)
                 {
-                    Console.WriteLine("=== File selected ===");
+                    Logger.Log("CSV file selected from dialog.");
                     string filePath = openFileDialog.FileName;
 
                     try
@@ -129,7 +121,8 @@ namespace CastleOverlayV2
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"=== ERROR: {ex.Message}");
+                        Logger.Log($"LoadCsvButton_Click ERROR: {ex.Message}");
+
                     }
                 }
             }
@@ -140,10 +133,10 @@ namespace CastleOverlayV2
         /// </summary>
         private async void LoadRun1Button_Click(object sender, EventArgs e)
         {
-           
-            File.AppendAllText("C:\\Temp\\debug_log.txt", "LoadRun1Button_Click triggered\n");
 
-            Console.WriteLine("=== LoadRun1Button_Click started ===");
+
+            Logger.Log("LoadRun1Button_Click started");
+
 
             string filePath = GetCsvFilePath();
             if (filePath == null) return;
@@ -162,14 +155,15 @@ namespace CastleOverlayV2
                     Logger.Log("Run 1 load failed or empty data.");
                 }
 
-                Console.WriteLine($"=== Run1 loaded — points: {run1.DataPoints.Count} ===");
+                Logger.Log($"Run1 loaded — points: {run1.DataPoints.Count}");
                 btnToggleRun1.Enabled = true;
                 btnDeleteRun1.Enabled = true;
                 PlotAllRuns();
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"=== ERROR in Run1: {ex.Message}");
+                Logger.Log($"ERROR in Run1: {ex.Message}");
+
             }
         }
 
@@ -179,7 +173,8 @@ namespace CastleOverlayV2
         /// </summary>
         private async void LoadRun2Button_Click(object sender, EventArgs e)
         {
-            Console.WriteLine("=== LoadRun2Button_Click started ===");
+            Logger.Log("LoadRun2Button_Click started");
+
 
             string filePath = GetCsvFilePath();
             if (filePath == null) return;
@@ -197,14 +192,16 @@ namespace CastleOverlayV2
                     Logger.Log("Run 2 load failed or empty data.");
                 }
 
-                Console.WriteLine($"=== Run2 loaded — points: {run2.DataPoints.Count} ===");
+                Logger.Log($"Run2 loaded — points: {run2.DataPoints.Count}");
+
                 btnToggleRun2.Enabled = true;
                 btnDeleteRun2.Enabled = true;
                 PlotAllRuns();
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"=== ERROR in Run2: {ex.Message}");
+                Logger.Log($"ERROR in Run2: {ex.Message}");
+
             }
         }
 
@@ -213,7 +210,7 @@ namespace CastleOverlayV2
         /// </summary>
         private async void LoadRun3Button_Click(object sender, EventArgs e)
         {
-            Console.WriteLine("=== LoadRun3Button_Click started ===");
+            Logger.Log("LoadRun3Button_Click started");
 
             string filePath = GetCsvFilePath();
             if (filePath == null) return;
@@ -231,14 +228,16 @@ namespace CastleOverlayV2
                     Logger.Log("Run 3 load failed or empty data.");
                 }
 
-                Console.WriteLine($"=== Run3 loaded — points: {run3.DataPoints.Count} ===");
+                Logger.Log($"Run3 loaded — points: {run3.DataPoints.Count}");
+
                 btnToggleRun3.Enabled = true;
                 btnDeleteRun3.Enabled = true;
                 PlotAllRuns();
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"=== ERROR in Run3: {ex.Message}");
+                Logger.Log($"ERROR in Run3: {ex.Message}");
+
             }
         }
 
