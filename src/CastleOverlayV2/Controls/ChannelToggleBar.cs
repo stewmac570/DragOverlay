@@ -1,6 +1,4 @@
-﻿// File: /src/Controls/ChannelToggleBar.cs
-
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
@@ -11,8 +9,6 @@ namespace CastleOverlayV2.Controls
     public partial class ChannelToggleBar : UserControl
     {
         public event Action<string, bool> ChannelVisibilityChanged;
-
-        // ✅ New: Event to inform MainForm of 2P/4P switch
         public event Action<bool> RpmModeChanged;
 
         private readonly Dictionary<string, ChannelRow> _channelRows = new();
@@ -21,38 +17,34 @@ namespace CastleOverlayV2.Controls
         {
             Dock = DockStyle.Bottom;
             AutoSize = false;
+            Height = 130;
 
             var layout = new TableLayoutPanel
             {
                 Dock = DockStyle.Fill,
-                RowCount = 1,
                 ColumnCount = channelNames.Count,
+                RowCount = 1,
                 Margin = new Padding(0),
-                Padding = new Padding(0)
+                Padding = new Padding(0),
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink
             };
 
             for (int i = 0; i < channelNames.Count; i++)
                 layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f / channelNames.Count));
 
-            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
-            for (int i = 0; i < channelNames.Count; i++)
+            foreach (var channel in channelNames)
             {
-                var channel = channelNames[i];
                 bool initialVisible = initialStates.ContainsKey(channel) && initialStates[channel];
-
                 var row = new ChannelRow(channel, initialVisible);
                 row.ToggleChanged += OnToggleChanged;
 
                 if (channel == "RPM")
-                {
                     row.RpmModeChanged += (is4P) => RpmModeChanged?.Invoke(is4P);
-                }
 
-                row.Anchor = AnchorStyles.Top;
-                row.Margin = new Padding(4, 10, 4, 0);
-
-                layout.Controls.Add(row, i, 0);
+                row.Margin = new Padding(8, 0, 8, 0);
+                layout.Controls.Add(row);
                 _channelRows[channel] = row;
             }
 
@@ -79,7 +71,7 @@ namespace CastleOverlayV2.Controls
         }
 
         /// <summary>
-        /// One vertical channel block with Show/Hide button, bold labels
+        /// One vertical toggle block with Show/Hide, 3 log values, optional 2P/4P
         /// </summary>
         private class ChannelRow : UserControl
         {
@@ -87,13 +79,10 @@ namespace CastleOverlayV2.Controls
             public bool IsVisible { get; private set; }
 
             public event Action<string, bool> ToggleChanged;
-
-            // ✅ Only used for RPM row
             public event Action<bool> RpmModeChanged;
 
             private readonly Label[] _valueLabels = new Label[3];
             private readonly Button _toggleButton;
-            
             private bool _isFourPole = false;
 
             public ChannelRow(string channelName, bool initialState)
@@ -160,7 +149,7 @@ namespace CastleOverlayV2.Controls
                     layout.Controls.Add(lbl, 0, i + 2);
                 }
 
-                // ✅ Row 5: 2P / 4P switch — only visible for RPM
+                // Row 5: RPM toggle only
                 if (channelName == "RPM")
                 {
                     var rpmModeButton = new Button
@@ -177,24 +166,26 @@ namespace CastleOverlayV2.Controls
                         RpmModeChanged?.Invoke(_isFourPole);
                     };
                     layout.Controls.Add(rpmModeButton, 0, 5);
-
-
-                    Controls.Add(layout);
                 }
+
+                Controls.Add(layout);
             }
+
             public void UpdateValues(double?[] values)
             {
                 for (int i = 0; i < 3; i++)
                 {
                     if (i < values.Length && values[i].HasValue)
+                    {
                         if (ChannelName == "RPM")
-                            _valueLabels[i].Text = values[i].Value.ToString("N0"); // Comma, no decimals
+                            _valueLabels[i].Text = values[i].Value.ToString("N0"); // e.g. 64,800
                         else
-                            _valueLabels[i].Text = values[i].Value.ToString("F2"); // Default precision
-
-
+                            _valueLabels[i].Text = values[i].Value.ToString("F2");
+                    }
                     else
+                    {
                         _valueLabels[i].Text = "—";
+                    }
                 }
             }
         }
