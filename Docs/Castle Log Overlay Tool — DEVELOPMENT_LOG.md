@@ -1445,3 +1445,100 @@ Confirmed corrupted or missing config now resets cleanly
 
 🛠 First-run behavior: clean
 ---------------------------------------------------------------------------------
+Development Log — Logger Cleanup and Code Hygiene
+Feature Branch: feature/code-cleanup-logger-refactor
+Date: 2025-07-20
+
+
+✅ Work Completed:
+Replaced all Console.WriteLine(...) and Debug.WriteLine(...) with Logger.Log(...) across:
+
+MainForm.cs
+
+CsvLoader.cs
+
+Program.cs
+
+PlotManager.cs
+
+Removed dev-only file writes to C:\Temp\debug_log.txt
+
+Cleaned up test breadcrumbs like File.WriteAllText(...) and File.AppendAllText(...)
+
+Standardized logging behavior using the existing Logger.cs
+
+Verified Logger.Init(...) reads EnableDebugLogging from ConfigService
+
+Ensured log path resolves to AppData\DragOverlay\DragOverlay.log
+
+Eliminated duplicated StreamWriter init blocks in CsvLoader.cs
+
+Resolved a merge conflict caused by redundant debug log setup
+
+Visually reviewed and confirmed no remaining debug/console output
+
+Used search to confirm removal of all Console.WriteLine, Debug.WriteLine, and direct temp file writes
+
+Updated GitHub PR
+
+Resolved merge conflict in CsvLoader.cs manually using clean local copy
+
+Committed resolved file and pushed to feature branch
+
+🔍 Validation:
+Confirmed all logging routes through Logger.Log(...)
+
+Application startup, run loading, and error handling now respect EnableDebugLogging
+
+All cleaned files build without errors or runtime issues
+
+---------------------------------------------------------------------------
+Feature: Toggle Bar Rendering Fix (Phase 6.0)
+Branch: feature/phase-6.0-toggle-fix
+Status: ✅ Working and confirmed by user
+
+🔧 Problem
+In both Debug and Release builds, only the "RPM" channel block was visible at the bottom of the app. All other channel toggles were missing.
+
+Root causes:
+
+Controls.Add(layout) was only being called for RPM inside ChannelRow
+
+FlowLayoutPanel was being used but wasn’t stretching across the full app width
+
+ChannelRow layout was broken or invisible for all non-RPM blocks
+
+✅ Fixes Applied (step-by-step)
+1. Restored all ChannelRow blocks
+Moved Controls.Add(layout) outside of the if (channel == "RPM") block
+✅ Now all channel blocks render, not just RPM.
+
+2. Rebuilt ChannelToggleBar layout
+Switched outer layout from FlowLayoutPanel to a proper TableLayoutPanel
+
+Set ColumnCount = channelNames.Count
+
+Distributed columns with ColumnStyle(SizeType.Percent, 100f / N)
+✅ Result: evenly spaced, full-width horizontal toggle bar
+
+3. Final UI polish
+Each ChannelRow now docks and scales inside its column
+
+Bottom bar now fills the entire app width
+
+Layout is Castle Link–style clean: one row of toggles with even spacing
+
+📁 Files Updated
+ChannelToggleBar.cs (full layout rebuild, corrected rendering logic)
+
+ChannelRow class (inside ChannelToggleBar) — now adds layout for all channels, not just RPM
+
+🧪 Confirmed Working
+Toggle bar shows all 10 channels: RPM, Throttle, Voltage, Current, Ripple, PowerOut, MotorTemp, ESC Temp, MotorTiming, Acceleration
+
+Live hover and toggle ON/OFF works per channel
+
+Toggle states still persist to config.json
+
+2 Pole button appears only under RPM
+
