@@ -83,6 +83,7 @@ namespace CastleOverlayV2.Controls
 
             private readonly Label[] _valueLabels = new Label[3];
             private readonly Button _toggleButton;
+
             private bool _isFourPole = false;
 
             public ChannelRow(string channelName, bool initialState)
@@ -166,11 +167,10 @@ namespace CastleOverlayV2.Controls
                         RpmModeChanged?.Invoke(_isFourPole);
                     };
                     layout.Controls.Add(rpmModeButton, 0, 5);
+
+                    Controls.Add(layout);
                 }
-
-                Controls.Add(layout);
             }
-
             public void UpdateValues(double?[] values)
             {
                 for (int i = 0; i < 3; i++)

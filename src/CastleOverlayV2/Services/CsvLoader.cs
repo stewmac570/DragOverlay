@@ -1,4 +1,4 @@
-﻿using CastleOverlayV2.Models;
+using CastleOverlayV2.Models;
 using CsvHelper;
 using CsvHelper.Configuration;
 using System.Globalization;
