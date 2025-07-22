@@ -18,6 +18,12 @@ namespace CastleOverlayV2
         private RunData run1;
         private RunData run2;
         private RunData run3;
+        
+        // ✅ RaceBox slots (Stage 1 only uses header metadata)
+        private RaceBoxData raceBox1;
+        private RaceBoxData raceBox2;
+        private RaceBoxData raceBox3;
+
 
         private ChannelToggleBar _channelToggleBar;
 
@@ -240,6 +246,64 @@ namespace CastleOverlayV2
 
             }
         }
+
+        /// <summary>
+/// ✅ Load RaceBox CSV for Run 1 slot
+/// </summary>
+private void LoadRaceBox1Button_Click(object sender, EventArgs e)
+{
+    var path = GetCsvFilePath();
+    if (path == null) return;
+
+    var rbData = RaceBoxLoader.LoadHeaderOnly(path);
+    if (rbData.FirstCompleteRunIndex == null)
+    {
+        MessageBox.Show("No complete run found in this RaceBox file.");
+        return;
+    }
+
+    raceBox1 = rbData;
+    Logger.Log($"RaceBox 1 loaded. RunCount = {rbData.RunCount}, FirstCompleteRun = {rbData.FirstCompleteRunIndex + 1}");
+}
+
+/// <summary>
+/// ✅ Load RaceBox CSV for Run 2 slot
+/// </summary>
+private void LoadRaceBox2Button_Click(object sender, EventArgs e)
+{
+    var path = GetCsvFilePath();
+    if (path == null) return;
+
+    var rbData = RaceBoxLoader.LoadHeaderOnly(path);
+    if (rbData.FirstCompleteRunIndex == null)
+    {
+        MessageBox.Show("No complete run found in this RaceBox file.");
+        return;
+    }
+
+    raceBox2 = rbData;
+    Logger.Log($"RaceBox 2 loaded. RunCount = {rbData.RunCount}, FirstCompleteRun = {rbData.FirstCompleteRunIndex + 1}");
+}
+
+/// <summary>
+/// ✅ Load RaceBox CSV for Run 3 slot
+/// </summary>
+private void LoadRaceBox3Button_Click(object sender, EventArgs e)
+{
+    var path = GetCsvFilePath();
+    if (path == null) return;
+
+    var rbData = RaceBoxLoader.LoadHeaderOnly(path);
+    if (rbData.FirstCompleteRunIndex == null)
+    {
+        MessageBox.Show("No complete run found in this RaceBox file.");
+        return;
+    }
+
+    raceBox3 = rbData;
+    Logger.Log($"RaceBox 3 loaded. RunCount = {rbData.RunCount}, FirstCompleteRun = {rbData.FirstCompleteRunIndex + 1}");
+}
+
 
         /// <summary>
         /// ✅ Helper: OpenFileDialog logic
