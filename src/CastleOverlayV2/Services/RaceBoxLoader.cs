@@ -37,11 +37,17 @@ namespace CastleOverlayV2.Services
                     allRows.Add(row.ToArray());
                 }
 
-                // Find the number of runs
-                int runCount = int.Parse(allRows[7][1]);
-                int telemetryHeaderRow = 8 + runCount + 1;
+                // === Header-based Metadata Logging ===
+                int runCount = int.Parse(allRows[7][1]);  // Row 8: Runs
+                Logger.Log($"RaceBox file: Detected {runCount} runs");
 
+                string disciplineLine = allRows[8][1];    // Row 9: Disciplines
+                Logger.Log($"RaceBox file: Disciplines = {disciplineLine}");
+
+                // === Telemetry Start Row ===
+                int telemetryHeaderRow = 8 + runCount + 1;
                 string[] headers = allRows[telemetryHeaderRow];
+
                 int timeIndex = Array.IndexOf(headers, "Time");
                 int speedIndex = Array.IndexOf(headers, "Speed (m/s)");
                 int gForceXIndex = Array.IndexOf(headers, "GForceX");
@@ -50,7 +56,7 @@ namespace CastleOverlayV2.Services
                 if (timeIndex == -1 || speedIndex == -1 || gForceXIndex == -1 || runColIndex == -1)
                     throw new Exception("Required telemetry columns missing.");
 
-                // Capture all matching rows
+                // === Filter by Run Index ===
                 var telemetryRows = allRows.Skip(telemetryHeaderRow + 1)
                                            .Where(r => r.Length > runColIndex &&
                                                        int.TryParse(r[runColIndex], out int run) &&
@@ -60,7 +66,10 @@ namespace CastleOverlayV2.Services
                 if (telemetryRows.Count == 0)
                     throw new Exception("No telemetry rows found for selected run.");
 
-                // Use first timestamp as t=0
+                Logger.Log($"Selected Run {selectedRunIndex + 1} — matching all disciplines");
+                Logger.Log($"Telemetry rows extracted: {telemetryRows.Count}");
+
+                // === Parse into RaceBoxPoint ===
                 DateTime baseTime = DateTime.Parse(telemetryRows[0][timeIndex]);
 
                 foreach (var row in telemetryRows)
@@ -72,13 +81,17 @@ namespace CastleOverlayV2.Services
                     double gForceX = double.TryParse(row[gForceXIndex], out var g) ? g : 0.0;
                     int runIndex = int.TryParse(row[runColIndex], out var r) ? r : -1;
 
-                    points.Add(new RaceBoxPoint
+                    var point = new RaceBoxPoint
                     {
                         Time = offset,
                         SpeedMph = speedMps * 2.23694, // Convert m/s → mph
                         GForceX = gForceX,
                         RunIndex = runIndex
-                    });
+                    };
+
+                    Logger.Log($"RB Point: t={offset.TotalSeconds:F3}s, Speed={point.SpeedMph:F1}mph, Gx={point.GForceX:F2}");
+
+                    points.Add(point);
                 }
             }
 
