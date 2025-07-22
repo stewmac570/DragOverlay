@@ -1542,3 +1542,127 @@ Toggle states still persist to config.json
 
 2 Pole button appears only under RPM
 
+
+---------------------------------------------------------------------------------------------
+📄 2025-07-22 — Phase 7 Planning: RaceBox Overlay
+Branch: feature/phase-7-racebox-overlay
+Status: 🔜 Not started
+
+✅ Scope Confirmed:
+- Adds support for loading RaceBox GPS timing logs
+- RaceBox logs align to Castle ESC launch point (t = 0)
+- One RaceBox file per Castle run slot (Run 1–3)
+- Uses new RaceBoxLoader.cs for GPS-specific parsing
+- Adds new RaceBox channels (e.g. GPS Speed, Accel, etc.)
+- Extends toggle bar with new RaceBox toggle blocks
+- Uses unique colors per RaceBox log (line style = Castle-matched)
+- Shares config.json toggle states
+
+🗂️ Planned Files:
+- RaceBox/RaceBoxLoader.cs
+- Models/RaceBoxData.cs (if needed)
+- Updates to MainForm.cs, PlotManager.cs, ChannelToggleBar.cs
+
+🎯 Goal:
+Create the first Castle ESC log viewer with built-in GPS overlay comparison from RaceBox. No equivalent exists in Castle Link 2 or any competitor.
+
+----------------------------------------------------------------------------------------
+ Scope of Work Completed:
+1. Run Visibility Refactor
+Refactored _runVisibility to use Dictionary<RunData, bool> instead of int index keys.
+
+Updated all TryGetValue, ContainsKey, and indexing logic across PlotManager.cs to use RunData references directly.
+
+Eliminated type mismatch errors (int vs RunData) across all toggle-related methods.
+
+2. Updated PlotManager API
+Added:
+
+ToggleRunVisibility(int runIndex, RunData run, bool isVisibleNow)
+
+GetRunVisibility(RunData run)
+
+public List<RunData> Runs => _runs; accessor
+
+Updated PlotRuns(...) to store the latest list in _runs.
+
+3. MainForm Button Logic Fixed
+Corrected button event handlers to:
+
+Retrieve RunData from _plotManager.Runs
+
+Safely check bounds
+
+Call ToggleRunVisibility(...) with correct arguments
+
+Update button label based on state
+
+4. Error Fixes
+Resolved:
+
+CS1503: type mismatch errors (int vs RunData)
+
+CS7036: missing parameters
+
+CS0161: missing return
+
+IndexOutOfRangeException on deleted run index
+
+🧪 Status
+❌ App still fails to toggle visibility correctly.
+
+❌ Deleting Run 2 causes Run 3 to shift and overwrite state.
+
+✅ Refactor to use Dictionary<RunData, bool> is complete, but the UI behavior has not improved.
+
+🔁 All code compiles, but functionality is not fixed.
+
+We are now moving to a new branch/chat to fix the root issue:
+Run 3 becoming Run 2 after deletion, causing toggle logic and button states to misalign.
+
+--------------------------------------------------
+
+Chat Summary: Fixing Run Visibility and Log Management in Castle Log Overlay Tool
+Goal:
+Ensure each loaded log (run) retains independent visibility state regardless of load/delete actions. Fix issues where deleting one log affects others, and toggling visibility buttons sync properly with plot display.
+
+Work Done:
+
+Refactored log storage from List to Dictionary<int, RunData> keyed by slot index, to eliminate index shifting on delete.
+
+Modified PlotManager to track visibility state per run slot via _runVisibility dictionary.
+
+Updated PlotRuns() to respect both channel visibility and individual run visibility flags for each scatter plot.
+
+Added detailed logging for run visibility and channel visibility during plotting for debugging.
+
+Fixed LoadRunXButton_Click handlers for Runs 1, 2, and 3 to:
+
+Load CSV asynchronously
+
+Set run visibility true on load
+
+Enable toggle and delete buttons
+
+Sync toggle button text to match run visibility ("Hide" when visible, "Show" when hidden)
+
+Call PlotAllRuns() with the current loaded runs and channel visibility
+
+Fixed DeleteRun logic to clear the run and update visibility state correctly without affecting other runs.
+
+Verified that reloading a deleted log resets visibility state and shows the plot immediately without needing extra toggles.
+
+Added comprehensive debug logs throughout loading, plotting, and visibility changes to verify correct state flow.
+
+Outcome:
+
+Logs can be loaded, deleted, and reloaded independently without interfering with each other’s visibility.
+
+Toggle buttons accurately reflect the current visibility state of each log.
+
+Channel visibility and run visibility combine correctly to control plot display of each channel and run.
+
+Overall plot refresh and UI stay consistent with user actions.
+---------------------------------------------------------
+
+

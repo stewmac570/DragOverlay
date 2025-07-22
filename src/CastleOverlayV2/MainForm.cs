@@ -50,6 +50,11 @@ namespace CastleOverlayV2
 
             Logger.Log("MainForm initialized");
 
+            Logger.Log("=======================================");
+            Logger.Log($"🟢 New Session Started — {DateTime.Now}");
+            Logger.Log("=======================================");
+
+
             // ✅ Disable all toggle/delete buttons at startup
             btnToggleRun1.Enabled = false;
             btnDeleteRun1.Enabled = false;
@@ -67,6 +72,13 @@ namespace CastleOverlayV2
             // ✅ Init ConfigService + load config
             _configService = new ConfigService();
             var config = _configService.Config;
+
+            Logger.Log("Config loaded at startup:");
+            foreach (var kvp in config.ChannelVisibility)
+            {
+                Logger.Log($"  Channel: {kvp.Key}, Visible: {kvp.Value}");
+            }
+
 
             // Wire up the PlotManager with your FormsPlot control (must match your Designer)
             _plotManager = new PlotManager(formsPlot1);
@@ -139,10 +151,8 @@ namespace CastleOverlayV2
         /// </summary>
         private async void LoadRun1Button_Click(object sender, EventArgs e)
         {
-
-
+            LogClick("Load Run 1");
             Logger.Log("LoadRun1Button_Click started");
-
 
             string filePath = GetCsvFilePath();
             if (filePath == null) return;
@@ -155,23 +165,32 @@ namespace CastleOverlayV2
                 if (run1 != null && run1.DataPoints.Count > 0)
                 {
                     Logger.Log($"Loaded log: Run 1 - {Path.GetFileName(filePath)} - {run1.DataPoints.Count} rows");
+
+                    // Assign the loaded run to slot 1 in the plot manager
+                    _plotManager.SetRun(1, run1);
+
+                    // Ensure run visibility is true on load for slot 1 (not 0)
+                    _plotManager.SetRunVisibility(1, true);
+
+                    PlotAllRuns();
+
+                    // Sync toggle button text with visibility state
+                    btnToggleRun1.Text = _plotManager.GetRunVisibility(1) ? "Hide" : "Show";
+                    btnToggleRun1.Enabled = true;
+                    btnDeleteRun1.Enabled = true;
                 }
                 else
                 {
                     Logger.Log("Run 1 load failed or empty data.");
                 }
-
-                Logger.Log($"Run1 loaded — points: {run1.DataPoints.Count}");
-                btnToggleRun1.Enabled = true;
-                btnDeleteRun1.Enabled = true;
-                PlotAllRuns();
             }
             catch (Exception ex)
             {
                 Logger.Log($"ERROR in Run1: {ex.Message}");
-
             }
         }
+
+
 
 
         /// <summary>
@@ -179,8 +198,8 @@ namespace CastleOverlayV2
         /// </summary>
         private async void LoadRun2Button_Click(object sender, EventArgs e)
         {
+            LogClick("Load Run 2");
             Logger.Log("LoadRun2Button_Click started");
-
 
             string filePath = GetCsvFilePath();
             if (filePath == null) return;
@@ -189,33 +208,42 @@ namespace CastleOverlayV2
             {
                 var loader = new CsvLoader(_configService);
                 run2 = await Task.Run(() => loader.Load(filePath));
+
                 if (run2 != null && run2.DataPoints.Count > 0)
                 {
                     Logger.Log($"Loaded log: Run 2 - {Path.GetFileName(filePath)} - {run2.DataPoints.Count} rows");
+
+                    // Assign the loaded run to slot 2 in the plot manager
+                    _plotManager.SetRun(2, run2);
+
+                    // Ensure run visibility is true on load for slot 2
+                    _plotManager.SetRunVisibility(2, true);
+
+                    PlotAllRuns();
+
+                    // Sync toggle button text with visibility state
+                    btnToggleRun2.Text = _plotManager.GetRunVisibility(2) ? "Hide" : "Show";
+                    btnToggleRun2.Enabled = true;
+                    btnDeleteRun2.Enabled = true;
                 }
                 else
                 {
                     Logger.Log("Run 2 load failed or empty data.");
                 }
-
-                Logger.Log($"Run2 loaded — points: {run2.DataPoints.Count}");
-
-                btnToggleRun2.Enabled = true;
-                btnDeleteRun2.Enabled = true;
-                PlotAllRuns();
             }
             catch (Exception ex)
             {
                 Logger.Log($"ERROR in Run2: {ex.Message}");
-
             }
         }
+
 
         /// <summary>
         /// ✅ New: Load Run 3 slot
         /// </summary>
         private async void LoadRun3Button_Click(object sender, EventArgs e)
         {
+            LogClick("Load Run 3");
             Logger.Log("LoadRun3Button_Click started");
 
             string filePath = GetCsvFilePath();
@@ -225,32 +253,40 @@ namespace CastleOverlayV2
             {
                 var loader = new CsvLoader(_configService);
                 run3 = await Task.Run(() => loader.Load(filePath));
+
                 if (run3 != null && run3.DataPoints.Count > 0)
                 {
                     Logger.Log($"Loaded log: Run 3 - {Path.GetFileName(filePath)} - {run3.DataPoints.Count} rows");
+
+                    // Assign the loaded run to slot 3 in the plot manager
+                    _plotManager.SetRun(3, run3);
+
+                    // Ensure run visibility is true on load for slot 3
+                    _plotManager.SetRunVisibility(3, true);
+
+                    PlotAllRuns();
+
+                    // Sync toggle button text with visibility state
+                    btnToggleRun3.Text = _plotManager.GetRunVisibility(3) ? "Hide" : "Show";
+                    btnToggleRun3.Enabled = true;
+                    btnDeleteRun3.Enabled = true;
                 }
                 else
                 {
                     Logger.Log("Run 3 load failed or empty data.");
                 }
-
-                Logger.Log($"Run3 loaded — points: {run3.DataPoints.Count}");
-
-                btnToggleRun3.Enabled = true;
-                btnDeleteRun3.Enabled = true;
-                PlotAllRuns();
             }
             catch (Exception ex)
             {
                 Logger.Log($"ERROR in Run3: {ex.Message}");
-
             }
         }
 
+
         /// <summary>
-/// ✅ Load RaceBox CSV for Run 1 slot
-/// </summary>
-private void LoadRaceBox1Button_Click(object sender, EventArgs e)
+        /// ✅ Load RaceBox CSV for Run 1 slot
+        /// </summary>
+        private void LoadRaceBox1Button_Click(object sender, EventArgs e)
 {
     var path = GetCsvFilePath();
     if (path == null) return;
@@ -323,30 +359,49 @@ private void LoadRaceBox3Button_Click(object sender, EventArgs e)
         /// ✅ Helper: Collect non-null runs and plot all
         /// </summary>
         private void PlotAllRuns()
-        {
-            var runsToPlot = new List<RunData>();
-            if (run1 != null) runsToPlot.Add(run1);
-            if (run2 != null) runsToPlot.Add(run2);
-            if (run3 != null) runsToPlot.Add(run3);
+{
+    Logger.Log("PlotAllRuns called with runs:");
+    if (run1 != null) Logger.Log($"  Run 1: {run1.DataPoints.Count} points");
+    if (run2 != null) Logger.Log($"  Run 2: {run2.DataPoints.Count} points");
+    if (run3 != null) Logger.Log($"  Run 3: {run3.DataPoints.Count} points");
 
-            // ✅ Inject saved toggle states before plotting
-            var visibilityMap = _channelToggleBar.GetChannelStates();
-            _plotManager.SetInitialChannelVisibility(visibilityMap);
+    var runsToPlot = new Dictionary<int, RunData>();
+    if (run1 != null) runsToPlot[1] = run1;
+    if (run2 != null) runsToPlot[2] = run2;
+    if (run3 != null) runsToPlot[3] = run3;
 
-            _plotManager.PlotRuns(runsToPlot);
-        }
+    var visibilityMap = _channelToggleBar.GetChannelStates();
+
+    Logger.Log("PlotAllRuns — Channel visibility map before applying:");
+    foreach (var kvp in visibilityMap)
+    {
+        Logger.Log($"  Channel: {kvp.Key}, Visible: {kvp.Value}");
+    }
+
+    _plotManager.SetInitialChannelVisibility(visibilityMap);
+    _plotManager.PlotRuns(runsToPlot);
+}
+
+
 
         /// <summary>
         /// ✅ Toggle changed — update plot and persist to config
         /// </summary>
         private void OnChannelVisibilityChanged(string channelName, bool isVisible)
         {
+            Logger.Log($"📎 Channel toggle clicked: {channelName} → {(isVisible ? "Show" : "Hide")}");
+
             _plotManager.SetChannelVisibility(channelName, isVisible);
             _plotManager.RefreshPlot();
 
             // ✅ Save updated state immediately
             _configService.SetChannelVisibility(channelName, isVisible);
+
+            // 🔄 Force full replot to ensure sync
+            Logger.Log("🔄 Forcing full replot after channel toggle");
+            PlotAllRuns();
         }
+
 
         /// <summary>
         /// ✅ Hover data updates toggle bar
@@ -358,62 +413,68 @@ private void LoadRaceBox3Button_Click(object sender, EventArgs e)
 
         private void ToggleRun1Button_Click(object sender, EventArgs e)
         {
-            bool isNowVisible = _plotManager.ToggleRunVisibility(0);
+            LogClick("Toggle Run 1");
+
+            bool isNowVisible = _plotManager.ToggleRunVisibility(1);
             btnToggleRun1.Text = isNowVisible ? "Hide" : "Show";
         }
 
 
         private void ToggleRun2Button_Click(object sender, EventArgs e)
         {
-            ToggleRunVisibility(1, btnToggleRun2);
+            LogClick("Toggle Run 2");
+            bool isNowVisible = _plotManager.ToggleRunVisibility(2);
+            btnToggleRun2.Text = isNowVisible ? "Hide" : "Show";
         }
+
 
         private void ToggleRun3Button_Click(object sender, EventArgs e)
         {
-            ToggleRunVisibility(2, btnToggleRun3);
+            LogClick("Toggle Run 3");
+            bool isNowVisible = _plotManager.ToggleRunVisibility(3);
+            btnToggleRun3.Text = isNowVisible ? "Hide" : "Show";
         }
-        private void ToggleRunVisibility(int runIndex, Button toggleButton)
-        {
-            bool isVisibleNow = _plotManager.ToggleRunVisibility(runIndex);
-            toggleButton.Text = isVisibleNow ? "Hide" : "Show";
-        }
+
 
         private void DeleteRun1Button_Click(object sender, EventArgs e)
         {
-            DeleteRun(0);
+            LogClick("Delete Run 1");
+            DeleteRun(1);
         }
 
         private void DeleteRun2Button_Click(object sender, EventArgs e)
         {
-            DeleteRun(1);
+            LogClick("Delete Run 2");
+            DeleteRun(2);
         }
 
         private void DeleteRun3Button_Click(object sender, EventArgs e)
         {
-            DeleteRun(2);
+            LogClick("Delete Run 3");
+            DeleteRun(3);
         }
 
-        private void DeleteRun(int runIndex)
+
+        private void DeleteRun(int slot)
         {
-         
-            // Optional: reset button states
-            switch (runIndex)
+            // Reset buttons and clear local run reference
+            switch (slot)
             {
-                case 0:
+                case 1:
                     run1 = null;
                     btnLoadRun1.Enabled = true;
                     btnToggleRun1.Enabled = false;
                     btnDeleteRun1.Enabled = false;
                     btnToggleRun1.Text = "Hide";
                     break;
-                case 1:
+                case 2:
                     run2 = null;
                     btnLoadRun2.Enabled = true;
                     btnToggleRun2.Enabled = false;
                     btnDeleteRun2.Enabled = false;
                     btnToggleRun2.Text = "Hide";
                     break;
-                case 2:
+                case 3:
                     run3 = null;
                     btnLoadRun3.Enabled = true;
                     btnToggleRun3.Enabled = false;
@@ -422,24 +483,41 @@ private void LoadRaceBox3Button_Click(object sender, EventArgs e)
                     break;
             }
 
+            // Force hide this run if it's still considered visible
+            bool isVisibleNow = _plotManager.GetRunVisibility(slot);
+            if (isVisibleNow)
+                _plotManager.ToggleRunVisibility(slot);
 
-            var activeRuns = new List<RunData>();
-            if (run1 != null) activeRuns.Add(run1);
-            if (run2 != null) activeRuns.Add(run2);
-            if (run3 != null) activeRuns.Add(run3);
+            // Rebuild run dictionary
+            var activeRuns = new Dictionary<int, RunData>();
+            if (run1 != null) activeRuns[1] = run1;
+            if (run2 != null) activeRuns[2] = run2;
+            if (run3 != null) activeRuns[3] = run3;
 
             _plotManager.PlotRuns(activeRuns);
-
         }
+
+
         private void OnRpmModeChanged(bool isFourPole)
         {
             _isFourPoleMode = isFourPole;
             _plotManager.SetFourPoleMode(_isFourPoleMode);
-            _plotManager.PlotRuns(new List<RunData> { run1, run2, run3 }.Where(r => r != null).ToList());
+
+            var runsToPlot = new Dictionary<int, RunData>();
+            if (run1 != null) runsToPlot[1] = run1;
+            if (run2 != null) runsToPlot[2] = run2;
+            if (run3 != null) runsToPlot[3] = run3;
+
+            _plotManager.PlotRuns(runsToPlot);
 
             _configService.SetRpmMode(isFourPole); // ✅ persist to config.json
         }
 
+
+        private void LogClick(string buttonName)
+        {
+            Logger.Log($"🔘 Button clicked: {buttonName}");
+        }
 
 
     }
