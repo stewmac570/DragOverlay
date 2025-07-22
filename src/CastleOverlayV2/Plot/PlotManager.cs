@@ -1,4 +1,5 @@
 ﻿using CastleOverlayV2.Models;
+using CastleOverlayV2.Services;
 using CastleOverlayV2.Utils;
 using ScottPlot;
 using ScottPlot.AxisRules;
@@ -24,7 +25,6 @@ namespace CastleOverlayV2.Plot
 
         // ✅ Hover cursor line
         private VerticalLine _cursor;
-        
 
         // ✅ All scatters for multi-log overlay
         private readonly List<Scatter> _scatters = new();
@@ -32,19 +32,21 @@ namespace CastleOverlayV2.Plot
         // ✅ Holds raw Y-values for each Scatter to show true hover values
         private readonly Dictionary<Scatter, double[]> _rawYMap = new();
 
+        // ✅ Maps each scatter to the RunData it belongs to
+        private readonly Dictionary<Scatter, int> _scatterSlotMap = new();
 
         // ✅ Emit hover data for toggle bar
         public event Action<Dictionary<string, double?[]>> CursorMoved;
 
-        private Dictionary<Scatter, int> _scatterRunMap = new();
-
-        //private Dictionary<int, bool> _runVisibility = new();
-
-        // Track whether each run (0, 1, 2) is visible
+        // ✅ Track whether each run is visible
+        // ✅ Track whether each run is visible
         private readonly Dictionary<int, bool> _runVisibility = new();
 
-        //Toggle visibility state for a specific run
-       
+
+        // ✅ Store all loaded runs
+        private readonly Dictionary<int, RunData> _runsBySlot = new();
+        public IReadOnlyDictionary<int, RunData> Runs => _runsBySlot;
+
         // ✅ Per-channel scale factors (Phase 5.1 — hardcoded)
         private readonly Dictionary<string, double> _channelScales = new()
         {
@@ -57,8 +59,10 @@ namespace CastleOverlayV2.Plot
             ["MotorTemp"] = 0.2,
             ["MotorTiming"] = 1.0,
             ["Acceleration"] = 2.0,
-            
         };
+
+
+
 
         public PlotManager(FormsPlot plotControl)
         {
@@ -72,20 +76,48 @@ namespace CastleOverlayV2.Plot
         /// <summary>
         /// Plot multiple runs with Castle colors, line styles, and per-channel scaling.
         /// </summary>
-        public void PlotRuns(List<RunData> runs)
+        public void PlotRuns(Dictionary<int, RunData> runsBySlot)
         {
+            Logger.Log("📊 PlotRuns() — Current channel visibility map:");
+            foreach (var kvp in _channelVisibility)
+            {
+                Logger.Log($"   • {kvp.Key} = {(kvp.Value ? "Visible" : "Hidden")}");
+            }
+
+            // ✅ Reset visibility for each loaded run using run object as key
+            // Only add new runs — do NOT reset visibility
+            foreach (var kvp in runsBySlot)
+            {
+                int slot = kvp.Key;
+                RunData run = kvp.Value;
+
+                if (run == null || run.DataPoints.Count == 0)
+                    continue;
+
+                if (!_runVisibility.ContainsKey(slot))
+                    _runVisibility[slot] = true;
+            }
+
+            // Insert the single line below:
+            LogVisibilityStates();
+
+
+
             // === ✅ SAFETY CHECK ===
-            if (runs == null || runs.Count == 0 || runs.All(r => r == null || r.DataPoints.Count == 0))
+            if (runsBySlot == null || runsBySlot.Count == 0 || runsBySlot.All(kvp => kvp.Value == null || kvp.Value.DataPoints.Count == 0))
+
             {
                 ResetEmptyPlot();
                 return;
             }
 
-
-            if (runs == null || runs.Count == 0)
+            if (runsBySlot == null || runsBySlot.Count == 0)
                 throw new ArgumentException("No runs to plot.");
 
-            
+
+
+
+
 
             // === ✅ CLEAN RESET ===
             _plot.Plot.Clear();
@@ -228,18 +260,21 @@ namespace CastleOverlayV2.Plot
             accelAxis.FrameLineStyle.Width = 0;
             //-----------------------------------------------------------//
 
-  
+
             // === ✅ PLOT ALL RUNS ===
             //-----------------------------------------------------------//
             // === ✅ PLOT EACH RUN ===
             // Loops through every loaded log (1 or more Castle runs)
-            for (int i = 0; i < runs.Count; i++)
+            foreach (var kvp in runsBySlot)
             {
+                int slot = kvp.Key;
+                RunData run = kvp.Value;
 
-                if (!_runVisibility.ContainsKey(i))
-                    _runVisibility[i] = true;
+                if (!_runVisibility.ContainsKey(slot))
+                    _runVisibility[slot] = true;
 
-                var run = runs[i];
+
+
                 if (run == null || run.DataPoints.Count == 0)
                     continue;
 
@@ -260,20 +295,19 @@ namespace CastleOverlayV2.Plot
                         ysToPlot = rawYs.Select(v => v * 0.5).ToArray();
 
 
-                    //-----------------------------------------------------------//
                     // === ✅ Create the scatter plot for this channel ===
                     Scatter scatter = _plot.Plot.Add.Scatter(xs, ysToPlot);
-                    scatter.Label = channelLabel;                   // label must match your toggle bar
-                    scatter.Color = ChannelColorMap.GetColor(channelLabel);           // color for this run
-                    scatter.LinePattern = LineStyleHelper.GetLinePattern(i); // line style for this run
-                    scatter.LineWidth = (float)LineStyleHelper.GetLineWidth(i); // ⬅️ Set per-log thickness
-                    scatter.Axes.XAxis = xAxis;                     // always map to the Time axis
-                    _scatterRunMap[scatter] = i; // ✅ manually track run index
+                    scatter.Label = channelLabel;
+                    scatter.Color = ChannelColorMap.GetColor(channelLabel);
+                    scatter.LinePattern = LineStyleHelper.GetLinePattern(slot - 1);
+                    scatter.LineWidth = (float)LineStyleHelper.GetLineWidth(slot - 1);
+                    scatter.Axes.XAxis = xAxis;
+                    _scatterSlotMap[scatter] = slot;
 
                     bool isChannelVisible = _channelVisibility.TryGetValue(channelLabel, out var chanVis) ? chanVis : true;
-                    bool isRunVisible = _runVisibility.TryGetValue(i, out var runVis) ? runVis : true;
-                    scatter.IsVisible = isChannelVisible && isRunVisible;
+                    bool isRunVisible = _runVisibility.TryGetValue(slot, out var runVis) ? runVis : true;
 
+                    //scatter.IsVisible = isChannelVisible && isRunVisible;
 
 
                     //-----------------------------------------------------------//
@@ -292,8 +326,14 @@ namespace CastleOverlayV2.Plot
                     else scatter.Axes.YAxis = throttleAxis; // fallback
 
                     bool channelOn = _channelVisibility.TryGetValue(channelLabel, out var vis) ? vis : true;
-                    bool runOn = _runVisibility.ContainsKey(i) ? _runVisibility[i] : true;
-                    scatter.IsVisible = channelOn && runOn;
+                    bool runVisTemp = _runVisibility.TryGetValue(slot, out var temp) ? temp : true;
+
+                    scatter.IsVisible = channelOn; // Ignore run visibility for now
+
+                    scatter.IsVisible = channelOn && runVisTemp;
+
+                    Logger.Log($"Plotting scatter: Run Slot {slot}, Channel '{channelLabel}', Visible={scatter.IsVisible}");
+
 
 
 
@@ -334,8 +374,10 @@ namespace CastleOverlayV2.Plot
             if (run == null)
                 throw new ArgumentNullException(nameof(run));
 
-            PlotRuns(new List<RunData> { run });
+            var singleSlot = new Dictionary<int, RunData> { [1] = run };
+            PlotRuns(singleSlot);
         }
+
 
         /// <summary>
         /// Keep hover line synced with X and emit cursor data.
@@ -450,13 +492,13 @@ namespace CastleOverlayV2.Plot
 
 
 
-        public void ToggleRunVisibility(int runIndex, bool isVisibleNow)
+        public void ToggleRunVisibility(int slot, bool isVisibleNow)
         {
-            _runVisibility[runIndex] = isVisibleNow;
+            _runVisibility[slot] = isVisibleNow;
 
             foreach (var scatter in _scatters)
             {
-                if (_scatterRunMap.TryGetValue(scatter, out int tag) && tag == runIndex)
+                if (_scatterSlotMap.TryGetValue(scatter, out int scatterSlot) && scatterSlot == slot)
                 {
                     string channel = scatter.Label;
                     bool channelOn = _channelVisibility.TryGetValue(channel, out bool vis) ? vis : true;
@@ -467,6 +509,7 @@ namespace CastleOverlayV2.Plot
             _plot.Refresh();
         }
 
+
         /// <summary>
         /// Toggle channel visibility.
         /// </summary>
@@ -476,15 +519,17 @@ namespace CastleOverlayV2.Plot
 
             foreach (var scatter in _scatters)
             {
-                if (scatter.Label == channelName && _scatterRunMap.TryGetValue(scatter, out int runIndex))
+                if (scatter.Label == channelName && _scatterSlotMap.TryGetValue(scatter, out int slot))
                 {
-                    bool runVisible = _runVisibility.ContainsKey(runIndex) ? _runVisibility[runIndex] : true;
+                    bool runVisible = _runVisibility.TryGetValue(slot, out bool runVis) ? runVis : true;
                     scatter.IsVisible = runVisible && isVisible;
                 }
             }
 
+
             _plot.Refresh();
         }
+
 
 
 
@@ -509,24 +554,30 @@ namespace CastleOverlayV2.Plot
 
         public void SetInitialChannelVisibility(Dictionary<string, bool> visibilityMap)
         {
+            Logger.Log("🟢 SetInitialChannelVisibility() called:");
+            foreach (var kvp in visibilityMap)
+            {
+                Logger.Log($"   • {kvp.Key} = {(kvp.Value ? "Visible" : "Hidden")}");
+            }
+
             _channelVisibility = visibilityMap ?? new();
         }
-        
 
-        public bool ToggleRunVisibility(int runIndex)
+
+
+
+        public bool ToggleRunVisibility(int slot)
         {
-            bool currentlyVisible = _runVisibility.ContainsKey(runIndex) ? _runVisibility[runIndex] : true;
+            bool currentlyVisible = _runVisibility.TryGetValue(slot, out bool isVisible) ? isVisible : true;
             bool newState = !currentlyVisible;
-            _runVisibility[runIndex] = newState;
+            _runVisibility[slot] = newState;
 
             foreach (var scatter in _scatters)
             {
-                if (_scatterRunMap.TryGetValue(scatter, out int tag) && tag == runIndex)
+                if (_scatterSlotMap.TryGetValue(scatter, out int scatterSlot) && scatterSlot == slot)
                 {
                     string channel = scatter.Label;
                     bool channelOn = _channelVisibility.TryGetValue(channel, out bool vis) ? vis : true;
-
-                    // ✅ Only show if both channel and run are active
                     scatter.IsVisible = newState && channelOn;
                 }
             }
@@ -534,6 +585,8 @@ namespace CastleOverlayV2.Plot
             _plot.Refresh();
             return newState;
         }
+
+
         public void ResetEmptyPlot()
         {
             _plot.Plot.Clear();
@@ -560,7 +613,35 @@ namespace CastleOverlayV2.Plot
         {
             _isFourPoleMode = isFourPole;
         }
+        public bool GetRunVisibility(int slot)
+        {
+            return _runVisibility.TryGetValue(slot, out bool vis) ? vis : true;
+        }
 
+        public void LogVisibilityStates()
+        {
+            Logger.Log("🔍 Current Run Visibility States:");
+            foreach (var kvp in _runVisibility)
+            {
+                Logger.Log($"   Run Slot {kvp.Key}: {(kvp.Value ? "Visible" : "Hidden")}");
+            }
 
+            Logger.Log("🔍 Current Channel Visibility States:");
+            foreach (var kvp in _channelVisibility)
+            {
+                Logger.Log($"   Channel '{kvp.Key}': {(kvp.Value ? "Visible" : "Hidden")}");
+            }
+        }
+
+        public void SetRunVisibility(int slotIndex, bool isVisible)
+        {
+            _runVisibility[slotIndex] = isVisible;
+            Logger.Log($"SetRunVisibility: slot {slotIndex} set to {(isVisible ? "Visible" : "Hidden")}");
+        }
+
+        public void SetRun(int slot, RunData run)
+        {
+            _runsBySlot[slot] = run;
+        }
     }
 }
