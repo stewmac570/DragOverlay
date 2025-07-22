@@ -288,6 +288,8 @@ namespace CastleOverlayV2
         /// </summary>
         private void LoadRaceBox1Button_Click(object sender, EventArgs e)
 {
+    Logger.Log("RaceBox Load Button Clicked — Slot 1");
+
     var path = GetCsvFilePath();
     if (path == null) return;
 
@@ -298,7 +300,11 @@ namespace CastleOverlayV2
         return;
     }
 
-    raceBox1 = rbData;
+    Logger.Log("Parsing RaceBox telemetry for Slot 1...");
+    var points = RaceBoxLoader.LoadTelemetry(path, rbData.FirstCompleteRunIndex.Value);
+    Logger.Log($"RaceBox telemetry parsed: {points.Count} rows for Slot 1");
+
+    raceBox1 = rbData; // You can also store `points` if needed here
     Logger.Log($"RaceBox 1 loaded. RunCount = {rbData.RunCount}, FirstCompleteRun = {rbData.FirstCompleteRunIndex + 1}");
 }
 
@@ -307,6 +313,8 @@ namespace CastleOverlayV2
 /// </summary>
 private void LoadRaceBox2Button_Click(object sender, EventArgs e)
 {
+    Logger.Log("RaceBox Load Button Clicked — Slot 2");
+
     var path = GetCsvFilePath();
     if (path == null) return;
 
@@ -317,15 +325,22 @@ private void LoadRaceBox2Button_Click(object sender, EventArgs e)
         return;
     }
 
+    Logger.Log("Parsing RaceBox telemetry for Slot 2...");
+    var points = RaceBoxLoader.LoadTelemetry(path, rbData.FirstCompleteRunIndex.Value);
+    Logger.Log($"RaceBox telemetry parsed: {points.Count} rows for Slot 2");
+
     raceBox2 = rbData;
     Logger.Log($"RaceBox 2 loaded. RunCount = {rbData.RunCount}, FirstCompleteRun = {rbData.FirstCompleteRunIndex + 1}");
 }
+
 
 /// <summary>
 /// ✅ Load RaceBox CSV for Run 3 slot
 /// </summary>
 private void LoadRaceBox3Button_Click(object sender, EventArgs e)
 {
+    Logger.Log("RaceBox Load Button Clicked — Slot 3");
+
     var path = GetCsvFilePath();
     if (path == null) return;
 
@@ -336,9 +351,14 @@ private void LoadRaceBox3Button_Click(object sender, EventArgs e)
         return;
     }
 
+    Logger.Log("Parsing RaceBox telemetry for Slot 3...");
+    var points = RaceBoxLoader.LoadTelemetry(path, rbData.FirstCompleteRunIndex.Value);
+    Logger.Log($"RaceBox telemetry parsed: {points.Count} rows for Slot 3");
+
     raceBox3 = rbData;
     Logger.Log($"RaceBox 3 loaded. RunCount = {rbData.RunCount}, FirstCompleteRun = {rbData.FirstCompleteRunIndex + 1}");
 }
+
 
 
         /// <summary>
