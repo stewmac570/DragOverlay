@@ -1,92 +1,88 @@
 using CastleOverlayV2.Models;
+using CsvHelper;
+using CsvHelper.Configuration;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 
 namespace CastleOverlayV2.Services
 {
-    public static class RaceBoxLoader
+    public class RaceBoxLoader
     {
         /// <summary>
-        /// Loads only the header metadata from a RaceBox CSV file.
-        /// Extracts run count, disciplines, run times, and identifies the first complete run.
+        /// Parses the telemetry section from a RaceBox CSV file and extracts all points for the selected run.
         /// </summary>
-        public static RaceBoxData LoadHeaderOnly(string filePath)
+        public List<RaceBoxPoint> LoadTelemetry(string filePath, int selectedRunIndex)
         {
-            var lines = File.ReadAllLines(filePath);
-            var result = new RaceBoxData();
+            var points = new List<RaceBoxPoint>();
 
-            int runCount = 0;
-            int runStartLine = 0;
-
-            // Step 1: Read "Runs" value and find Run X lines
-            for (int i = 0; i < lines.Length; i++)
+            using (var reader = new StreamReader(filePath))
+            using (var csv = new CsvReader(reader, new CsvConfiguration(CultureInfo.InvariantCulture)
             {
-                string line = lines[i];
+                HasHeaderRecord = false,
+                MissingFieldFound = null,
+                BadDataFound = null,
+                Delimiter = ","
+            }))
+            {
+                var allRows = new List<string[]>();
 
-                if (line.StartsWith("Runs", StringComparison.OrdinalIgnoreCase))
+                while (csv.Read())
                 {
-                    var parts = line.Split(',');
-                    if (parts.Length > 1 && int.TryParse(parts[1], out runCount))
-                    {
-                        result.RunCount = runCount;
-                        runStartLine = i + 1; // First "Run X times" line follows
-                    }
+                    var row = new List<string>();
+                    for (int i = 0; csv.TryGetField(i, out string value); i++)
+                        row.Add(value);
+                    allRows.Add(row.ToArray());
                 }
 
-                if (line.StartsWith("Disciplines", StringComparison.OrdinalIgnoreCase))
+                // Find the number of runs
+                int runCount = int.Parse(allRows[7][1]);
+                int telemetryHeaderRow = 8 + runCount + 1;
+
+                string[] headers = allRows[telemetryHeaderRow];
+                int timeIndex = Array.IndexOf(headers, "Time");
+                int speedIndex = Array.IndexOf(headers, "Speed (m/s)");
+                int gForceXIndex = Array.IndexOf(headers, "GForceX");
+                int runColIndex = Array.IndexOf(headers, "Run");
+
+                if (timeIndex == -1 || speedIndex == -1 || gForceXIndex == -1 || runColIndex == -1)
+                    throw new Exception("Required telemetry columns missing.");
+
+                // Capture all matching rows
+                var telemetryRows = allRows.Skip(telemetryHeaderRow + 1)
+                                           .Where(r => r.Length > runColIndex &&
+                                                       int.TryParse(r[runColIndex], out int run) &&
+                                                       run == selectedRunIndex)
+                                           .ToList();
+
+                if (telemetryRows.Count == 0)
+                    throw new Exception("No telemetry rows found for selected run.");
+
+                // Use first timestamp as t=0
+                DateTime baseTime = DateTime.Parse(telemetryRows[0][timeIndex]);
+
+                foreach (var row in telemetryRows)
                 {
-                    var parts = line.Split(',');
-                    if (parts.Length > 1)
+                    DateTime currentTime = DateTime.Parse(row[timeIndex]);
+                    TimeSpan offset = currentTime - baseTime;
+
+                    double speedMps = double.TryParse(row[speedIndex], out var s) ? s : 0.0;
+                    double gForceX = double.TryParse(row[gForceXIndex], out var g) ? g : 0.0;
+                    int runIndex = int.TryParse(row[runColIndex], out var r) ? r : -1;
+
+                    points.Add(new RaceBoxPoint
                     {
-                        var disciplineString = parts[1];
-                        var splits = disciplineString.Split(';');
-                        foreach (var s in splits)
-                            result.Disciplines.Add(s.Trim());
-                    }
+                        Time = offset,
+                        SpeedMph = speedMps * 2.23694, // Convert m/s → mph
+                        GForceX = gForceX,
+                        RunIndex = runIndex
+                    });
                 }
             }
 
-            // Step 2: Extract Run X times
-            for (int i = 0; i < result.RunCount; i++)
-            {
-                int lineIndex = runStartLine + i;
-                if (lineIndex >= lines.Length)
-                    break;
-
-                var parts = lines[lineIndex].Split(',');
-                if (parts.Length < 2)
-                    continue;
-
-                var timesRaw = parts[1].Split(';');
-                var runTimes = new List<double>();
-                bool allNonZero = true;
-
-                foreach (var t in timesRaw)
-                {
-                    if (double.TryParse(t.Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out double val))
-                    {
-                        runTimes.Add(val);
-                        if (val == 0)
-                            allNonZero = false;
-                    }
-                    else
-                    {
-                        runTimes.Add(0);
-                        allNonZero = false;
-                    }
-                }
-
-                result.RunTimes.Add(runTimes);
-
-                if (allNonZero && result.FirstCompleteRunIndex == null)
-                {
-                    result.FirstCompleteRunIndex = i;
-                }
-            }
-
-            return result;
+            return points;
         }
     }
 }
