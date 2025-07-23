@@ -11,5 +11,6 @@ namespace CastleOverlayV2.Models
         public double SpeedMph { get; set; }          // Converted from m/s
         public double GForceX { get; set; }
         public int RunIndex { get; set; }             // From the Run column
+        public int Record { get; set; }
     }
 }

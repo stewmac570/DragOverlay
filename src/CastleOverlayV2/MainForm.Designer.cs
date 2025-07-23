@@ -19,7 +19,6 @@
         private System.Windows.Forms.Button btnLoadRaceBox2;
         private System.Windows.Forms.Button btnLoadRaceBox3;
 
-
         protected override void Dispose(bool disposing)
         {
             if (disposing && (components != null))
@@ -34,84 +33,142 @@
         private void InitializeComponent()
         {
             this.formsPlot1 = new ScottPlot.WinForms.FormsPlot();
+
             this.btnLoadRun1 = new System.Windows.Forms.Button();
             this.btnLoadRun2 = new System.Windows.Forms.Button();
             this.btnLoadRun3 = new System.Windows.Forms.Button();
+
             this.btnToggleRun1 = new System.Windows.Forms.Button();
             this.btnToggleRun2 = new System.Windows.Forms.Button();
             this.btnToggleRun3 = new System.Windows.Forms.Button();
+
             this.btnDeleteRun1 = new System.Windows.Forms.Button();
             this.btnDeleteRun2 = new System.Windows.Forms.Button();
             this.btnDeleteRun3 = new System.Windows.Forms.Button();
+
             this.topButtonPanel = new System.Windows.Forms.FlowLayoutPanel();
+            this.btnLoadRaceBox1 = new System.Windows.Forms.Button();
+            this.btnLoadRaceBox2 = new System.Windows.Forms.Button();
+            this.btnLoadRaceBox3 = new System.Windows.Forms.Button();
 
             this.SuspendLayout();
 
-            // === Top Button Panel ===
-            this.topButtonPanel.FlowDirection = System.Windows.Forms.FlowDirection.LeftToRight;
-            this.topButtonPanel.Dock = System.Windows.Forms.DockStyle.Top;
-            this.topButtonPanel.Height = 60;
-            this.topButtonPanel.Padding = new System.Windows.Forms.Padding(10, 5, 0, 5);
-            this.topButtonPanel.AutoSize = true;
-            this.topButtonPanel.AutoSizeMode = System.Windows.Forms.AutoSizeMode.GrowAndShrink;
-//-------------------------------------
-// === Run 1 Panel ===
-var panelRun1 = new TableLayoutPanel();
-panelRun1.ColumnCount = 3;
-panelRun1.RowCount = 2;
-panelRun1.AutoSize = true;
-panelRun1.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-panelRun1.Margin = new Padding(6);
-panelRun1.Padding = new Padding(4);
-panelRun1.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-panelRun1.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-panelRun1.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-panelRun1.Controls.Add(this.btnLoadRun1, 0, 0);
-panelRun1.Controls.Add(this.btnToggleRun1, 1, 0);
-panelRun1.Controls.Add(this.btnDeleteRun1, 2, 0);
-panelRun1.Controls.Add(this.btnLoadRaceBox1, 0, 1);
-panelRun1.SetColumnSpan(this.btnLoadRaceBox1, 3);
-this.topButtonPanel.Controls.Add(panelRun1);
-this.topButtonPanel.Controls.Add(Spacer());
+            this.topButtonPanel.FlowDirection = System.Windows.Forms.FlowDirection.LeftToRight; // ✅ buttons flow L→R
+            this.topButtonPanel.Dock = System.Windows.Forms.DockStyle.Top;                       // ✅ sticks to top of form
+            this.topButtonPanel.Height = 60;                                                    // ✅ gives initial height
+            this.topButtonPanel.Padding = new System.Windows.Forms.Padding(10, 5, 0, 5);        // ✅ nice inner spacing
+            this.topButtonPanel.AutoSize = true;                                                // ✅ grows to fit buttons
+            this.topButtonPanel.AutoSizeMode = System.Windows.Forms.AutoSizeMode.GrowAndShrink;// ✅ only grows as needed
 
-// === Run 2 Panel ===
-var panelRun2 = new TableLayoutPanel();
-panelRun2.ColumnCount = 3;
-panelRun2.RowCount = 2;
-panelRun2.AutoSize = true;
-panelRun2.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-panelRun2.Margin = new Padding(6);
-panelRun2.Padding = new Padding(4);
-panelRun2.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-panelRun2.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-panelRun2.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-panelRun2.Controls.Add(this.btnLoadRun2, 0, 0);
-panelRun2.Controls.Add(this.btnToggleRun2, 1, 0);
-panelRun2.Controls.Add(this.btnDeleteRun2, 2, 0);
-panelRun2.Controls.Add(this.btnLoadRaceBox2, 0, 1);
-panelRun2.SetColumnSpan(this.btnLoadRaceBox2, 3);
-this.topButtonPanel.Controls.Add(panelRun2);
-this.topButtonPanel.Controls.Add(Spacer());
 
-// === Run 3 Panel ===
-var panelRun3 = new TableLayoutPanel();
-panelRun3.ColumnCount = 3;
-panelRun3.RowCount = 2;
-panelRun3.AutoSize = true;
-panelRun3.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-panelRun3.Margin = new Padding(6);
-panelRun3.Padding = new Padding(4);
-panelRun3.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-panelRun3.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-panelRun3.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-panelRun3.Controls.Add(this.btnLoadRun3, 0, 0);
-panelRun3.Controls.Add(this.btnToggleRun3, 1, 0);
-panelRun3.Controls.Add(this.btnDeleteRun3, 2, 0);
-panelRun3.Controls.Add(this.btnLoadRaceBox3, 0, 1);
-panelRun3.SetColumnSpan(this.btnLoadRaceBox3, 3);
-this.topButtonPanel.Controls.Add(panelRun3);
+            // === Run 1 Buttons ===
+            this.btnLoadRun1.Text = "Load Run 1";
+            this.btnToggleRun1.Text = "Hide";
+            this.btnDeleteRun1.Text = "Delete";
+            this.btnLoadRaceBox1.Text = "Load RaceBox 1";
 
-//---------------------------------------
+            this.btnLoadRun1.AutoSize = true;
+            this.btnToggleRun1.AutoSize = true;
+            this.btnDeleteRun1.AutoSize = true;
+            this.btnLoadRaceBox1.AutoSize = true;
+
+            this.btnLoadRun1.Click += new System.EventHandler(this.LoadRun1Button_Click);
+            this.btnToggleRun1.Click += new System.EventHandler(this.ToggleRun1Button_Click);
+            this.btnDeleteRun1.Click += new System.EventHandler(this.DeleteRun1Button_Click);
+            this.btnLoadRaceBox1.Click += new System.EventHandler(this.LoadRaceBox1Button_Click);
+
+
+            // === Run 1 Panel ===
+            var panelRun1 = new TableLayoutPanel();
+            panelRun1.ColumnCount = 3;
+            panelRun1.RowCount = 2;
+            panelRun1.AutoSize = true;
+            panelRun1.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            panelRun1.Margin = new Padding(6);
+            panelRun1.Padding = new Padding(4);
+            panelRun1.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            panelRun1.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            panelRun1.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            panelRun1.Controls.Add(this.btnLoadRun1, 0, 0);
+            panelRun1.Controls.Add(this.btnToggleRun1, 1, 0);
+            panelRun1.Controls.Add(this.btnDeleteRun1, 2, 0);
+            panelRun1.Controls.Add(this.btnLoadRaceBox1, 0, 1);
+            panelRun1.SetColumnSpan(this.btnLoadRaceBox1, 3);
+            this.topButtonPanel.Controls.Add(panelRun1);
+            this.topButtonPanel.Controls.Add(Spacer());
+
+            // === Run 2 Buttons ===
+            this.btnLoadRun2.Text = "Load Run 2";
+            this.btnToggleRun2.Text = "Hide";
+            this.btnDeleteRun2.Text = "Delete";
+            this.btnLoadRaceBox2.Text = "Load RaceBox 2";
+
+            this.btnLoadRun2.AutoSize = true;
+            this.btnToggleRun2.AutoSize = true;
+            this.btnDeleteRun2.AutoSize = true;
+            this.btnLoadRaceBox2.AutoSize = true;
+
+            this.btnLoadRun2.Click += new System.EventHandler(this.LoadRun2Button_Click);
+            this.btnToggleRun2.Click += new System.EventHandler(this.ToggleRun2Button_Click);
+            this.btnDeleteRun2.Click += new System.EventHandler(this.DeleteRun2Button_Click);
+            this.btnLoadRaceBox2.Click += new System.EventHandler(this.LoadRaceBox2Button_Click);
+
+            // === Run 2 Panel ===
+            var panelRun2 = new TableLayoutPanel();
+            panelRun2.ColumnCount = 3;
+            panelRun2.RowCount = 2;
+            panelRun2.AutoSize = true;
+            panelRun2.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            panelRun2.Margin = new Padding(6);
+            panelRun2.Padding = new Padding(4);
+            panelRun2.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            panelRun2.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            panelRun2.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            panelRun2.Controls.Add(this.btnLoadRun2, 0, 0);
+            panelRun2.Controls.Add(this.btnToggleRun2, 1, 0);
+            panelRun2.Controls.Add(this.btnDeleteRun2, 2, 0);
+            panelRun2.Controls.Add(this.btnLoadRaceBox2, 0, 1);
+            panelRun2.SetColumnSpan(this.btnLoadRaceBox2, 3);
+            this.topButtonPanel.Controls.Add(panelRun2);
+            this.topButtonPanel.Controls.Add(Spacer());
+
+
+            // === Run 3 Buttons ===
+            this.btnLoadRun3.Text = "Load Run 3";
+            this.btnToggleRun3.Text = "Hide";
+            this.btnDeleteRun3.Text = "Delete";
+            this.btnLoadRaceBox3.Text = "Load RaceBox 3";
+
+            this.btnLoadRun3.AutoSize = true;
+            this.btnToggleRun3.AutoSize = true;
+            this.btnDeleteRun3.AutoSize = true;
+            this.btnLoadRaceBox3.AutoSize = true;
+
+            this.btnLoadRun3.Click += new System.EventHandler(this.LoadRun3Button_Click);
+            this.btnToggleRun3.Click += new System.EventHandler(this.ToggleRun3Button_Click);
+            this.btnDeleteRun3.Click += new System.EventHandler(this.DeleteRun3Button_Click);
+            this.btnLoadRaceBox3.Click += new System.EventHandler(this.LoadRaceBox3Button_Click);
+
+            // === Run 3 Panel ===
+            var panelRun3 = new TableLayoutPanel();
+            panelRun3.ColumnCount = 3;
+            panelRun3.RowCount = 2;
+            panelRun3.AutoSize = true;
+            panelRun3.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            panelRun3.Margin = new Padding(6);
+            panelRun3.Padding = new Padding(4);
+            panelRun3.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            panelRun3.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            panelRun3.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            panelRun3.Controls.Add(this.btnLoadRun3, 0, 0);
+            panelRun3.Controls.Add(this.btnToggleRun3, 1, 0);
+            panelRun3.Controls.Add(this.btnDeleteRun3, 2, 0);
+            panelRun3.Controls.Add(this.btnLoadRaceBox3, 0, 1);
+            panelRun3.SetColumnSpan(this.btnLoadRaceBox3, 3);
+            this.topButtonPanel.Controls.Add(panelRun3);
+
+
+            //---------------------------------------
             // === FormsPlot ===
             this.formsPlot1.Dock = System.Windows.Forms.DockStyle.Fill;
             this.formsPlot1.Location = new System.Drawing.Point(0, 0);
