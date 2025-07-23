@@ -3,6 +3,8 @@ using CastleOverlayV2.Models;
 using CastleOverlayV2.Plot;
 using CastleOverlayV2.Services;
 using System.Reflection;
+using CastleOverlayV2.Services;
+using CastleOverlayV2.Models;
 
 
 namespace CastleOverlayV2
@@ -286,8 +288,99 @@ namespace CastleOverlayV2
         /// <summary>
         /// ✅ Load RaceBox CSV for Run 1 slot
         /// </summary>
-        private void LoadRaceBox1Button_Click(object sender, EventArgs e)
+        private async void LoadRaceBox1Button_Click(object sender, EventArgs e)
+        {
+            Logger.Log("RaceBox Load Button Clicked — Slot 1");
+
+            var path = GetCsvFilePath();
+            if (path == null) return;
+
+            Logger.Log("Opening file picker...");
+            Logger.Log($"Selected file: {path}");
+
+            var rbData = RaceBoxLoader.LoadHeaderOnly(path);
+            if (rbData.FirstCompleteRunIndex == null)
+            {
+                MessageBox.Show("No complete run found in this RaceBox file.");
+                return;
+            }
+
+            Logger.Log($"Header loaded: {rbData.RunCount} runs found, FirstCompleteRun = {rbData.FirstCompleteRunIndex + 1}");
+            Logger.Log("Parsing RaceBox telemetry for Slot 1...");
+
+            var loader = new RaceBoxLoader();
+
+            Logger.Log("[MainForm] Calling RaceBoxLoader.LoadTelemetry(...) now...");
+            var points = await Task.Run(() =>
+                loader.LoadTelemetry(path, rbData.FirstCompleteRunIndex.Value)
+            );
+            Logger.Log("[MainForm] LoadTelemetry() returned successfully");
+
+            Logger.Log($"📈 RaceBox telemetry parsed: {points.Count} rows for Slot 1");
+
+            // ✅ Record number range logging
+            int firstRecord = points.First().Record;
+            int lastRecord = points.Last().Record;
+            Logger.Log($"📌 RaceBox Record range used for Slot 1: {firstRecord} → {lastRecord}");
+
+            raceBox1 = rbData;
+            Logger.Log($"✅ RaceBox 1 loaded. RunCount = {rbData.RunCount}, FirstCompleteRun = {rbData.FirstCompleteRunIndex + 1}");
+
+
+            // === ✅ Convert RaceBox points into RunData for plotting ===
+            var run = new RunData();
+            run.IsRaceBox = true;
+            run.FileName = Path.GetFileName(path);
+
+            // ✅ Store Castle-style DataPoints into per-channel dictionary
+            run.Data["RaceBox Speed"] = points.Select(p => new DataPoint
+            {
+                Time = p.Time.TotalSeconds,
+                Y = p.SpeedMph
+            }).ToList();
+
+            run.Data["RaceBox G-Force X"] = points.Select(p => new DataPoint
+            {
+                Time = p.Time.TotalSeconds,
+                Y = p.GForceX
+            }).ToList();
+
+            // ✅ REQUIRED: Populate dummy DataPoints list so plot manager doesn't skip it
+            run.DataPoints = points.Select(p => new DataPoint
+            {
+                Time = p.Time.TotalSeconds
+            }).ToList();
+
+            //---------------------------------------------
+
+            // === ✅ Assign to Run Slot 1 and plot ===
+            run1 = run;
+
+            Logger.Log($"✅ Run1 channels: {string.Join(", ", run.Data.Keys)}");
+
+            if (run.Data.TryGetValue("RaceBox Speed", out var speedPoints))
+                Logger.Log($"✅ Run1 point count (Speed): {speedPoints.Count}");
+
+            if (run.Data.TryGetValue("RaceBox G-Force X", out var gxPoints))
+                Logger.Log($"✅ Run1 point count (G-Force X): {gxPoints.Count}");
+
+            _plotManager.PlotRuns(new Dictionary<int, RunData>
+            {
+                [1] = run1,
+                [2] = run2,
+                [3] = run3
+            });
+        }
+
+
+
+        /// <summary>
+        /// ✅ Load RaceBox CSV for Run 2 slot
+        /// </summary>
+        private void LoadRaceBox2Button_Click(object sender, EventArgs e)
 {
+    Logger.Log("RaceBox Load Button Clicked — Slot 2");
+
     var path = GetCsvFilePath();
     if (path == null) return;
 
@@ -298,34 +391,23 @@ namespace CastleOverlayV2
         return;
     }
 
-    raceBox1 = rbData;
-    Logger.Log($"RaceBox 1 loaded. RunCount = {rbData.RunCount}, FirstCompleteRun = {rbData.FirstCompleteRunIndex + 1}");
-}
-
-/// <summary>
-/// ✅ Load RaceBox CSV for Run 2 slot
-/// </summary>
-private void LoadRaceBox2Button_Click(object sender, EventArgs e)
-{
-    var path = GetCsvFilePath();
-    if (path == null) return;
-
-    var rbData = RaceBoxLoader.LoadHeaderOnly(path);
-    if (rbData.FirstCompleteRunIndex == null)
-    {
-        MessageBox.Show("No complete run found in this RaceBox file.");
-        return;
-    }
+    Logger.Log("Parsing RaceBox telemetry for Slot 2...");
+            var loader = new RaceBoxLoader();
+            var points = loader.LoadTelemetry(path, rbData.FirstCompleteRunIndex.Value);
+            Logger.Log($"RaceBox telemetry parsed: {points.Count} rows for Slot 2");
 
     raceBox2 = rbData;
     Logger.Log($"RaceBox 2 loaded. RunCount = {rbData.RunCount}, FirstCompleteRun = {rbData.FirstCompleteRunIndex + 1}");
 }
+
 
 /// <summary>
 /// ✅ Load RaceBox CSV for Run 3 slot
 /// </summary>
 private void LoadRaceBox3Button_Click(object sender, EventArgs e)
 {
+    Logger.Log("RaceBox Load Button Clicked — Slot 3");
+
     var path = GetCsvFilePath();
     if (path == null) return;
 
@@ -336,24 +418,45 @@ private void LoadRaceBox3Button_Click(object sender, EventArgs e)
         return;
     }
 
+    Logger.Log("Parsing RaceBox telemetry for Slot 3...");
+            var loader = new RaceBoxLoader();
+            var points = loader.LoadTelemetry(path, rbData.FirstCompleteRunIndex.Value);
+            Logger.Log($"RaceBox telemetry parsed: {points.Count} rows for Slot 3");
+
     raceBox3 = rbData;
     Logger.Log($"RaceBox 3 loaded. RunCount = {rbData.RunCount}, FirstCompleteRun = {rbData.FirstCompleteRunIndex + 1}");
 }
 
 
+
         /// <summary>
         /// ✅ Helper: OpenFileDialog logic
         /// </summary>
-        private string GetCsvFilePath()
+       private string GetCsvFilePath()
+{
+    Logger.Log("Opening file picker...");
+
+    using (var ofd = new OpenFileDialog())
+    {
+        ofd.Title = "Select RaceBox CSV file";
+        ofd.Filter = "CSV files (*.csv)|*.csv|All files (*.*)|*.*";
+
+        var result = ofd.ShowDialog();
+        Logger.Log($"File dialog result: {result}");
+
+        if (result == DialogResult.OK)
         {
-            using (var openFileDialog = new OpenFileDialog())
-            {
-                openFileDialog.Filter = "CSV files (*.csv)|*.csv";
-                if (openFileDialog.ShowDialog() == DialogResult.OK)
-                    return openFileDialog.FileName;
-            }
+            Logger.Log($"Selected file: {ofd.FileName}");
+            return ofd.FileName;
+        }
+        else
+        {
+            Logger.Log("No file selected.");
             return null;
         }
+    }
+}
+
 
         /// <summary>
         /// ✅ Helper: Collect non-null runs and plot all

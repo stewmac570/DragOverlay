@@ -1665,4 +1665,151 @@ Channel visibility and run visibility combine correctly to control plot display 
 Overall plot refresh and UI stay consistent with user actions.
 ---------------------------------------------------------
 
+✅ Dev Log Summary — 2025-07-23
+Feature: RaceBox Integration – Stage 1
+Branch: feature/racebox-header-load
 
+🔧 Work Completed:
+MainForm + MainForm.Designer Integration
+
+Added three new buttons: btnLoadRaceBox1, btnLoadRaceBox2, btnLoadRaceBox3
+
+Connected each to its corresponding click handler:
+
+LoadRaceBox1Button_Click
+
+LoadRaceBox2Button_Click
+
+LoadRaceBox3Button_Click
+
+Each handler loads metadata from a RaceBox CSV file using RaceBoxLoader.LoadHeaderOnly(...)
+
+Telemetry loading (via LoadTelemetry(...)) is logged but not yet plotted (Stage 1 = header only)
+
+🧱 UI Layout Refactor:
+Replaced flat FlowLayoutPanel button layout with grouped TableLayoutPanel blocks per run:
+
+Each run block now includes Load Run, Toggle, Delete, and Load RaceBox button
+
+Visual layout now matches Castle Link 2 format with clean button groupings and spacing
+
+🪛 Fixes & Debug:
+Fixed duplication error: btnLoadRaceBoxX was defined twice in MainForm and MainForm.Designer, causing ambiguity
+
+Cleaned up button initialization to ensure .Text, .AutoSize, and .Click are assigned only after each button is properly constructed with new Button()
+
+✅ Status:
+RaceBox buttons load headers and telemetry correctly (log only)
+
+No UI crashes or duplicated references
+
+Fully integrated into existing MainForm UI and structure
+
+--------------------------------------------------------------------------------------
+
+🧱 Feature: RaceBox Integration — Stage 2
+📅 Date: 2025-07-23
+🔧 Work Completed:
+
+✅ UI fix for btnLoadRaceBox1/2/3 — resolved ambiguity and field duplication issues in MainForm.Designer.cs and InitializeComponent().
+
+✅ Confirmed correct button layout and visibility for all 3 run slots.
+
+✅ Debugged app hang when loading RaceBox CSV:
+
+Identified that the freeze occurs during telemetry loading (LoadTelemetry).
+
+Confirmed cause is unbounded CSV parsing (no column limit, no row caps).
+
+Verified the issue is within scope of RaceBox Integration Stage 2 (per project feature file).
+
+🧠 Decision: Next step is to add column safety, header validation, and memory protection to RaceBoxLoader.cs under current stage.
+------------------------------------------------------------------------------------------------
+✅ Development Log — 23 July 2025
+Feature: Stage 2 — RaceBox Telemetry Loader
+Branch: feature/racebox-loader-stage-2
+
+Work Completed:
+
+Added detailed logging to RaceBoxLoader.LoadHeaderOnly():
+
+Logs when parsing starts and how many CSV rows were read.
+
+Detects number of runs and discipline types.
+
+Logs all headers found in the telemetry section.
+
+Fixed logic to correctly identify the first complete run:
+
+A complete run is now defined as a Run X times line containing no zero values.
+
+Correctly identifies Run 2 as the first complete run in test file.
+
+Added debug logging to RaceBoxLoader.LoadTelemetry():
+
+Row count, timestamps, speed, and G-force per point.
+
+Header index validation and telemetry filtering based on run number.
+
+Validated entire pipeline with known-good RaceBox CSV.
+
+Confirmed FirstCompleteRunIndex = 2.
+
+Confirmed 768 points parsed successfully for Run 2.
+
+Status:
+
+Header and telemetry parsing is now fully functional and debug-friendly.
+
+Ready to begin visual plotting and RunData mapping.
+----------------------------------------------------
+RaceBox Integration — Telemetry Loading and Plot Prep
+Feature: RaceBox Stage 2 — Telemetry Plotting
+Chat Date: 23 July 2025
+Git Branch: feature/plot-racebox-telemetry
+
+🔧 Changes Implemented
+✅ RaceBoxPoint Model Updated
+
+Added new field: Record
+
+Purpose: Tracks exact row number from CSV for each point
+
+✅ LoadTelemetry Updated (RaceBoxLoader.cs)
+
+Parses Record from column 0
+
+Converts Speed from m/s → mph
+
+Logs every 100th point for traceability
+
+Caps headers correctly at actual count (not 100 dummy values)
+
+Confirmed header row parsing correctly (14 headers detected)
+
+✅ Record Range Logging Added
+
+After parsing points, logs:
+
+mathematica
+Copy
+Edit
+📌 RaceBox Record range used for Slot 1: [First] → [Last]
+🛠 Fixes to Header Reading
+
+Bug fixed where 100+ blank headers were being logged
+
+Logic now properly detects real header count
+
+✅ Verified Matching Run Data
+
+Confirmed that run filtering works (e.g., Run 2 = Records 769–954)
+
+Verified correct subset of data is being parsed for each run
+
+⚠️ Next Actions
+Plot not showing → Investigating PlotManager.SetRunData() and PlotAllRuns() flow
+
+Likely issue: channel name mismatch ("RaceBox Speed" vs "Speed")
+
+Will resolve in next step by normalizing channel keys

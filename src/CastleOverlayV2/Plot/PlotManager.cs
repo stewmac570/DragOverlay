@@ -3,13 +3,17 @@ using CastleOverlayV2.Services;
 using CastleOverlayV2.Utils;
 using ScottPlot;
 using ScottPlot.AxisRules;
-using ScottPlot.Colormaps;
 using ScottPlot.Plottables;
 using ScottPlot.WinForms;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Channels;
 using System.Windows.Forms;
+
+
+
+
 
 
 namespace CastleOverlayV2.Plot
@@ -47,6 +51,11 @@ namespace CastleOverlayV2.Plot
         private readonly Dictionary<int, RunData> _runsBySlot = new();
         public IReadOnlyDictionary<int, RunData> Runs => _runsBySlot;
 
+        private IAxis raceBoxSpeedAxis;
+        private IAxis raceBoxGxAxis;
+
+
+
         // ✅ Per-channel scale factors (Phase 5.1 — hardcoded)
         private readonly Dictionary<string, double> _channelScales = new()
         {
@@ -78,6 +87,31 @@ namespace CastleOverlayV2.Plot
         /// </summary>
         public void PlotRuns(Dictionary<int, RunData> runsBySlot)
         {
+            Logger.Log("📊 PlotRuns() — ENTERED");
+
+            if (runsBySlot == null || runsBySlot.Count == 0)
+            {
+                Logger.Log("❌ PlotRuns() — runsBySlot is null or empty");
+                return;
+            }
+
+            Logger.Log($"📊 PlotRuns() — Total loaded slots: {runsBySlot.Count}");
+
+            foreach (var kvp in runsBySlot)
+            {
+                int slot = kvp.Key;
+                RunData run = kvp.Value;
+
+                if (run == null)
+                {
+                    Logger.Log($"⚠️  Slot {slot} → run is null");
+                    continue;
+                }
+
+                int pointCount = run.DataPoints?.Count ?? 0;
+                Logger.Log($"   • Slot {slot} — {pointCount} points");
+            }
+
             Logger.Log("📊 PlotRuns() — Current channel visibility map:");
             foreach (var kvp in _channelVisibility)
             {
@@ -85,39 +119,51 @@ namespace CastleOverlayV2.Plot
             }
 
             // ✅ Reset visibility for each loaded run using run object as key
-            // Only add new runs — do NOT reset visibility
             foreach (var kvp in runsBySlot)
             {
                 int slot = kvp.Key;
                 RunData run = kvp.Value;
 
-                if (run == null || run.DataPoints.Count == 0)
+                if (run == null || (run.DataPoints.Count == 0 && !run.IsRaceBox))
                     continue;
+
 
                 if (!_runVisibility.ContainsKey(slot))
                     _runVisibility[slot] = true;
             }
 
-            // Insert the single line below:
             LogVisibilityStates();
 
 
 
-            // === ✅ SAFETY CHECK ===
-            if (runsBySlot == null || runsBySlot.Count == 0 || runsBySlot.All(kvp => kvp.Value == null || kvp.Value.DataPoints.Count == 0))
 
+            // ✅ Force-enable RaceBox channels if not in visibility map yet
+            _channelVisibility.TryAdd("RaceBox Speed", true);
+            _channelVisibility.TryAdd("RaceBox G-Force X", true);
+
+            Logger.Log("🔍 Current Run Visibility States:");
+            foreach (var kvp in _runVisibility)
+                Logger.Log($"   • Slot {kvp.Key}: {(kvp.Value ? "Visible" : "Hidden")}");
+
+            Logger.Log("🔍 Current Channel Visibility States:");
+            foreach (var kvp in _channelVisibility)
+                Logger.Log($"   • Channel '{kvp.Key}': {(kvp.Value ? "Visible" : "Hidden")}");
+
+
+            // === ✅ SAFETY CHECK ===
+            if (runsBySlot == null || runsBySlot.Count == 0 ||
+                runsBySlot.All(kvp =>
+                    kvp.Value == null ||
+                    (kvp.Value.DataPoints.Count == 0 && !kvp.Value.IsRaceBox)
+                ))
             {
                 ResetEmptyPlot();
                 return;
             }
 
+
             if (runsBySlot == null || runsBySlot.Count == 0)
                 throw new ArgumentException("No runs to plot.");
-
-
-
-
-
 
             // === ✅ CLEAN RESET ===
             _plot.Plot.Clear();
@@ -258,8 +304,34 @@ namespace CastleOverlayV2.Plot
             accelAxis.MajorTickStyle.Length = 0;
             accelAxis.MinorTickStyle.Length = 0;
             accelAxis.FrameLineStyle.Width = 0;
-            //-----------------------------------------------------------//
 
+            //-----------------------------------------------------------//
+            // === Y AXIS: RaceBox Speed (mph) ===
+            //-----------------------------------------------------------//
+            // === Y AXIS: RaceBox Speed (mph) ===
+            raceBoxSpeedAxis = _plot.Plot.Axes.AddRightAxis();
+            raceBoxSpeedAxis.Label.Text = "Speed (mph)";
+            _plot.Plot.Axes.Rules.Add(new LockedVertical((IYAxis)raceBoxSpeedAxis, 0, 150));
+            raceBoxSpeedAxis.Label.IsVisible = false;
+            raceBoxSpeedAxis.TickLabelStyle.IsVisible = false;
+            raceBoxSpeedAxis.MajorTickStyle.Length = 0;
+            raceBoxSpeedAxis.MinorTickStyle.Length = 0;
+            raceBoxSpeedAxis.FrameLineStyle.Width = 0;
+
+            // === Y AXIS: RaceBox G-Force X (g) ===
+            raceBoxGxAxis = _plot.Plot.Axes.AddRightAxis();
+            raceBoxGxAxis.Label.Text = "G-Force X (g)";
+            _plot.Plot.Axes.Rules.Add(new LockedVertical((IYAxis)raceBoxGxAxis, -1, 5));
+            raceBoxGxAxis.Label.IsVisible = false;
+            raceBoxGxAxis.TickLabelStyle.IsVisible = false;
+            raceBoxGxAxis.MajorTickStyle.Length = 0;
+            raceBoxGxAxis.MinorTickStyle.Length = 0;
+            raceBoxGxAxis.FrameLineStyle.Width = 0;
+
+
+
+
+            //-----------------------------------------------------------//
 
             // === ✅ PLOT ALL RUNS ===
             //-----------------------------------------------------------//
@@ -293,6 +365,7 @@ namespace CastleOverlayV2.Plot
 
                     if (_isFourPoleMode && channelLabel == "RPM")
                         ysToPlot = rawYs.Select(v => v * 0.5).ToArray();
+
 
 
                     // === ✅ Create the scatter plot for this channel ===
@@ -341,6 +414,7 @@ namespace CastleOverlayV2.Plot
                     // === ✅ Add scatter to lists for hover and toggle bar ===
                     _scatters.Add(scatter);
                     _rawYMap[scatter] = rawYs;  // store true raw values for hover
+
                 }
             }
 
@@ -361,6 +435,86 @@ namespace CastleOverlayV2.Plot
             // Optionally hide the legend (unless needed later)
             _plot.Plot.Legend.IsVisible = false;
 
+            foreach (var raceboxEntry in runsBySlot)
+            {
+                Logger.Log($"🔍 Entering RaceBox plot loop — Slot {raceboxEntry.Key}");
+
+                int raceboxSlot = raceboxEntry.Key;
+                RunData raceboxRun = raceboxEntry.Value;
+
+                if (raceboxRun == null || !raceboxRun.IsRaceBox)
+                    continue;
+
+                Logger.Log($"✅ RaceBox run confirmed for slot {raceboxSlot}");
+
+
+                var raceBoxChannels = new[] { "RaceBox Speed", "RaceBox G-Force X" };
+
+                foreach (var rbChannel in raceBoxChannels)
+                {
+                    if (!raceboxRun.Data.TryGetValue(rbChannel, out var rbPoints) || rbPoints.Count == 0)
+                    {
+                        Logger.Log($"❌ No data found for {rbChannel}");
+                        continue;
+                    }
+
+                    Logger.Log($"🔢 Raw point type = {rbPoints.FirstOrDefault()?.GetType().Name}, Count = {rbPoints.Count}");
+
+                    var rbTyped = rbPoints.OfType<CastleOverlayV2.Models.DataPoint>().ToList();
+
+                    if (rbTyped.Count == 0)
+                    {
+                        Logger.Log($"❌ RaceBox channel '{rbChannel}' has no valid DataPoints");
+                        continue;
+                    }
+
+
+                    double[] xsRb = rbTyped.Select(p => p.Time).ToArray();
+                    double[] ysRb = rbChannel switch
+                    {
+                        "RaceBox Speed" => rbTyped.Select(p => p.Y).ToArray(),
+                        "RaceBox G-Force X" => rbTyped.Select(p => p.Y).ToArray(),
+                        _ => Enumerable.Repeat(0.0, rbTyped.Count).ToArray()
+                    };
+
+
+                    Logger.Log($"✅ Sample Y values for {rbChannel}: {string.Join(", ", ysRb.Take(5))}");
+
+
+                    var rbScatter = _plot.Plot.Add.Scatter(xsRb, ysRb);
+                    Logger.Log($"[RaceBox] First 5 Y values for '{rbChannel}': {string.Join(", ", ysRb.Take(5))}");
+                    Logger.Log($"[RaceBox] Min = {ysRb.Min()}, Max = {ysRb.Max()}");
+
+
+                    rbScatter.Label = rbChannel;
+                    rbScatter.Color = ChannelColorMap.GetColor(rbChannel);
+                    rbScatter.LinePattern = LineStyleHelper.GetLinePattern(raceboxSlot - 1);
+                    rbScatter.LineWidth = (float)LineStyleHelper.GetLineWidth(raceboxSlot - 1);
+                    rbScatter.Axes.XAxis = xAxis;
+
+                    bool isRbChannelVisible = _channelVisibility.TryGetValue(rbChannel, out var visible) && visible;
+                    bool isRbRunVisible = _runVisibility.TryGetValue(raceboxSlot, out var slotVisible) && slotVisible;
+
+
+                    rbScatter.IsVisible = isRbChannelVisible && isRbRunVisible;
+
+                    Logger.Log($"📊 Plotting '{rbChannel}' → Run {raceboxSlot} → ChannelVisible={isRbChannelVisible}, RunVisible={isRbRunVisible}");
+                    Logger.Log($"    → Xs: {xsRb.Length} pts, Ys: {ysRb.Length} pts");
+
+                    // === Y-Axis Assignment (cast as needed for YAxis) ===
+                    if (rbChannel == "RaceBox Speed")
+                        rbScatter.Axes.YAxis = (IYAxis)raceBoxSpeedAxis;
+                    else if (rbChannel == "RaceBox G-Force X")
+                        rbScatter.Axes.YAxis = (IYAxis)raceBoxGxAxis;
+                    else
+                        rbScatter.Axes.YAxis = (IYAxis)throttleAxis;
+
+                    Logger.Log($"[RaceBox] Plotting: Slot {raceboxSlot}, Channel '{rbChannel}', Visible={rbScatter.IsVisible}");
+
+                    _scatters.Add(rbScatter);
+                    _rawYMap[rbScatter] = ysRb;
+                }
+            }
             // Refresh the plot with all changes
             _plot.Refresh();
 
