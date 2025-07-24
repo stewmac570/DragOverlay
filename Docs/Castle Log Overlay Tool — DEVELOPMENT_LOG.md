@@ -1813,3 +1813,123 @@ Plot not showing → Investigating PlotManager.SetRunData() and PlotAllRuns() fl
 Likely issue: channel name mismatch ("RaceBox Speed" vs "Speed")
 
 Will resolve in next step by normalizing channel keys
+
+-------------------------------------------------------------
+
+✅ RaceBox Integration — Stage 2 Complete
+Goal: Enable RaceBox log plotting with ScottPlot v5 using the existing plot framework.
+
+✔️ Data Model Changes
+Added IsRaceBox flag to RunData to distinguish between Castle and RaceBox logs.
+
+Used .Data[channel] dictionary to store RaceBox channels (Speed, G-Force X) as List<DataPoint>.
+
+✔️ Loader Implementation
+RaceBoxLoader.LoadTelemetry(...) returns raw telemetry as List<RaceBoxPoint>.
+
+Converted RaceBoxPoint to DataPoint for plotting:
+
+RaceBox Speed → Y = SpeedMph
+
+RaceBox G-Force X → Y = GForceX
+
+Added fallback .DataPoints list (X only) to satisfy plot logic.
+
+✔️ Plotting Integration
+Updated PlotRuns() to check IsRaceBox flag and branch into RaceBox plot loop.
+
+Added channel visibility setup for:
+
+RaceBox Speed
+
+RaceBox G-Force X
+
+Verified that data type checks and axis mappings work for RaceBox-derived DataPoint lists.
+
+✔️ Color Mapping
+Extended ChannelColorMap.cs with:
+
+csharp
+Copy
+Edit
+{ "RaceBox Speed", new ScottPlot.Color(0, 191, 255) }     // DeepSkyBlue
+{ "RaceBox G-Force X", new ScottPlot.Color(255, 140, 0) } // DarkOrange
+✔️ Validation
+Ran full import and plot of real RaceBox CSV (4 runs)
+
+Confirmed correct point count, visibility, and plotted line for:
+
+Slot 1 → RaceBox Speed, RaceBox G-Force X
+-------------------------------------------------------------------------------
+
+✅ Development Log — 0724T22:00 Refactor RaceBox Plotting & Blue Line Fix
+Goal:
+Resolve the persistent blue line (Throttle or RPM) appearing on the plot when loading RaceBox-only data, and refactor PlotRuns() to eliminate reliance on dummy DataPoints.
+
+Key Work Completed:
+
+🔍 Investigated root cause: blue line traced to Castle overlay logic incorrectly executing for RaceBox data due to fallback behavior in GetChannelsWithRaw() and reliance on run.DataPoints.
+
+📎 Reviewed full current version of PlotRuns() and confirmed hybrid logic is leading to unnecessary plot lines.
+
+✅ Identified and confirmed working logic in RaceBox loader that added dummy DataPoints to sidestep the issue.
+
+🧼 Agreed to cleanly refactor plotting instead of relying on the dummy workaround.
+
+🔀 Planned complete split of PlotRuns() into:
+
+PlotCastleRun() — for Castle logs
+
+PlotRaceBoxRun() — for RaceBox logs
+
+🧱 Defined a new SetupAllAxes() method to centralize axis definitions (shared by both Castle and RaceBox).
+
+📍 Logged current axis setup, visibility controls, scatter map usage, and cursor placement to ensure nothing is lost in the transition.
+
+Next Step:
+Use new chat to implement:
+
+PlotRuns() (split version)
+
+SetupAllAxes()
+
+PlotCastleRun()
+
+PlotRaceBoxRun()
+
+This will fully remove the need for dummy data and eliminate the blue ghost line from RaceBox-only plots while preserving all other functionality.
+
+-------------------------------------------------------------------------------
+🛠️ Stage 2 - RaceBox Integration
+Feature: Align and display RaceBox telemetry alongside Castle logs
+Branch: feature/racebox-stage-2-telemetry-align
+Build: 1.06
+Developer: Stewart
+
+✅ Work Completed
+Refactored PlotRuns() to prevent Castle plotting logic from running on RaceBox data:
+
+Split Castle vs RaceBox plotting paths
+
+Introduced run.IsRaceBox check early in loop
+
+Removed ghost/flat Castle lines (RPM, Voltage, etc.) being plotted with empty values
+
+RaceBox Plotting Now Clean:
+
+Only 2 channels (RaceBox Speed, RaceBox G-Force X) are plotted
+
+No extra Castle lines appear
+
+Toggle bar visibility map updated to respect RaceBox config settings
+
+Hover, axis locking, and auto-scaling preserved
+
+Tested with Castle-only, RaceBox-only, and both mixed
+
+🧪 Outcome
+All test cases passed
+
+First clean combined plot of Castle + RaceBox telemetry confirmed
+
+Let me know if you want me to bump the version, close out the feature branch, or prep the next Stage 3 log toggle UI.

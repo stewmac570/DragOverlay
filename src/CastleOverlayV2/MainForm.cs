@@ -111,6 +111,17 @@ namespace CastleOverlayV2
             _channelToggleBar.ChannelVisibilityChanged += OnChannelVisibilityChanged;
             _channelToggleBar.RpmModeChanged += OnRpmModeChanged;
             Controls.Add(_channelToggleBar);
+
+            // ✅ Inject any missing channels from config that weren't in original list
+            foreach (var kvp in config.ChannelVisibility)
+            {
+                if (!_channelToggleBar.GetChannelStates().ContainsKey(kvp.Key))
+                {
+                    Logger.Log($"🧩 Adding extra config channel to toggle bar: {kvp.Key} → {kvp.Value}");
+                    _channelToggleBar.AddChannel(kvp.Key, kvp.Value);
+                }
+            }
+
             // ✅ Apply saved RPM mode from config.json
             _isFourPoleMode = config.IsFourPoleMode;
             _plotManager.SetFourPoleMode(_isFourPoleMode);
@@ -357,6 +368,42 @@ namespace CastleOverlayV2
             run1 = run;
 
             Logger.Log($"✅ Run1 channels: {string.Join(", ", run.Data.Keys)}");
+
+            // === 🆕 Add RaceBox channels to toggle bar if missing ===
+            var addedChannels = false;
+
+            if (!_channelToggleBar.GetChannelStates().ContainsKey("RaceBox Speed"))
+            {
+                Logger.Log("🆕 Adding RaceBox Speed to toggle bar");
+                _channelToggleBar.AddChannel("RaceBox Speed", true);
+                addedChannels = true;
+            }
+            else
+            {
+                Logger.Log("ℹ️ RaceBox Speed already exists in toggle bar");
+            }
+
+            if (!_channelToggleBar.GetChannelStates().ContainsKey("RaceBox G-Force X"))
+            {
+                Logger.Log("🆕 Adding RaceBox G-Force X to toggle bar");
+                _channelToggleBar.AddChannel("RaceBox G-Force X", true);
+                addedChannels = true;
+            }
+            else
+            {
+                Logger.Log("ℹ️ RaceBox G-Force X already exists in toggle bar");
+            }
+
+            // === 🧽 Force layout refresh if we added new controls
+            if (addedChannels)
+            {
+                Logger.Log("🔄 Forcing layout refresh after adding RaceBox toggles");
+                _channelToggleBar.PerformLayout();
+                _channelToggleBar.Refresh();
+            }
+
+
+
 
             if (run.Data.TryGetValue("RaceBox Speed", out var speedPoints))
                 Logger.Log($"✅ Run1 point count (Speed): {speedPoints.Count}");
