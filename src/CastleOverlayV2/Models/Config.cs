@@ -15,7 +15,7 @@ namespace CastleOverlayV2.Models
 
         public bool EnableDebugLogging { get; set; } = false;
 
-        public string BuildNumber { get; set; } = "1.05";
+        public string BuildNumber { get; set; } = "1.06";
 
 
         public Config()
@@ -31,7 +31,9 @@ namespace CastleOverlayV2.Models
                 { "MotorTemp", true },
                 { "ESC Temp", true },
                 { "MotorTiming", true },
-                { "Acceleration", true }
+                { "Acceleration", true },
+                 { "RaceBox Speed", true },
+                 { "RaceBox G-Force X", true }
             };
         }
     }

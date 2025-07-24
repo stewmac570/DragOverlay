@@ -1,3 +1,4 @@
+using CastleOverlayV2.Services;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -12,6 +13,7 @@ namespace CastleOverlayV2.Controls
         public event Action<bool> RpmModeChanged;
 
         private readonly Dictionary<string, ChannelRow> _channelRows = new();
+        private TableLayoutPanel _layout;
 
         public ChannelToggleBar(List<string> channelNames, Dictionary<string, bool> initialStates)
         {
@@ -19,7 +21,14 @@ namespace CastleOverlayV2.Controls
             AutoSize = false;
             Height = 130;
 
-            var layout = new TableLayoutPanel
+            BuildLayout(channelNames, initialStates);
+        }
+
+        private void BuildLayout(List<string> channelNames, Dictionary<string, bool> initialStates)
+        {
+            Controls.Clear();
+
+            _layout = new TableLayoutPanel
             {
                 Dock = DockStyle.Fill,
                 ColumnCount = channelNames.Count,
@@ -30,9 +39,10 @@ namespace CastleOverlayV2.Controls
                 AutoSizeMode = AutoSizeMode.GrowAndShrink
             };
 
-            for (int i = 0; i < channelNames.Count; i++)
-                layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f / channelNames.Count));
+            _channelRows.Clear();
 
+            foreach (var _ in channelNames)
+                _layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f / channelNames.Count));
 
             foreach (var channel in channelNames)
             {
@@ -44,11 +54,13 @@ namespace CastleOverlayV2.Controls
                     row.RpmModeChanged += (is4P) => RpmModeChanged?.Invoke(is4P);
 
                 row.Margin = new Padding(8, 0, 8, 0);
-                layout.Controls.Add(row);
+                _layout.Controls.Add(row);
                 _channelRows[channel] = row;
             }
 
-            Controls.Add(layout);
+            Controls.Add(_layout);
+            PerformLayout();
+            Refresh();
         }
 
         private void OnToggleChanged(string channelName, bool isVisible)
@@ -68,6 +80,36 @@ namespace CastleOverlayV2.Controls
         public Dictionary<string, bool> GetChannelStates()
         {
             return _channelRows.ToDictionary(r => r.Key, r => r.Value.IsVisible);
+        }
+
+        public void AddChannel(string channelName, bool initialState)
+        {
+            Logger.Log($"📛 AddChannel called: {channelName}");
+
+            if (_channelRows.ContainsKey(channelName))
+                return;
+
+            Logger.Log($"🆕 ChannelToggleBar.AddChannel(): Injecting {channelName}");
+
+            var row = new ChannelRow(channelName, initialState);
+            row.ToggleChanged += OnToggleChanged;
+
+            if (channelName == "RPM")
+                row.RpmModeChanged += (is4P) => RpmModeChanged?.Invoke(is4P);
+
+            _channelRows[channelName] = row;
+
+            _layout.ColumnCount += 1;
+            _layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f / _layout.ColumnCount));
+
+            for (int i = 0; i < _layout.ColumnCount; i++)
+                _layout.ColumnStyles[i].Width = 100f / _layout.ColumnCount;
+
+            _layout.Controls.Add(row, _layout.ColumnCount - 1, 0);
+            _layout.PerformLayout();
+            _layout.Refresh();
+            PerformLayout();
+            Refresh();
         }
 
         /// <summary>
@@ -105,7 +147,6 @@ namespace CastleOverlayV2.Controls
                     Padding = new Padding(0)
                 };
 
-                // Row 0: Show/Hide button
                 _toggleButton = new Button
                 {
                     Text = IsVisible ? "Hide" : "Show",
@@ -123,7 +164,6 @@ namespace CastleOverlayV2.Controls
                 };
                 layout.Controls.Add(_toggleButton, 0, 0);
 
-                // Row 1: Channel name
                 var nameLabel = new Label
                 {
                     Text = channelName,
@@ -134,7 +174,6 @@ namespace CastleOverlayV2.Controls
                 };
                 layout.Controls.Add(nameLabel, 0, 1);
 
-                // Rows 2–4: Log 1–3 values
                 for (int i = 0; i < 3; i++)
                 {
                     var lbl = new Label
@@ -149,7 +188,6 @@ namespace CastleOverlayV2.Controls
                     layout.Controls.Add(lbl, 0, i + 2);
                 }
 
-                // Row 5: RPM toggle only
                 if (channelName == "RPM")
                 {
                     var rpmModeButton = new Button
@@ -171,35 +209,6 @@ namespace CastleOverlayV2.Controls
                 Controls.Add(layout);
             }
 
-            public void AddChannel(string channelName, bool initialState)
-{
-    if (_channelRows.ContainsKey(channelName))
-        return;
-
-    var row = new ChannelRow(channelName, initialState);
-    row.ToggleChanged += OnToggleChanged;
-
-    if (channelName == "RPM")
-        row.RpmModeChanged += (is4P) => RpmModeChanged?.Invoke(is4P);
-
-    _channelRows[channelName] = row;
-
-    if (Controls[0] is TableLayoutPanel layout)
-    {
-        layout.ColumnCount += 1;
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f / layout.ColumnCount));
-
-        // Reassign % to all columns for even spread
-        for (int i = 0; i < layout.ColumnCount; i++)
-            layout.ColumnStyles[i].Width = 100f / layout.ColumnCount;
-
-        layout.Controls.Add(row, layout.ColumnCount - 1, 0);
-        layout.Invalidate();
-        layout.PerformLayout();
-    }
-}
-
-
             public void UpdateValues(double?[] values)
             {
                 for (int i = 0; i < 3; i++)
@@ -207,7 +216,7 @@ namespace CastleOverlayV2.Controls
                     if (i < values.Length && values[i].HasValue)
                     {
                         if (ChannelName == "RPM")
-                            _valueLabels[i].Text = values[i].Value.ToString("N0"); // e.g. 64,800
+                            _valueLabels[i].Text = values[i].Value.ToString("N0");
                         else
                             _valueLabels[i].Text = values[i].Value.ToString("F2");
                     }
