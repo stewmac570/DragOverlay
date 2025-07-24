@@ -171,6 +171,35 @@ namespace CastleOverlayV2.Controls
                 Controls.Add(layout);
             }
 
+            public void AddChannel(string channelName, bool initialState)
+{
+    if (_channelRows.ContainsKey(channelName))
+        return;
+
+    var row = new ChannelRow(channelName, initialState);
+    row.ToggleChanged += OnToggleChanged;
+
+    if (channelName == "RPM")
+        row.RpmModeChanged += (is4P) => RpmModeChanged?.Invoke(is4P);
+
+    _channelRows[channelName] = row;
+
+    if (Controls[0] is TableLayoutPanel layout)
+    {
+        layout.ColumnCount += 1;
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f / layout.ColumnCount));
+
+        // Reassign % to all columns for even spread
+        for (int i = 0; i < layout.ColumnCount; i++)
+            layout.ColumnStyles[i].Width = 100f / layout.ColumnCount;
+
+        layout.Controls.Add(row, layout.ColumnCount - 1, 0);
+        layout.Invalidate();
+        layout.PerformLayout();
+    }
+}
+
+
             public void UpdateValues(double?[] values)
             {
                 for (int i = 0; i < 3; i++)
