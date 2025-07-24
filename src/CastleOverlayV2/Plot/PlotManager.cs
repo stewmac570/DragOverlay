@@ -85,8 +85,6 @@ namespace CastleOverlayV2.Plot
         };
 
 
-
-
         public PlotManager(FormsPlot plotControl)
         {
             _plot = plotControl ?? throw new ArgumentNullException(nameof(plotControl));
@@ -376,19 +374,19 @@ namespace CastleOverlayV2.Plot
             // === Acceleration Axis
             accelAxis = _plot.Plot.Axes.AddRightAxis();
             accelAxis.Label.Text = "Acceleration (g)";
-            _plot.Plot.Axes.Rules.Add(new LockedVertical(accelAxis, -5, 10));
+            _plot.Plot.Axes.Rules.Add(new LockedVertical(accelAxis, -5, 7));
             HideAxis(accelAxis);
 
             // === RaceBox Speed Axis
             raceBoxSpeedAxis = _plot.Plot.Axes.AddRightAxis();
             raceBoxSpeedAxis.Label.Text = "Speed (mph)";
-            _plot.Plot.Axes.Rules.Add(new LockedVertical((IYAxis)raceBoxSpeedAxis, 0, 150));
+            _plot.Plot.Axes.Rules.Add(new LockedVertical((IYAxis)raceBoxSpeedAxis, 0, 110));
             HideAxis(raceBoxSpeedAxis);
 
             // === RaceBox G-Force X Axis
             raceBoxGxAxis = _plot.Plot.Axes.AddRightAxis();
             raceBoxGxAxis.Label.Text = "G-Force X (g)";
-            _plot.Plot.Axes.Rules.Add(new LockedVertical((IYAxis)raceBoxGxAxis, -1, 5));
+            _plot.Plot.Axes.Rules.Add(new LockedVertical((IYAxis)raceBoxGxAxis, -5, 7));
             HideAxis(raceBoxGxAxis);
         }
 

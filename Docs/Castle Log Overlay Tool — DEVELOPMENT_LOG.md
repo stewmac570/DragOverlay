@@ -1933,3 +1933,45 @@ All test cases passed
 First clean combined plot of Castle + RaceBox telemetry confirmed
 
 Let me know if you want me to bump the version, close out the feature branch, or prep the next Stage 3 log toggle UI.
+
+--------------------------------------------------------------------
+✅ Dev Log Summary — RaceBox Overlay Stage 3B (Visual Sync and Line Styling)
+
+Branch: feature/racebox-stage-3b-line-sync
+Build: 1.06
+
+🆕 Feature: Dual Plot Support for Castle + RaceBox Logs
+Expanded support to 6 run slots total:
+
+Slots 1–3: Castle logs
+
+Slots 4–6: RaceBox logs (aligned to corresponding Castle slots)
+
+🛠️ UI Changes
+PlotAllRuns() updated to include run4, run5, and run6 in the run dictionary.
+
+Log output extended to show all 6 slot counts for debugging.
+
+📈 PlotManager Updates
+PlotRuns() now handles up to 6 slots and keeps Castle/RaceBox pairs visually grouped.
+
+PlotRaceBoxRun() correctly maps slot index to shared line styling.
+
+🎨 LineStyleHelper Updated
+GetLinePattern() and GetLineWidth() updated to support 6 patterns:
+
+Solid (1 + RaceBox 1)
+
+Dashed (2 + RaceBox 2)
+
+Dotted (3 + RaceBox 3)
+
+Ensures matching visual identity between Castle and RaceBox data for each pair.
+
+🧪 Confirmed Working:
+All 3 Castle runs + all 3 RaceBox logs show simultaneously, with correct color + line type.
+
+Cursor hover and toggle bar values reflect all 6 correctly.
+
+Logs display independently or in combination.
+---------------------------------------------------------------
