@@ -358,6 +358,10 @@ namespace CastleOverlayV2
 
             Logger.Log($"✅ Run1 channels: {string.Join(", ", run.Data.Keys)}");
 
+            _channelToggleBar.AddChannel("RaceBox Speed", true);
+            _channelToggleBar.AddChannel("RaceBox G-Force X", true);
+
+
             if (run.Data.TryGetValue("RaceBox Speed", out var speedPoints))
                 Logger.Log($"✅ Run1 point count (Speed): {speedPoints.Count}");
 
