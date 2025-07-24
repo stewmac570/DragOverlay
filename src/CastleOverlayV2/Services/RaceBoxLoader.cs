@@ -132,8 +132,26 @@ namespace CastleOverlayV2.Services
 
                 Logger.Log($"[RaceBoxLoader] Load complete — {points.Count} points loaded.");
             }
+            // === Auto-trim: detect drag launch and clip to ±2.5s ===
+            int launchIndex = DetectRaceBoxLaunchIndex(points);
+            double t0 = points[launchIndex].Time.TotalSeconds;
+            double tMin = t0 - 0.5;
+            double tMax = t0 + 2.5;
+
+            Logger.Log($"[RaceBoxLoader] Trimming to ±2.5s around launch (t0 = {t0:F2}s)...");
+
+            points = points
+                .Where(p => p.Time.TotalSeconds >= tMin && p.Time.TotalSeconds <= tMax)
+                .ToList();
+
+            // Shift timestamps so launch becomes t = 0
+            foreach (var p in points)
+                p.Time = TimeSpan.FromSeconds(p.Time.TotalSeconds - t0);
+
+            Logger.Log($"[RaceBoxLoader] Trimmed points: {points.Count}");
 
             return points;
+
         }
 
 
@@ -222,7 +240,31 @@ namespace CastleOverlayV2.Services
             }
             return -1;
         }
+        private static int DetectRaceBoxLaunchIndex(List<RaceBoxPoint> points)
+        {
+            for (int i = 0; i < points.Count - 6; i++)
+            {
+                double s0 = points[i].SpeedMph;
+                double s1 = points[i + 1].SpeedMph;
+                double s2 = points[i + 2].SpeedMph;
+                double s3 = points[i + 3].SpeedMph;
+                double s4 = points[i + 4].SpeedMph;
+                double s5 = points[i + 5].SpeedMph;
 
+                // Look for a smooth and rapid increase
+                if ((s1 - s0 > 0.2) &&
+                    (s2 - s1 > 0.2) &&
+                    (s3 - s2 > 0.2) &&
+                    (s4 - s3 > 0.2) &&
+                    (s5 - s4 > 0.2))
+                {
+                    Logger.Log($"[RaceBoxLoader] Launch detected at row {i} — Speed rising from {s0:F2} to {s5:F2} mph");
+                    return i;
+                }
+            }
 
+            Logger.Log("[RaceBoxLoader] No launch point detected — fallback to first row.");
+            return 0;
+        }
     }
 }

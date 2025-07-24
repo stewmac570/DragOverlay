@@ -258,8 +258,5 @@ if (triggerScore >= 3)
             return trimmed;
         }
 
-
-
-
     }
 }

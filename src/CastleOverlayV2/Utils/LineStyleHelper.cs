@@ -18,11 +18,12 @@
         {
             return index switch
             {
-                0 => ScottPlot.LinePattern.Solid,
-                1 => ScottPlot.LinePattern.Dashed,
-                2 => ScottPlot.LinePattern.Dotted,
+                0 or 3 => ScottPlot.LinePattern.Solid,    // Run 1 and RaceBox 1
+                1 or 4 => ScottPlot.LinePattern.Dashed,   // Run 2 and RaceBox 2
+                2 or 5 => ScottPlot.LinePattern.Dotted,   // Run 3 and RaceBox 3
                 _ => ScottPlot.LinePattern.Solid
             };
+
         }
     }
 }
