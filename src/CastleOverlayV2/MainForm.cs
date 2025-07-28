@@ -1,4 +1,4 @@
-﻿using CastleOverlayV2.Controls;
+using CastleOverlayV2.Controls;
 using CastleOverlayV2.Models;
 using CastleOverlayV2.Models;
 using CastleOverlayV2.Plot;
