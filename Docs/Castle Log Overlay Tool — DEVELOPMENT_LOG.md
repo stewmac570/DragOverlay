@@ -1975,3 +1975,124 @@ Cursor hover and toggle bar values reflect all 6 correctly.
 
 Logs display independently or in combination.
 ---------------------------------------------------------------
+✅ RaceBox Integration — Button Wiring + UI Sync (Stage 3A Complete)
+MainForm.cs
+
+Implemented logic for LoadRaceBox1Button_Click, ToggleRaceBox1Button_Click, and DeleteRaceBox1Button_Click
+
+Ensured run4 (RaceBox Slot 1) is plotted using _plotManager.SetRun(4, ...)
+
+Registered new channels ("RaceBox Speed", "RaceBox G-Force X") into _channelToggleBar
+
+RaceBox data is now converted to Castle-style RunData and plotted alongside Castle runs
+
+MainForm.Designer.cs
+
+Added btnLoadRaceBox1, btnToggleRaceBox1, and btnDeleteRaceBox1
+
+Grouped RaceBox buttons into second row of panelRun1 alongside Run 1 buttons
+
+Enabled auto-sizing, layout, and docking for proper flow inside topButtonPanel
+
+Tested:
+
+✅ RaceBox Load button successfully opens file picker and parses telemetry
+
+✅ RaceBox Toggle/Hide button toggles visibility using slot 4
+
+✅ RaceBox Delete clears run4, disables buttons, and removes plot
+
++
+---------------------------------------------------------------
+
+ChatGPT said:
+✅ RaceBox Toggle + Delete Buttons — Stage 3 Summary
+Logged for Castle Log Overlay Tool V2 RaceBox_Integration_Feature.md
+
+🛠 Changes Implemented:
+1. Added Toggle + Delete Buttons for RaceBox 2 & 3
+Declared new controls in MainForm.Designer.cs:
+
+csharp
+Copy
+Edit
+private System.Windows.Forms.Button btnToggleRaceBox2;
+private System.Windows.Forms.Button btnDeleteRaceBox2;
+private System.Windows.Forms.Button btnToggleRaceBox3;
+private System.Windows.Forms.Button btnDeleteRaceBox3;
+Instantiated them in InitializeComponent() with:
+
+csharp
+Copy
+Edit
+this.btnToggleRaceBox2 = new Button();
+this.btnDeleteRaceBox2 = new Button();
+this.btnToggleRaceBox3 = new Button();
+this.btnDeleteRaceBox3 = new Button();
+2. Wired Up Button UI
+Assigned .Text, .AutoSize, and .Click += handlers for each new button
+
+Added them to the panelRun2 and panelRun3 layout blocks
+
+Used same layout structure as RaceBox1 buttons to ensure UI consistency
+
+3. Reused Unified DeleteRun() Logic
+Confirmed all RaceBox buttons (1–3) use slot numbers 4, 5, 6 respectively
+
+Deletion and visibility toggling fully handled by:
+
+csharp
+Copy
+Edit
+private void DeleteRun(int slot) { ... }
+private bool ToggleRunVisibility(int slot) { ... }
+4. Fixed NullReference Crash
+Identified missing new Button() instantiations in Designer.cs
+
+Added missing initialization to avoid runtime crash on button assignment
+
+✅ Result:
+All 3 RaceBox runs now support:
+
+Toggle visibility
+
+Delete and auto-refresh
+
+Slot mapping 1:1 with Castle logic
+
+-----------------------------------------------------------------
+
+✅ Dev Log Summary — 2025-07-25
+Feature: RaceBox Multi-Run Visibility Fix
+Branch: fix/racebox-visibility-slot
+Build: 1.06
+
+🐞 Problem:
+Only one RaceBox log would appear on the plot, even after loading multiple files.
+
+🔍 Root Cause:
+The _runVisibility dictionary was never updated for RaceBox slots — so only the first loaded slot (Slot 4) appeared. Later RaceBox logs (Slot 5/6) were silently hidden.
+
+✅ Fixes Applied:
+Moved _runVisibility[slot] = true above the if (run.IsRaceBox) check in PlotRuns(...)
+
+Ensured all runs, including RaceBox logs, are tracked in _runVisibility
+
+Verified that toggle buttons and plot visibility now reflect RaceBox Slot 5 and Slot 6 correctly
+
+Preserved Castle vs RaceBox path separation — no other logic changed
+
+🧪 Validated:
+Slot 4, 5, and 6 (RaceBox logs) now display properly
+
+Toggle buttons reflect correct visibility state
+
+Plot updates cleanly after RaceBox delete + reload
+
+Castle logs still unaffected
+
+✅ Outcome:
+RaceBox logs now support full multi-run overlay across Slots 4–6, with proper line styles, axis locking, and toggle visibility.
+Ready to close this bugfix and merge to develop.
+
+-----------------------------------------------------------------

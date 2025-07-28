@@ -1,8 +1,5 @@
 ﻿namespace CastleOverlayV2.Models
 {
-
-
-
     public class DataPoint
     {
         public double Time { get; set; }
