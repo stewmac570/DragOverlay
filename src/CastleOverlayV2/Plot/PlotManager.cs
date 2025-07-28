@@ -187,10 +187,11 @@ namespace CastleOverlayV2.Plot
                 if (run == null)
                     continue;
 
+                // ✅ Always ensure slot is in _runVisibility
                 if (!_runVisibility.ContainsKey(slot))
                     _runVisibility[slot] = true;
 
-                // ✅ Skip RaceBox runs — they will be plotted separately
+                // ✅ Skip Castle block if RaceBox
                 if (run.IsRaceBox)
                 {
                     Logger.Log($"✅ Skipping Castle plot loop for RaceBox run in slot {slot}");
@@ -201,17 +202,21 @@ namespace CastleOverlayV2.Plot
                     continue;
 
 
-                if (run == null || run.DataPoints.Count == 0)
-                    continue;
-
-                //-----------------------------------------------------------//
-                // === ✅ Extract X values (Time) for this run ===
-                double[] xs = run.DataPoints.Select(dp => dp.Time).ToArray();
+            //-----------------------------------------------------------//
+            // === ✅ Extract X values (Time) for this run ===
+            double[] xs = run.DataPoints.Select(dp => dp.Time).ToArray();
 
                 //-----------------------------------------------------------//
                 // === ✅ Loop through all channels (Throttle, RPM, Voltage, etc.) ===
                 foreach (var (channelLabel, rawYs, scaledYs) in GetChannelsWithRaw(run))
                 {
+
+                    if (channelLabel == "Motor Temp.")
+                    {
+                        Logger.Log($"🧪 Plotting Motor Temp — Count: {rawYs.Length}");
+                        Logger.Log($"   Values: {string.Join(", ", rawYs.Take(5))}");
+                    }
+
                     Logger.Log($"[Castle] Channel: {channelLabel}");
                     //-----------------------------------------------------------//
                     // === ✅ Always use the raw, real-unit data ===
@@ -224,10 +229,24 @@ namespace CastleOverlayV2.Plot
 
 
                     // === ✅ Create the scatter plot for this channel ===
-                    if (channelLabel == "Throttle") // 👈 Replace with the name of the blue line
-                        continue;
+                    //if (channelLabel == "Throttle") // 👈 Replace with the name of the blue line
+                        //continue;
                     Scatter scatter = _plot.Plot.Add.Scatter(xs, ysToPlot);
                     scatter.Label = channelLabel;
+
+                    if (channelLabel == "MotorTemp")
+                    {
+                        scatter.Color = ScottPlot.Colors.Magenta;
+                        scatter.LineWidth = 6;
+                    }
+
+                    if (channelLabel == "Acceleration")
+                    {
+                        Logger.Log($"🧪 Plotting Acceleration — Count: {rawYs.Length}");
+                        Logger.Log($"   Values: {string.Join(", ", rawYs.Take(5))}");
+                    }
+
+
                     scatter.Color = ChannelColorMap.GetColor(channelLabel);
                     scatter.LinePattern = LineStyleHelper.GetLinePattern(slot - 1);
                     scatter.LineWidth = (float)LineStyleHelper.GetLineWidth(slot - 1);
@@ -246,7 +265,7 @@ namespace CastleOverlayV2.Plot
                     if (channelLabel == "RPM") scatter.Axes.YAxis = rpmAxis;
                     else if (channelLabel == "Throttle") scatter.Axes.YAxis = throttleAxis;
                     else if (channelLabel == "Voltage") scatter.Axes.YAxis = voltageAxis;
-                    else if (channelLabel == "Current") scatter.Axes.YAxis = currentAxis;
+                    else if (channelLabel == "Current") scatter.Axes.YAxis = currentAxis;   
                     else if (channelLabel == "Ripple") scatter.Axes.YAxis = rippleAxis;
                     else if (channelLabel == "PowerOut") scatter.Axes.YAxis = powerAxis;
                     else if (channelLabel == "ESC Temp") scatter.Axes.YAxis = escTempAxis;
@@ -284,6 +303,13 @@ namespace CastleOverlayV2.Plot
             // DO NOT hide all axes globally — individual axes already styled (ticks/labels hidden as needed)
             // foreach (var axis in _plot.Plot.Axes.GetAxes())
             //     axis.IsVisible = false;
+            var yAxes = _plot.Plot.Axes.Left; // default primary axis
+            Logger.Log($"📏 Y-Axis Range: {yAxes.Range.Min} → {yAxes.Range.Max}");
+
+            Logger.Log("All visible plots:");
+            foreach (var s in _scatters.Where(s => s.IsVisible))
+                Logger.Log($"• {s.Label}, Points: {_rawYMap[s].Length}, Axis: {s.Axes.YAxis.Label.Text}");
+
 
             // Maintain consistent padding around the plot area
             PixelPadding padding = new(left: 40, right: 40, top: 10, bottom: 50);
@@ -308,9 +334,6 @@ namespace CastleOverlayV2.Plot
             // Refresh the plot with all changes
             _plot.Refresh();
          }
-
-        //-------------------------------------------------------------------------------------------------//
-
         //====================================================================================//
         private void SetupAllAxes()
         {
@@ -400,57 +423,7 @@ namespace CastleOverlayV2.Plot
         }
 
         //===============================================================================//
-        private void PlotCastleRun(int slot, RunData run)
-        {
-            if (run == null || run.DataPoints.Count == 0)
-                return;
-
-            double[] xs = run.DataPoints.Select(dp => dp.Time).ToArray();
-
-            foreach (var (channelLabel, rawYs, scaledYs) in GetChannelsWithRaw(run))
-            {
-                double[] ysToPlot = rawYs;
-
-                if (_isFourPoleMode && channelLabel == "RPM")
-                    ysToPlot = rawYs.Select(v => v * 0.5).ToArray();
-
-                if (channelLabel == "Throttle")
-                    continue;
-
-                var scatter = _plot.Plot.Add.Scatter(xs, ysToPlot);
-                scatter.Label = channelLabel;
-                scatter.Color = ChannelColorMap.GetColor(channelLabel);
-                scatter.LinePattern = LineStyleHelper.GetLinePattern(slot - 1);
-                scatter.LineWidth = (float)LineStyleHelper.GetLineWidth(slot - 1);
-                scatter.Axes.XAxis = _plot.Plot.Axes.Bottom; // time axis
-                _scatterSlotMap[scatter] = slot;
-
-                bool isChannelVisible = _channelVisibility.TryGetValue(channelLabel, out var chanVis) ? chanVis : true;
-                bool isRunVisible = _runVisibility.TryGetValue(slot, out var runVis) ? runVis : true;
-
-                scatter.IsVisible = isChannelVisible && isRunVisible;
-
-                // Assign axis by channel name
-                if (channelLabel == "RPM") scatter.Axes.YAxis = rpmAxis;
-                else if (channelLabel == "Voltage") scatter.Axes.YAxis = voltageAxis;
-                else if (channelLabel == "Current") scatter.Axes.YAxis = currentAxis;
-                else if (channelLabel == "Ripple") scatter.Axes.YAxis = rippleAxis;
-                else if (channelLabel == "PowerOut") scatter.Axes.YAxis = powerAxis;
-                else if (channelLabel == "ESC Temp") scatter.Axes.YAxis = escTempAxis;
-                else if (channelLabel == "MotorTemp") scatter.Axes.YAxis = motorTempAxis;
-                else if (channelLabel == "MotorTiming") scatter.Axes.YAxis = motorTimingAxis;
-                else if (channelLabel == "Acceleration") scatter.Axes.YAxis = accelAxis;
-                else scatter.Axes.YAxis = throttleAxis; // fallback
-
-                Logger.Log($"Plotting scatter: Run Slot {slot}, Channel '{channelLabel}', Visible={scatter.IsVisible}");
-
-                _scatters.Add(scatter);
-                _rawYMap[scatter] = rawYs;
-            }
-        }
-
-        //===============================================================================//
-        private void PlotRaceBoxRun(int slot, RunData run)
+         private void PlotRaceBoxRun(int slot, RunData run)
         {
             if (run == null || !run.IsRaceBox)
                 return;
@@ -489,6 +462,7 @@ namespace CastleOverlayV2.Plot
                 Logger.Log($"✅ Sample Y values for {rbChannel}: {string.Join(", ", ys.Take(5))}");
 
                 var scatter = _plot.Plot.Add.Scatter(xs, ys);
+                _scatterSlotMap[scatter] = slot; // ✅ REQUIRED for toggling and delete to work
                 scatter.Label = rbChannel;
                 scatter.Color = ChannelColorMap.GetColor(rbChannel);
                 scatter.LinePattern = LineStyleHelper.GetLinePattern(slot - 1);
@@ -514,10 +488,7 @@ namespace CastleOverlayV2.Plot
             }
         }
 
-
-
-
-        //===============================================================================//
+         //===============================================================================//
 
         /// <summary>
         /// Single run fallback.
@@ -637,9 +608,21 @@ namespace CastleOverlayV2.Plot
             yield return ("Ripple", GetRaw(dp => dp.Ripple), GetRaw(dp => dp.Ripple));
             yield return ("PowerOut", GetRaw(dp => dp.PowerOut), GetRaw(dp => dp.PowerOut));
             yield return ("ESC Temp", GetRaw(dp => dp.Temperature), GetRaw(dp => dp.Temperature));
+
+            if (run.DataPoints.Count > 0)
+            {
+                var temps = run.DataPoints.Select(dp => dp.MotorTemp).Take(10).ToArray();
+                Logger.Log($"🧪 Sample MotorTemp values: {string.Join(", ", temps)}");
+            }
+
+
             yield return ("MotorTemp", GetRaw(dp => dp.MotorTemp), GetRaw(dp => dp.MotorTemp));
             yield return ("MotorTiming", GetRaw(dp => dp.MotorTiming), GetRaw(dp => dp.MotorTiming));
-            yield return ("Acceleration", GetRaw(dp => dp.Acceleration), GetRaw(dp => dp.Acceleration));
+
+            var accelValues = GetRaw(dp => dp.Acceleration);
+            Logger.Log($"🧪 GetChannelsWithRaw(): Acceleration sample = {string.Join(", ", accelValues.Take(5))}");
+            yield return ("Acceleration", accelValues, accelValues);
+
         }
 
 
@@ -788,9 +771,32 @@ namespace CastleOverlayV2.Plot
             Logger.Log($"SetRunVisibility: slot {slotIndex} set to {(isVisible ? "Visible" : "Hidden")}");
         }
 
-        public void SetRun(int slot, RunData run)
+public void SetRun(int slot, RunData run)
+{
+    _runsBySlot[slot] = run;
+    _runVisibility[slot] = run != null;
+
+    if (run == null)
+    {
+        Logger.Log($"🗑️ Clearing all scatters for deleted run in slot {slot}");
+
+        var toRemove = _scatterSlotMap
+            .Where(kvp => kvp.Value == slot)
+            .Select(kvp => kvp.Key)
+            .ToList();
+
+        foreach (var scatter in toRemove)
         {
-            _runsBySlot[slot] = run;
+            _plot.Plot.Remove(scatter);
+            _scatters.Remove(scatter);
+            _scatterSlotMap.Remove(scatter);
+            _rawYMap.Remove(scatter);
         }
+
+        Logger.Log($"🧼 Removed {toRemove.Count} scatters from slot {slot}");
+    }
+}
+
+
     }
 }

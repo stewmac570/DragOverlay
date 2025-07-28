@@ -84,10 +84,12 @@ namespace CastleOverlayV2.Services
                 {
                     csv.Read();
                     csv.ReadHeader();
+                    Logger.Log("[DEBUG] Available CSV Headers: " + string.Join(", ", csv.HeaderRecord)); // ✅ Add this
                     log?.WriteLine($"Header: {string.Join(", ", csv.HeaderRecord)}");
 
                     csv.Read(); // skip flags row
                     log?.WriteLine("Skipped flags row.");
+
 
                     int rowIndex = 0;
                     int rowMax = 10000;
@@ -125,9 +127,12 @@ namespace CastleOverlayV2.Services
                         // ✅ Fallback for RPM
                         string rpmField = csv.HeaderRecord.Contains("RPM") ? "RPM" : "Speed";
 
+                        // ⬇️ Normalize weird CSV header names to clean field names
+
                         // ✅ Parse all other fields safely
                         double GetDouble(string col)
                         {
+
                             string raw = csv.GetField<string>(col);
                             if (string.IsNullOrWhiteSpace(raw)) return 0.0;
                             raw = raw.Replace("b", "").Replace("%", "").Trim();
@@ -144,13 +149,18 @@ namespace CastleOverlayV2.Services
                             Current = GetDouble("Current"),
                             Speed = GetDouble(rpmField),
                             Temperature = GetDouble("Temperature"),
-                            MotorTemp = GetDouble("Temperature"),
+                            MotorTemp = GetDouble("Motor Temp."),
                             MotorTiming = GetDouble("Motor Timing."),
-                            Acceleration = GetDouble("Acceleration.")
+                            Acceleration = GetDouble("Acceleration."),
+
                         };
 
                         runData.DataPoints.Add(point);
                         log?.WriteLine($"Row {rowIndex}: ADDED — Time={point.Time:F2} Speed={point.Speed}");
+                        log?.WriteLine($"Row {rowIndex}: ADDED — Time={point.Time:F2} MotorTemp={point.MotorTemp}");
+                        Logger.Log($"Row {rowIndex}: ADDED — Time={point.Time:F2} Acceleration={point.Acceleration}");
+
+
                         rowIndex++;
                     }
 
@@ -189,7 +199,21 @@ namespace CastleOverlayV2.Services
             else
             {
                 Logger.Log("CsvLoader: Skipping AutoTrim — log too short or too brief.");
+            }
 
+            // ✅ Debug — log acceleration values before trimming
+            if (runData.DataPoints.Count > 0)
+            {
+                var accelBeforeTrim = runData.DataPoints.Select(dp => dp.Acceleration).Take(20).ToArray();
+                Logger.Log($"🧪 Raw Acceleration (pre-trim): {string.Join(", ", accelBeforeTrim)}");
+            }
+
+
+            // ✅ Log trimmed acceleration values (after AutoTrim or raw if skipped)
+            if (runData.DataPoints.Count > 0)
+            {
+                var accelVals = runData.DataPoints.Select(dp => dp.Acceleration).Take(10).ToArray();
+                Logger.Log($"🧪 Trimmed Acceleration values: {string.Join(", ", accelVals)}");
             }
 
             log?.WriteLine($"=== CsvLoader.Load() EXIT — Rows: {runData.DataPoints.Count} ===");
@@ -198,8 +222,8 @@ namespace CastleOverlayV2.Services
             Logger.Log($"CsvLoader.Load() exit — Rows: {runData.DataPoints.Count}");
 
             return runData;
-        }
 
+        }
 
         private static int DetectDragStartIndex(List<DataPoint> data)
         {

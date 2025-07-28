@@ -1,4 +1,4 @@
-﻿using CastleOverlayV2.Controls;
+using CastleOverlayV2.Controls;
 using CastleOverlayV2.Models;
 using CastleOverlayV2.Models;
 using CastleOverlayV2.Plot;
@@ -29,7 +29,6 @@ namespace CastleOverlayV2
         private RaceBoxData raceBox1;
         private RaceBoxData raceBox2;
         private RaceBoxData raceBox3;
-
 
         private ChannelToggleBar _channelToggleBar;
 
@@ -80,6 +79,7 @@ namespace CastleOverlayV2
             var config = _configService.Config;
 
             Logger.Log("Config loaded at startup:");
+            Logger.Log("Config loaded at startup:");
             foreach (var kvp in config.ChannelVisibility)
             {
                 Logger.Log($"  Channel: {kvp.Key}, Visible: {kvp.Value}");
@@ -93,19 +93,18 @@ namespace CastleOverlayV2
             formsPlot1.Dock = DockStyle.Fill;
 
             var channelNames = new List<string>
-                {
-                    "RPM",
-                    "Throttle",
-                    "Voltage",
-                    "Current",
-                    "Ripple",
-                    "PowerOut",
-                    "MotorTemp",
-                    "ESC Temp",       
-                    "MotorTiming",
-                    "Acceleration"
-                };
-
+{
+    "RPM",
+    "Throttle",
+    "Voltage",
+    "Current",
+    "Ripple",
+    "PowerOut",
+    "MotorTemp",
+    "ESC Temp",
+    "MotorTiming",
+    "Acceleration"
+};
 
             // ✅ 2️⃣ Use config states for toggles
             var initialStates = config.ChannelVisibility ?? new Dictionary<string, bool>();
@@ -372,6 +371,11 @@ namespace CastleOverlayV2
             // === ✅ Assign RaceBox 1 into slot 4 (paired with Castle Run1) ===
             run4 = run;
 
+            _plotManager.SetRun(4, run); // ❗ Critical for visibility logic
+
+
+            btnToggleRaceBox1.Enabled = true;
+            btnDeleteRaceBox1.Enabled = true;
 
             Logger.Log($"✅ Run1 channels: {string.Join(", ", run.Data.Keys)}");
 
@@ -753,6 +757,27 @@ namespace CastleOverlayV2
                     btnDeleteRun3.Enabled = false;
                     btnToggleRun3.Text = "Hide";
                     break;
+                case 4:
+                    run4 = null;
+                    btnLoadRaceBox1.Enabled = true;
+                    btnToggleRaceBox1.Enabled = false;
+                    btnDeleteRaceBox1.Enabled = false;
+                    btnToggleRaceBox1.Text = "Hide";
+                    break;
+                case 5:
+                    run5 = null;
+                    btnLoadRaceBox2.Enabled = true;
+                    btnToggleRaceBox2.Enabled = false;
+                    btnDeleteRaceBox2.Enabled = false;
+                    btnToggleRaceBox2.Text = "Hide";
+                    break;
+                case 6:
+                    run6 = null;
+                    btnLoadRaceBox3.Enabled = true;
+                    btnToggleRaceBox3.Enabled = false;
+                    btnDeleteRaceBox3.Enabled = false;
+                    btnToggleRaceBox3.Text = "Hide";
+                    break;
             }
 
             // Force hide this run if it's still considered visible
@@ -760,14 +785,18 @@ namespace CastleOverlayV2
             if (isVisibleNow)
                 _plotManager.ToggleRunVisibility(slot);
 
-            // Rebuild run dictionary
+            // Rebuild run dictionary (1–6)
             var activeRuns = new Dictionary<int, RunData>();
             if (run1 != null) activeRuns[1] = run1;
             if (run2 != null) activeRuns[2] = run2;
             if (run3 != null) activeRuns[3] = run3;
+            if (run4 != null) activeRuns[4] = run4;
+            if (run5 != null) activeRuns[5] = run5;
+            if (run6 != null) activeRuns[6] = run6;
 
             _plotManager.PlotRuns(activeRuns);
         }
+
 
 
         private void OnRpmModeChanged(bool isFourPole)
@@ -790,6 +819,56 @@ namespace CastleOverlayV2
         {
             Logger.Log($"🔘 Button clicked: {buttonName}");
         }
+
+        private void ToggleRaceBox1Button_Click(object sender, EventArgs e)
+        {
+            LogClick("Toggle RaceBox 1");
+
+            bool isVisible = _plotManager.ToggleRunVisibility(4); // Slot 4 = RaceBox 1
+            btnToggleRaceBox1.Text = isVisible ? "Hide" : "Show";
+
+            Logger.Log($"🔁 Toggled RaceBox Run 1 visibility → {(isVisible ? "Visible" : "Hidden")}");
+        }
+
+        private void DeleteRaceBox1Button_Click(object sender, EventArgs e)
+        {
+            LogClick("Delete RaceBox 1");
+            DeleteRun(4); // ✅ Reuse Castle logic
+        }
+        private void ToggleRaceBox2Button_Click(object sender, EventArgs e)
+        {
+            LogClick("Toggle RaceBox 2");
+
+            bool isVisible = _plotManager.ToggleRunVisibility(5); // Slot 5 = RaceBox 2
+            btnToggleRaceBox2.Text = isVisible ? "Hide" : "Show";
+
+            Logger.Log($"🔁 Toggled RaceBox Run 2 visibility → {(isVisible ? "Visible" : "Hidden")}");
+        }
+
+        private void ToggleRaceBox3Button_Click(object sender, EventArgs e)
+        {
+            LogClick("Toggle RaceBox 3");
+
+            bool isVisible = _plotManager.ToggleRunVisibility(6); // Slot 6 = RaceBox 3
+            btnToggleRaceBox3.Text = isVisible ? "Hide" : "Show";
+
+            Logger.Log($"🔁 Toggled RaceBox Run 3 visibility → {(isVisible ? "Visible" : "Hidden")}");
+        }
+
+        private void DeleteRaceBox2Button_Click(object sender, EventArgs e)
+        {
+            LogClick("Delete RaceBox 2");
+            DeleteRun(5); // Reuse shared delete logic
+        }
+
+        private void DeleteRaceBox3Button_Click(object sender, EventArgs e)
+        {
+            LogClick("Delete RaceBox 3");
+            DeleteRun(6); // Reuse shared delete logic
+        }
+
+
+
 
     }
 }

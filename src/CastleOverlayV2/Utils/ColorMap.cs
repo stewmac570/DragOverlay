@@ -8,7 +8,7 @@
             { "Ripple", new ScottPlot.Color(128, 0, 128) },        // #800080
             { "Current", new ScottPlot.Color(0, 128, 0) },         // #008000
             { "PowerOut", new ScottPlot.Color(70, 130, 180) },     // #4682B4
-            { "MotorTemp", new ScottPlot.Color(147, 112, 219) },   // #9370DB
+            { "MotorTemp", new ScottPlot.Color(147, 112, 219) },
             { "RPM", new ScottPlot.Color(165, 42, 42) },           // #A52A2A
             { "Throttle", new ScottPlot.Color(0, 0, 0) },          // #000000
             { "Acceleration", new ScottPlot.Color(65, 105, 225) }, // #4169E1
