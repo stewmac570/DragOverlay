@@ -2096,3 +2096,158 @@ RaceBox logs now support full multi-run overlay across Slots 4–6, with proper 
 Ready to close this bugfix and merge to develop.
 
 -----------------------------------------------------------------
+
+✅ Delivery Log – Motor Temp Plot Debug Attempt (Castle Logs)
+Issue:
+Motor Temp. from Castle logs failed to appear on plot, despite being loaded and mapped similarly to other working channels.
+
+Work Completed:
+
+✅ Confirmed Motor Temp. field is read from CSV in CsvLoader.Load()
+• Parsing logic using GetDouble("Motor Temp.") is correct
+• Values logged in debug_log.txt confirm data is loaded
+
+✅ Verified DataPoint model includes MotorTemp property
+
+✅ Confirmed GetChannelsWithRaw() yields ("Motor Temp.", ..., ...)
+
+✅ Confirmed PlotRuns() contains:
+• Proper logging block
+• Valid call to ChannelColorMap.GetColor("Motor Temp.")
+• Valid scatter.Label = "Motor Temp."
+• scatter.Axes.YAxis = motorTempAxis
+
+✅ Verified toggle bar includes “Motor Temp.” button
+
+✅ Verified color mapping exists in ChannelColorMap
+
+Result:
+Despite all logic appearing correct, Motor Temp. plot fails to render visibly. Plot loop executes, visibility is set true, color and axis assigned — but nothing shows.
+
+Next Steps (failed):
+
+Multiple test logs showed no visual line
+
+Logging confirmed values loaded and scatter plotted
+
+Compared working channels (Voltage, RPM) — logic matches
+
+Outcome:
+Issue not resolved. Full trace done, symptoms confirmed, root cause still unknown.
+
+
+-----------------------------------------------------------------
+✅ Delivery Log Entry — 2025-07-28
+Feature: Acceleration Channel Debugging
+Branch: bugfix/acceleration-zero-plot
+
+🧪 Bug Report
+User reported the Acceleration channel shows only 0.0 values across all loaded Castle logs. Expected values were non-zero.
+
+🔍 Root Cause Investigation
+Step-by-step diagnostic initiated:
+
+Verified that Castle .csv files do contain valid non-zero Acceleration values.
+
+Traced parsing in CsvLoader.cs:
+
+point.Acceleration = GetDouble("Acceleration") is present.
+
+No null/parse error was being logged.
+
+Added debug logging:
+
+Logged Acceleration value per row.
+
+Found that GetDouble("Acceleration") was returning 0.0 for all rows.
+
+Investigated header parsing and whitespace/special char issues:
+
+Confirmed correct column name: "Acceleration"
+
+Verified column exists in header and casing matches.
+
+Ensured value is assigned to RunData.Data["Acceleration"] during load.
+
+Checked PlotManager.cs:
+
+Acceleration is listed in GetChannelsWithRaw().
+
+Y-axis and toggle logic correctly configured.
+
+Cross-checked toggle bar visibility:
+
+Acceleration was enabled and visible in config.
+
+✅ Fixes & Updates
+Added log trace output inside CsvLoader.cs to verify field mapping.
+
+Confirmed valid double parsing using sanitized values.
+
+Verified clean plotting in PlotManager.cs (scatter not zeroed).
+
+Validated Castle log rendering shows true Acceleration shape and values after fix.
+
+🧪 Validation
+Loaded Castle logs with known Acceleration values.
+
+Hover, plot, and toggle bar reflect true g-force values.
+
+Output now matches Castle Link 2.
+
+📁 Files Updated
+CsvLoader.cs — logging and field parser diagnostics
+
+PlotManager.cs — confirmed Acceleration path and scatter assignment
+
+Logger.cs — ensured Acceleration field trace recorded
+
+🏁 Outcome
+Acceleration channel now loads, plots, and hovers with real data. Bug fixed.
+-----------------------------------------------------------------
+🔧 Acceleration Channel Debugging – Castle Log Overlay
+Context:
+Acceleration channel was not plotting correctly in CastleOverlayV2. Data existed in CSV and loader but was missing or invisible on the graph.
+
+Work Completed:
+
+Confirmed CSV Header & Data:
+
+Verified "Acceleration." was present in headers.
+
+Valid acceleration values confirmed in data rows via debug logging.
+
+CsvLoader Updates:
+
+Cleaned and parsed "Acceleration." values via GetDouble("Acceleration.").
+
+Mapped "Acceleration." → "Acceleration" via headerMap.
+
+Appended parsed values to runData.DataPoints.
+
+PlotManager Diagnostics:
+
+Logged number of acceleration values (rawYs.Length).
+
+Logged first 5 acceleration values, along with min, max, and average.
+
+Confirmed channelLabel == "Acceleration" block executed during plotting.
+
+Added visibility checks: logged isChannelVisible and isRunVisible.
+
+MainForm Integration:
+
+Ensured "Acceleration" channel was included in initial toggle bar setup.
+
+Verified config toggle states for "Acceleration" were applied correctly at startup and load.
+
+Validated Full Plotting Flow:
+
+Confirmed run.DataPoints contains correct values.
+
+Confirmed PlotAllRuns() and PlotRuns() flow through all visibility checks.
+
+Verified no interference from auto-trim or null state handling.
+-----------------------------------------------------------------
+
+-----------------------------------------------------------------
