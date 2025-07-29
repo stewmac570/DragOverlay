@@ -2096,7 +2096,6 @@ RaceBox logs now support full multi-run overlay across Slots 4–6, with proper 
 Ready to close this bugfix and merge to develop.
 
 
------------------------------------------------------------------
 
 ✅ Delivery Log – Motor Temp Plot Debug Attempt (Castle Logs)
 Issue:
@@ -2250,6 +2249,7 @@ Confirmed PlotAllRuns() and PlotRuns() flow through all visibility checks.
 
 Verified no interference from auto-trim or null state handling.
 -----------------------------------------------------------------
+
  Dev Log Update — RaceBox Button Activation Bug
 Issue:
 RaceBox toggle and delete buttons (btnToggleRaceBox2, btnDeleteRaceBox2, etc.) were not becoming active after loading RaceBox 2 or 3 logs.
@@ -2443,5 +2443,6 @@ All scatter lines and split lines restore correctly.
 -----------------------------------------------------------------
 
 -----------------------------------------------------------------
+
 
 -----------------------------------------------------------------
