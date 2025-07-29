@@ -542,11 +542,23 @@ namespace CastleOverlayV2.Plot
             Logger.Log($"🧪 DEBUG: Count = {(run.SplitTimes?.Count ?? 0)}");
             Logger.Log($"Adding split lines for slot {slot}: {string.Join(", ", run.SplitTimes)}");
 
-            // ✅ Add vertical split lines after all RaceBox channels are plotted
+            // ✅ Add vertical split line at t = 0.00s (start of RaceBox run)
+            if (!_splitLinesBySlot.ContainsKey(slot))
+                _splitLinesBySlot[slot] = new List<VerticalLine>();
+
+            var startLine = _plot.Plot.Add.VerticalLine(0);
+            startLine.LinePattern = LineStyleHelper.GetLinePattern(99);
+            startLine.LineWidth = 1;
+            startLine.Color = ScottPlot.Colors.Gray.WithAlpha(100);
+            _splitLinesBySlot[slot].Add(startLine);
+
+            Logger.Log($"📏 Added RaceBox START line at t = 0.00s for slot {slot}");
+
+            // ✅ Add discipline split lines (6ft, 66ft, 132ft...)
             if (run.SplitTimes != null && run.SplitTimes.Any())
             {
                 Logger.Log($"📏 Drawing {run.SplitTimes.Count} RaceBox split lines...");
-                AddRaceBoxSplitLines(slot, run.SplitTimes);
+                AddRaceBoxSplitLines(slot, run.SplitTimes, includeZero: true);
 
             }
 
@@ -923,8 +935,7 @@ namespace CastleOverlayV2.Plot
             }
         }
 
-
-        private void AddRaceBoxSplitLines(int slot, List<double> splitTimes)
+        private void AddRaceBoxSplitLines(int slot, List<double> splitTimes, bool includeZero = false)
         {
             if (_splitLinesBySlot.ContainsKey(slot))
             {
@@ -933,9 +944,14 @@ namespace CastleOverlayV2.Plot
                 _splitLinesBySlot.Remove(slot);
             }
 
+            // ✅ Optionally include t = 0.00 as the first split line
+            var splitTimesCopy = new List<double>(splitTimes);
+            if (includeZero && !splitTimesCopy.Contains(0.0))
+                splitTimesCopy.Insert(0, 0.0);
+
             var lines = new List<VerticalLine>();
 
-            foreach (double t in splitTimes)
+            foreach (double t in splitTimesCopy)
             {
                 var vLine = _plot.Plot.Add.VerticalLine(t);
                 vLine.LinePattern = LineStyleHelper.GetLinePattern(99);
@@ -946,6 +962,7 @@ namespace CastleOverlayV2.Plot
 
             _splitLinesBySlot[slot] = lines;
         }
+
 
     }
 }
