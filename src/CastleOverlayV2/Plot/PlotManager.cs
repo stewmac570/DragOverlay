@@ -8,6 +8,7 @@ using ScottPlot.WinForms;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using System.Threading.Channels;
 using System.Windows.Forms;
 
@@ -50,6 +51,10 @@ namespace CastleOverlayV2.Plot
         // ✅ Store all loaded runs
         private readonly Dictionary<int, RunData> _runsBySlot = new();
         public IReadOnlyDictionary<int, RunData> Runs => _runsBySlot;
+
+        private readonly Dictionary<int, List<VerticalLine>> _splitLinesBySlot = new();
+
+
 
         // === Castle Axis References ===
         private IYAxis throttleAxis;
@@ -102,6 +107,25 @@ namespace CastleOverlayV2.Plot
         /// </summary>
         public void PlotRuns(Dictionary<int, RunData> runsBySlot)
         {
+
+            // 🔄 Clear existing split lines (new structure per-slot)
+            // 🔄 Clear visible split lines only — preserve hidden ones
+            // 🔄 Only remove split lines for runs that are currently visible
+            var toRemove = _splitLinesBySlot
+                .Where(kvp => _runVisibility.TryGetValue(kvp.Key, out bool vis) && vis)
+                .ToList();
+
+            foreach (var kvp in toRemove)
+            {
+                foreach (var line in kvp.Value)
+                    _plot.Plot.Remove(line);
+
+                _splitLinesBySlot.Remove(kvp.Key);
+            }
+
+
+
+
             Logger.Log("📊 PlotRuns() — ENTERED");
 
             if (runsBySlot == null || runsBySlot.Count == 0)
@@ -137,6 +161,12 @@ namespace CastleOverlayV2.Plot
             foreach (var kvp in _channelVisibility)
                 Logger.Log($"   • Channel '{kvp.Key}': {(kvp.Value ? "Visible" : "Hidden")}");
 
+            // 🔁 Ensure visibility defaults to true for all runs
+            foreach (var slot in runsBySlot.Keys)
+            {
+                if (!_runVisibility.ContainsKey(slot))
+                    _runVisibility[slot] = true;
+            }
 
             // === ✅ SAFETY CHECK ===
             if (runsBySlot == null || runsBySlot.Count == 0 ||
@@ -148,6 +178,7 @@ namespace CastleOverlayV2.Plot
                 ResetEmptyPlot();
                 return;
             }
+
 
 
             if (runsBySlot == null || runsBySlot.Count == 0)
@@ -193,10 +224,9 @@ namespace CastleOverlayV2.Plot
 
                 // ✅ Skip Castle block if RaceBox
                 if (run.IsRaceBox)
-                {
-                    Logger.Log($"✅ Skipping Castle plot loop for RaceBox run in slot {slot}");
                     continue;
-                }
+
+
 
                 if (run.DataPoints.Count == 0)
                     continue;
@@ -294,6 +324,40 @@ namespace CastleOverlayV2.Plot
                 }
             }
 
+            foreach (var kvp in runsBySlot)
+            {
+                int slot = kvp.Key;
+                RunData run = kvp.Value;
+
+                if (run != null && run.IsRaceBox)
+                {
+                    Logger.Log($"📈 Always plotting RaceBox run in slot {slot} (regardless of visibility)...");
+                    PlotRaceBoxRun(slot, run);
+
+                    // Then control visibility AFTER they're added
+                    bool isVisible = _runVisibility.TryGetValue(slot, out var vis) ? vis : true;
+
+                    // Hide the lines if this run is hidden
+                    if (!isVisible && _splitLinesBySlot.TryGetValue(slot, out var lines))
+                    {
+                        foreach (var line in lines)
+                            line.IsVisible = false;
+                    }
+
+                    // Hide the scatters manually
+                    foreach (var scatter in _scatters)
+                    {
+                        if (_scatterSlotMap.TryGetValue(scatter, out int scatterSlot) && scatterSlot == slot)
+                        {
+                            string label = scatter.Label;
+                            bool channelOn = _channelVisibility.TryGetValue(label, out var chanVis) ? chanVis : true;
+                            scatter.IsVisible = isVisible && channelOn;
+                        }
+                    }
+                }
+
+
+            }
 
             // === ✅ FINAL PLOT SETTINGS ===
 
@@ -317,19 +381,6 @@ namespace CastleOverlayV2.Plot
 
             // Optionally hide the legend (unless needed later)
             _plot.Plot.Legend.IsVisible = false;
-
-            // === ✅ PLOT RACEBOX RUNS ===
-            foreach (var kvp in runsBySlot)
-            {
-                int slot = kvp.Key;
-                RunData run = kvp.Value;
-
-                if (run != null && run.IsRaceBox)
-                {
-                    Logger.Log($"📈 Plotting RaceBox run in slot {slot}...");
-                    PlotRaceBoxRun(slot, run);
-                }
-            }
 
             // Refresh the plot with all changes
             _plot.Refresh();
@@ -425,6 +476,8 @@ namespace CastleOverlayV2.Plot
         //===============================================================================//
          private void PlotRaceBoxRun(int slot, RunData run)
         {
+            Logger.Log($"PlotRaceBoxRun called for slot {slot}, run.SplitTimes count: {run.SplitTimes?.Count ?? 0}");
+
             if (run == null || !run.IsRaceBox)
                 return;
 
@@ -441,7 +494,6 @@ namespace CastleOverlayV2.Plot
                 }
 
                 var rbTyped = rbPoints.OfType<CastleOverlayV2.Models.DataPoint>().ToList();
-
 
                 if (rbTyped.Count == 0)
                 {
@@ -462,7 +514,7 @@ namespace CastleOverlayV2.Plot
                 Logger.Log($"✅ Sample Y values for {rbChannel}: {string.Join(", ", ys.Take(5))}");
 
                 var scatter = _plot.Plot.Add.Scatter(xs, ys);
-                _scatterSlotMap[scatter] = slot; // ✅ REQUIRED for toggling and delete to work
+                _scatterSlotMap[scatter] = slot;
                 scatter.Label = rbChannel;
                 scatter.Color = ChannelColorMap.GetColor(rbChannel);
                 scatter.LinePattern = LineStyleHelper.GetLinePattern(slot - 1);
@@ -486,9 +538,21 @@ namespace CastleOverlayV2.Plot
                 _scatters.Add(scatter);
                 _rawYMap[scatter] = ys;
             }
+            Logger.Log($"🧪 DEBUG: SplitTimes = {(run.SplitTimes == null ? "null" : string.Join(", ", run.SplitTimes))}");
+            Logger.Log($"🧪 DEBUG: Count = {(run.SplitTimes?.Count ?? 0)}");
+            Logger.Log($"Adding split lines for slot {slot}: {string.Join(", ", run.SplitTimes)}");
+
+            // ✅ Add vertical split lines after all RaceBox channels are plotted
+            if (run.SplitTimes != null && run.SplitTimes.Any())
+            {
+                Logger.Log($"📏 Drawing {run.SplitTimes.Count} RaceBox split lines...");
+                AddRaceBoxSplitLines(slot, run.SplitTimes);
+
+            }
+
         }
 
-         //===============================================================================//
+        //===============================================================================//
 
         /// <summary>
         /// Single run fallback.
@@ -626,12 +690,36 @@ namespace CastleOverlayV2.Plot
         }
 
 
-
+        //=======================================================================
 
         public void ToggleRunVisibility(int slot, bool isVisibleNow)
         {
             _runVisibility[slot] = isVisibleNow;
 
+            Logger.Log($"🔁 Toggled Run Visibility — Slot {slot}, NowVisible={isVisibleNow}");
+
+            bool hasAnyScatters = _scatters.Any(s => _scatterSlotMap.TryGetValue(s, out int sSlot) && sSlot == slot);
+
+            if (isVisibleNow && !hasAnyScatters)
+            {
+                Logger.Log($"♻️ No active plots for slot {slot}. Forcing replot.");
+
+                if (_runsBySlot.TryGetValue(slot, out RunData run))
+                {
+                    if (run.IsRaceBox)
+                    {
+                        Logger.Log($"♻️ Replotting hidden RaceBox slot {slot}...");
+                        PlotRaceBoxRun(slot, run);
+                    }
+                    else
+                    {
+                        PlotRuns(new Dictionary<int, RunData>(_runsBySlot));
+                        return;
+                    }
+                }
+            }
+
+            // 🔄 Show/hide matching scatters
             foreach (var scatter in _scatters)
             {
                 if (_scatterSlotMap.TryGetValue(scatter, out int scatterSlot) && scatterSlot == slot)
@@ -642,10 +730,25 @@ namespace CastleOverlayV2.Plot
                 }
             }
 
+            // 🔄 Show/hide split lines
+            if (_splitLinesBySlot.TryGetValue(slot, out var lines))
+            {
+                foreach (var line in lines)
+                    line.IsVisible = isVisibleNow;
+            }
+            else if (isVisibleNow && _runsBySlot.TryGetValue(slot, out RunData run2) && run2.IsRaceBox && run2.SplitTimes?.Count > 0)
+            {
+                Logger.Log($"➕ Rebuilding missing split lines for slot {slot} after re-show");
+                AddRaceBoxSplitLines(slot, run2.SplitTimes);
+            }
+
             _plot.Refresh();
         }
 
 
+
+
+        //========================================================================
         /// <summary>
         /// Toggle channel visibility.
         /// </summary>
@@ -701,7 +804,7 @@ namespace CastleOverlayV2.Plot
 
 
 
-
+        //==========================================================================
         public bool ToggleRunVisibility(int slot)
         {
             bool currentlyVisible = _runVisibility.TryGetValue(slot, out bool isVisible) ? isVisible : true;
@@ -718,11 +821,23 @@ namespace CastleOverlayV2.Plot
                 }
             }
 
+            if (_splitLinesBySlot.TryGetValue(slot, out var lines))
+            {
+                foreach (var line in lines)
+                {
+                    line.IsVisible = newState;
+                }
+            }
+
             _plot.Refresh();
-            return newState;
+
+            return newState; // <--- Make sure this is here and method ends with this return
         }
 
 
+
+
+        //===============================================================================
         public void ResetEmptyPlot()
         {
             _plot.Plot.Clear();
@@ -771,32 +886,66 @@ namespace CastleOverlayV2.Plot
             Logger.Log($"SetRunVisibility: slot {slotIndex} set to {(isVisible ? "Visible" : "Hidden")}");
         }
 
-public void SetRun(int slot, RunData run)
-{
-    _runsBySlot[slot] = run;
-    _runVisibility[slot] = run != null;
-
-    if (run == null)
-    {
-        Logger.Log($"🗑️ Clearing all scatters for deleted run in slot {slot}");
-
-        var toRemove = _scatterSlotMap
-            .Where(kvp => kvp.Value == slot)
-            .Select(kvp => kvp.Key)
-            .ToList();
-
-        foreach (var scatter in toRemove)
+        public void SetRun(int slot, RunData run)
         {
-            _plot.Plot.Remove(scatter);
-            _scatters.Remove(scatter);
-            _scatterSlotMap.Remove(scatter);
-            _rawYMap.Remove(scatter);
+            _runsBySlot[slot] = run;
+            _runVisibility[slot] = run != null;
+
+            if (run == null)
+            {
+                Logger.Log($"🗑️ Clearing all scatters for deleted run in slot {slot}");
+
+                // Remove all plotted data lines for this slot
+                var toRemove = _scatterSlotMap
+                    .Where(kvp => kvp.Value == slot)
+                    .Select(kvp => kvp.Key)
+                    .ToList();
+
+                foreach (var scatter in toRemove)
+                {
+                    _plot.Plot.Remove(scatter);
+                    _scatters.Remove(scatter);
+                    _scatterSlotMap.Remove(scatter);
+                    _rawYMap.Remove(scatter);
+                }
+
+                Logger.Log($"🧼 Removed {toRemove.Count} scatters from slot {slot}");
+
+                // Remove RaceBox split lines for this slot if they exist
+                if (_splitLinesBySlot.TryGetValue(slot, out var lines))
+                {
+                    Logger.Log($"🧼 Removing {lines.Count} RaceBox split lines from slot {slot}");
+                    foreach (var line in lines)
+                        _plot.Plot.Remove(line);
+
+                    _splitLinesBySlot.Remove(slot);
+                }
+            }
         }
 
-        Logger.Log($"🧼 Removed {toRemove.Count} scatters from slot {slot}");
-    }
-}
 
+        private void AddRaceBoxSplitLines(int slot, List<double> splitTimes)
+        {
+            if (_splitLinesBySlot.ContainsKey(slot))
+            {
+                foreach (var line in _splitLinesBySlot[slot])
+                    _plot.Plot.Remove(line);
+                _splitLinesBySlot.Remove(slot);
+            }
+
+            var lines = new List<VerticalLine>();
+
+            foreach (double t in splitTimes)
+            {
+                var vLine = _plot.Plot.Add.VerticalLine(t);
+                vLine.LinePattern = LineStyleHelper.GetLinePattern(99);
+                vLine.LineWidth = 1;
+                vLine.Color = ScottPlot.Colors.Gray.WithAlpha(100);
+                lines.Add(vLine);
+            }
+
+            _splitLinesBySlot[slot] = lines;
+        }
 
     }
 }

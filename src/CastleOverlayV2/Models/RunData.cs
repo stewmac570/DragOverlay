@@ -16,6 +16,8 @@
         // ✅ Used to distinguish Castle vs RaceBox
         public bool IsRaceBox { get; set; }
 
+        public List<double>? SplitTimes { get; set; }
+
         public RunData()
         {
             DataPoints = new List<DataPoint>();

@@ -2249,5 +2249,198 @@ Confirmed PlotAllRuns() and PlotRuns() flow through all visibility checks.
 
 Verified no interference from auto-trim or null state handling.
 -----------------------------------------------------------------
+ Dev Log Update — RaceBox Button Activation Bug
+Issue:
+RaceBox toggle and delete buttons (btnToggleRaceBox2, btnDeleteRaceBox2, etc.) were not becoming active after loading RaceBox 2 or 3 logs.
+
+Root Cause:
+Unlike LoadRaceBox1Button_Click, the LoadRaceBox2Button_Click and LoadRaceBox3Button_Click methods were missing these activation lines:
+
+csharp
+Copy
+Edit
+btnToggleRaceBox2.Enabled = true;
+btnDeleteRaceBox2.Enabled = true;
+and
+
+csharp
+Copy
+Edit
+btnToggleRaceBox3.Enabled = true;
+btnDeleteRaceBox3.Enabled = true;
+Fix Applied:
+Manually added the missing lines to RaceBox 2 and RaceBox 3 handlers to match RaceBox 1 behavior:
+
+csharp
+Copy
+Edit
+btnToggleRaceBox2.Enabled = true;
+btnDeleteRaceBox2.Enabled = true;
+btnToggleRaceBox3.Enabled = true;
+btnDeleteRaceBox3.Enabled = true;
+Status:
+✅ Confirmed fixed. All RaceBox buttons now activate correctly when a log is loaded.
+-----------------------------------------------------------------
+Dev Log Summary — 2025-07-28
+Feature: Fix RaceBox Load Bug (Slots 5 & 6)
+Branch: bugfix/racebox-slot-visibility
+Build: 1.07
+
+🐞 Problem
+RaceBox logs loaded into Slot 2 or 3 (run5, run6) did not appear on the plot and their toggle/delete buttons stayed disabled.
+
+Root cause:
+
+LoadRaceBox2Button_Click() and LoadRaceBox3Button_Click() were missing these lines:
+
+_plotManager.SetRun(...)
+
+_plotManager.SetRunVisibility(...)
+
+btnToggleRaceBoxX.Enabled = true
+
+btnDeleteRaceBoxX.Enabled = true
+
+✅ Fixes Applied
+Added missing _plotManager.SetRun(5/6, run) to properly register RaceBox runs
+
+Set run visibility to true
+
+Enabled toggle and delete buttons after successful load
+
+Verified PlotAllRuns() now picks up run5/run6 and displays RaceBox telemetry properly
+
+Confirmed hover and toggle bar values update correctly for all 6 slots
+
+🧪 Validated
+✅ RaceBox 2 and 3 logs now plot correctly
+
+✅ Toggle/delete buttons activate on load
+
+✅ RaceBox channels ("RaceBox Speed", "RaceBox G-Force X") appear in the toggle bar
+
+✅ Layout refresh works when new toggles are added
+
+📂 Files Updated
+MainForm.cs:
+
+LoadRaceBox2Button_Click()
+
+LoadRaceBox3Button_Click()
+
+🏁 Outcome
+All 6 run slots (Castle 1–3, RaceBox 1–3) now fully functional and behave identically.
+Bug is fixed and ready to close.
+-----------------------------------------------------------------
+Date: 2025-07-29
+
+Scope:
+Debug and fix RaceBox telemetry plotting and split line rendering in ScottPlot to ensure proper load, hide, and show behavior for multiple runs.
+
+Key Issues Identified:
+Split lines from previous RaceBox logs persisted and reappeared when loading new logs.
+
+Split lines did not hide/show reliably when toggling run visibility.
+
+RaceBox runs plotted regardless of visibility state, causing visual clutter.
+
+Visibility state inconsistently updated or respected during plot redraw.
+
+Ambiguity between multiple toggle methods caused confusion in visibility toggling logic.
+
+Work Completed:
+Implemented per-slot tracking of split lines using a dictionary to manage lines for each RaceBox run individually.
+
+Refactored PlotRuns() method:
+
+Separated loops for Castle runs and RaceBox runs.
+
+Added visibility checks before plotting RaceBox runs.
+
+Added cleanup logic to remove split lines of hidden or deleted runs.
+
+Avoided clearing all split lines blindly at plot start; cleared only for hidden/missing runs.
+
+Unified toggle visibility method:
+
+Merged two ToggleRunVisibility overloads into one method that toggles visibility and updates both scatter plots and split lines.
+
+Ensured UI toggle buttons call this unified method.
+
+Added detailed logging throughout:
+
+Logged run visibility states.
+
+Logged split lines added/removed.
+
+Logged toggling actions and plotting calls.
+
+Verified correct loading and assignment of split times on RaceBox runs.
+
+Identified and fixed misuse of ScottPlot Plot.Add with existing VerticalLine objects.
+
+Provided step-by-step instructions for adding debug logs to confirm flow and visibility states.
+
+Recommended improved plot refresh and redraw logic for visibility toggling.
+
+Outstanding:
+Confirming no race conditions exist between toggling visibility state updates and plot redraw.
+
+Verifying smooth redraw without visual glitches when toggling rapidly.
+
+Ensuring UI toggle buttons reflect true run visibility consistently.
+
+This work ensures RaceBox plots and split lines load, hide, and show correctly, improving usability and visual clarity in telemetry analysis.
+-----------------------------------------------------------------
+RaceBox Visibility Toggle Bug – Investigation and Fix
+Date: 2025-07-29
+Branch: rescue/racebox-current-mess
+Developer: Stewart McMillan
+
+Problem
+Toggling visibility for a RaceBox run (e.g. RaceBox1) failed when:
+
+RaceBox1 was loaded
+
+RaceBox1 was hidden
+
+RaceBox2 was loaded
+
+RaceBox1 was toggled back on → ❌ nothing showed
+
+Root Cause
+RaceBox plots and split lines were only created if the run was visible at load time.
+If the run was hidden during PlotRuns(), no plot objects were created → nothing to toggle back on later.
+
+Fix
+In PlotRuns():
+
+Always plot RaceBox data regardless of visibility.
+
+Immediately set .IsVisible = false for hidden runs.
+
+Preload split lines even when hidden.
+
+Key Changes
+Replaced conditional:
+
+csharp
+Copy
+Edit
+if (run != null && run.IsRaceBox && _runVisibility.TryGetValue(slot, out bool isVisible) && isVisible)
+with:
+
+csharp
+Copy
+Edit
+if (run != null && run.IsRaceBox)
+Moved visibility logic after plotting to control display state instead of skipping plotting.
+
+Outcome
+RaceBox logs now correctly toggle visibility after being hidden, even across multiple loads.
+All scatter lines and split lines restore correctly.
+-----------------------------------------------------------------
+
+-----------------------------------------------------------------
 
 -----------------------------------------------------------------

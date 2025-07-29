@@ -1,4 +1,6 @@
-﻿namespace CastleOverlayV2.Utils
+﻿using ScottPlot;
+
+namespace CastleOverlayV2.Utils
 {
     public static class LineStyleHelper
     {
@@ -21,9 +23,10 @@
                 0 or 3 => ScottPlot.LinePattern.Solid,    // Run 1 and RaceBox 1
                 1 or 4 => ScottPlot.LinePattern.Dashed,   // Run 2 and RaceBox 2
                 2 or 5 => ScottPlot.LinePattern.Dotted,   // Run 3 and RaceBox 3
+                99 => ScottPlot.LinePattern.Dashed,         // ✅ RaceBox Split Lines
                 _ => ScottPlot.LinePattern.Solid
             };
-
         }
+
     }
 }
