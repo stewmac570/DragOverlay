@@ -1,4 +1,4 @@
-﻿using CastleOverlayV2.Models;
+using CastleOverlayV2.Models;
 using CastleOverlayV2.Services;
 using CastleOverlayV2.Utils;
 using ScottPlot;

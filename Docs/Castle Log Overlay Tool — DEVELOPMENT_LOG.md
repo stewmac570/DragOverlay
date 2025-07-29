@@ -2095,6 +2095,7 @@ Castle logs still unaffected
 RaceBox logs now support full multi-run overlay across Slots 4–6, with proper line styles, axis locking, and toggle visibility.
 Ready to close this bugfix and merge to develop.
 
+
 -----------------------------------------------------------------
 
 ✅ Delivery Log – Motor Temp Plot Debug Attempt (Castle Logs)
