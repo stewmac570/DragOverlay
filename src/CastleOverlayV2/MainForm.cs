@@ -71,6 +71,17 @@ namespace CastleOverlayV2
             btnToggleRun3.Enabled = false;
             btnDeleteRun3.Enabled = false;
 
+            // ✅ Disable RaceBox toggle/delete buttons at startup
+            btnToggleRaceBox1.Enabled = false;
+            btnDeleteRaceBox1.Enabled = false;
+
+            btnToggleRaceBox2.Enabled = false;
+            btnDeleteRaceBox2.Enabled = false;
+
+            btnToggleRaceBox3.Enabled = false;
+            btnDeleteRaceBox3.Enabled = false;
+
+
             // Maximize the window on startup
             this.WindowState = FormWindowState.Maximized;
 
@@ -229,18 +240,21 @@ namespace CastleOverlayV2
                 {
                     Logger.Log($"Loaded log: Run 2 - {Path.GetFileName(filePath)} - {run2.DataPoints.Count} rows");
 
-                    // Assign the loaded run to slot 2 in the plot manager
                     _plotManager.SetRun(2, run2);
-
-                    // Ensure run visibility is true on load for slot 2
                     _plotManager.SetRunVisibility(2, true);
 
                     PlotAllRuns();
 
-                    // Sync toggle button text with visibility state
-                    btnToggleRun2.Text = _plotManager.GetRunVisibility(2) ? "Hide" : "Show";
+                    // ✅ Update button state
+                    btnToggleRun2.Text = "Hide";
                     btnToggleRun2.Enabled = true;
                     btnDeleteRun2.Enabled = true;
+
+                    // ✅ Refresh layout to ensure visual state updates
+                    btnToggleRun2.Parent?.PerformLayout();
+                    btnDeleteRun2.Parent?.PerformLayout();
+                    btnToggleRun2.Refresh();
+                    btnDeleteRun2.Refresh();
                 }
                 else
                 {
@@ -252,6 +266,8 @@ namespace CastleOverlayV2
                 Logger.Log($"ERROR in Run2: {ex.Message}");
             }
         }
+
+
 
 
         /// <summary>
@@ -344,6 +360,9 @@ namespace CastleOverlayV2
             // === ✅ Convert RaceBox points into RunData for plotting ===
             var run = new RunData();
             run.IsRaceBox = true;
+            run.SplitTimes = rbData.SplitTimes;
+            Logger.Log($"✅ SplitTimes loaded: {string.Join(", ", run.SplitTimes ?? new List<double>())}");
+
             run.FileName = Path.GetFileName(path);
 
             // ✅ Store Castle-style DataPoints into per-channel dictionary
@@ -412,9 +431,6 @@ namespace CastleOverlayV2
                 _channelToggleBar.Refresh();
             }
 
-
-
-
             if (run.Data.TryGetValue("RaceBox Speed", out var speedPoints))
                 Logger.Log($"✅ Run1 point count (Speed): {speedPoints.Count}");
 
@@ -449,33 +465,25 @@ namespace CastleOverlayV2
 
             raceBox2 = rbData;
 
-            // === ✅ Convert to RunData ===
             var run = new RunData();
             run.IsRaceBox = true;
+            run.SplitTimes = rbData.SplitTimes;   //1 
+            Logger.Log($"✅ SplitTimes loaded: {string.Join(", ", run.SplitTimes ?? new List<double>())}");
             run.FileName = Path.GetFileName(path);
 
-            run.Data["RaceBox Speed"] = points.Select(p => new DataPoint
-            {
-                Time = p.Time.TotalSeconds,
-                Y = p.SpeedMph
-            }).ToList();
-
-            run.Data["RaceBox G-Force X"] = points.Select(p => new DataPoint
-            {
-                Time = p.Time.TotalSeconds,
-                Y = p.GForceX
-            }).ToList();
-
-            run.DataPoints = points.Select(p => new DataPoint
-            {
-                Time = p.Time.TotalSeconds
-            }).ToList();
-
-            Logger.Log($"✅ Run5 channels: {string.Join(", ", run.Data.Keys)}");
+            run.Data["RaceBox Speed"] = points.Select(p => new DataPoint { Time = p.Time.TotalSeconds, Y = p.SpeedMph }).ToList();
+            run.Data["RaceBox G-Force X"] = points.Select(p => new DataPoint { Time = p.Time.TotalSeconds, Y = p.GForceX }).ToList();
+            run.DataPoints = points.Select(p => new DataPoint { Time = p.Time.TotalSeconds }).ToList();
 
             run5 = run;
 
-            // Toggle bar checks (same as before)
+
+            // ✅ FIX: Register run + enable buttons
+            _plotManager.SetRun(5, run);
+            _plotManager.SetRunVisibility(5, true);
+            btnToggleRaceBox2.Enabled = true;
+            btnDeleteRaceBox2.Enabled = true;
+
             var addedChannels = false;
 
             if (!_channelToggleBar.GetChannelStates().ContainsKey("RaceBox Speed"))
@@ -494,19 +502,13 @@ namespace CastleOverlayV2
 
             if (addedChannels)
             {
-                Logger.Log("🔄 Forcing layout refresh after adding RaceBox toggles");
                 _channelToggleBar.PerformLayout();
                 _channelToggleBar.Refresh();
             }
 
-            if (run.Data.TryGetValue("RaceBox Speed", out var speedPoints))
-                Logger.Log($"✅ Run5 point count (Speed): {speedPoints.Count}");
-
-            if (run.Data.TryGetValue("RaceBox G-Force X", out var gxPoints))
-                Logger.Log($"✅ Run5 point count (G-Force X): {gxPoints.Count}");
-
             PlotAllRuns();
         }
+
 
 
         private async void LoadRaceBox3Button_Click(object sender, EventArgs e)
@@ -533,33 +535,23 @@ namespace CastleOverlayV2
 
             raceBox3 = rbData;
 
-            // === ✅ Convert to RunData ===
             var run = new RunData();
             run.IsRaceBox = true;
             run.FileName = Path.GetFileName(path);
+            run.SplitTimes = rbData.SplitTimes;//2
 
-            run.Data["RaceBox Speed"] = points.Select(p => new DataPoint
-            {
-                Time = p.Time.TotalSeconds,
-                Y = p.SpeedMph
-            }).ToList();
-
-            run.Data["RaceBox G-Force X"] = points.Select(p => new DataPoint
-            {
-                Time = p.Time.TotalSeconds,
-                Y = p.GForceX
-            }).ToList();
-
-            run.DataPoints = points.Select(p => new DataPoint
-            {
-                Time = p.Time.TotalSeconds
-            }).ToList();
-
-            Logger.Log($"✅ Run6 channels: {string.Join(", ", run.Data.Keys)}");
+            run.Data["RaceBox Speed"] = points.Select(p => new DataPoint { Time = p.Time.TotalSeconds, Y = p.SpeedMph }).ToList();
+            run.Data["RaceBox G-Force X"] = points.Select(p => new DataPoint { Time = p.Time.TotalSeconds, Y = p.GForceX }).ToList();
+            run.DataPoints = points.Select(p => new DataPoint { Time = p.Time.TotalSeconds }).ToList();
 
             run6 = run;
 
-            // === ✅ Add RaceBox channels to toggle bar if missing ===
+            // ✅ FIX: Register run + enable buttons
+            _plotManager.SetRun(6, run);
+            _plotManager.SetRunVisibility(6, true);
+            btnToggleRaceBox3.Enabled = true;
+            btnDeleteRaceBox3.Enabled = true;
+
             var addedChannels = false;
 
             if (!_channelToggleBar.GetChannelStates().ContainsKey("RaceBox Speed"))
@@ -578,26 +570,14 @@ namespace CastleOverlayV2
 
             if (addedChannels)
             {
-                Logger.Log("🔄 Forcing layout refresh after adding RaceBox toggles");
                 _channelToggleBar.PerformLayout();
                 _channelToggleBar.Refresh();
             }
-
-            if (run.Data.TryGetValue("RaceBox Speed", out var speedPoints))
-                Logger.Log($"✅ Run6 point count (Speed): {speedPoints.Count}");
-
-            if (run.Data.TryGetValue("RaceBox G-Force X", out var gxPoints))
-                Logger.Log($"✅ Run6 point count (G-Force X): {gxPoints.Count}");
 
             PlotAllRuns();
         }
 
 
-
-
-        /// <summary>
-        /// ✅ Helper: OpenFileDialog logic
-        /// </summary>
         private string GetCsvFilePath()
 {
     Logger.Log("Opening file picker...");
