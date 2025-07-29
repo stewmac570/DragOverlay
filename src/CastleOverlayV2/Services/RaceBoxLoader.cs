@@ -194,41 +194,64 @@ namespace CastleOverlayV2.Services
             string discipline = allRows[8][1];
 
             int firstCompleteRunIndex = -1;
+
+            List<double>? splitTimes = null;
+
             for (int i = 0; i < runCount; i++)
             {
-                var row = allRows[9 + i]; // e.g. "Run 1 times", "Run 2 times", etc.
-                if (row.Length > 1)
+                int rowIndex = 9 + i;
+
+                if (allRows.Count <= rowIndex)
                 {
-                    var timesRaw = row[1]; // second column
-                    if (!string.IsNullOrWhiteSpace(timesRaw))
+                    Logger.Log($"❌ RaceBoxLoader: expected row {rowIndex}, but only {allRows.Count} rows available");
+                    continue;
+                }
+
+                var row = allRows[rowIndex];
+
+                if (row.Length <= 1)
+                {
+                    Logger.Log($"❌ RaceBoxLoader: row {rowIndex} too short — Length = {row.Length}");
+                    continue;
+                }
+
+                var timesRaw = row[1]; // second column
+
+                if (!string.IsNullOrWhiteSpace(timesRaw))
+                {
+                    var times = timesRaw.Split(';');
+                    var parsed = times
+                        .Select(t => double.TryParse(t, out var val) ? val : 0)
+                        .ToList();
+
+                    bool allNonZero = parsed.All(val => val > 0);
+
+                    if (allNonZero)
                     {
-                        var times = timesRaw.Split(';');
-                        bool allNonZero = times.All(t => double.TryParse(t, out var val) && val > 0);
-
-                        if (allNonZero)
+                        string label = row[0]; // e.g., "Run 6 times"
+                        string[] labelParts = label.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                        if (labelParts.Length >= 2 && int.TryParse(labelParts[1], out int runNumber))
                         {
-                            string label = row[0]; // e.g., "Run 6 times"
-                            string[] labelParts = label.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                            if (labelParts.Length >= 2 && int.TryParse(labelParts[1], out int runNumber))
-                            {
-                                firstCompleteRunIndex = runNumber;  // ✅ actual run number in the "Run" column
-                                break;
-                            }
+                            firstCompleteRunIndex = runNumber;  // ✅ actual run number in the "Run" column
+                            splitTimes = parsed;
+                            break;
                         }
-
                     }
                 }
             }
 
 
+
             Logger.Log($"[RaceBox] Header loaded: {runCount} runs, Discipline: {discipline}, FirstComplete: {(firstCompleteRunIndex >= 0 ? firstCompleteRunIndex + 1 : "None")}");
-            
+
             return new RaceBoxData
             {
                 RunCount = runCount,
                 Discipline = discipline,
-                FirstCompleteRunIndex = firstCompleteRunIndex >= 0 ? firstCompleteRunIndex : null
+                FirstCompleteRunIndex = firstCompleteRunIndex >= 0 ? firstCompleteRunIndex : null,
+                SplitTimes = splitTimes
             };
+
 
         }
         private static int GetHeaderIndex(string[] headers, string name)
