@@ -2441,8 +2441,219 @@ Outcome
 RaceBox logs now correctly toggle visibility after being hidden, even across multiple loads.
 All scatter lines and split lines restore correctly.
 -----------------------------------------------------------------
+RaceBox Visibility Toggle Bug – Investigation and Fix
+Date: 2025-07-29
+Branch: rescue/racebox-current-mess
+Developer: Stewart McMillan
+
+Problem
+Toggling visibility for a RaceBox run (e.g. RaceBox1) failed when:
+
+RaceBox1 was loaded
+
+RaceBox1 was hidden
+
+RaceBox2 was loaded
+
+RaceBox1 was toggled back on → ❌ nothing showed
+
+Root Cause
+RaceBox plots and split lines were only created if the run was visible at load time.
+If the run was hidden during PlotRuns(), no plot objects were created → nothing to toggle back on later.
+
+Fix
+In PlotRuns():
+
+Always plot RaceBox data regardless of visibility.
+
+Immediately set .IsVisible = false for hidden runs.
+
+Preload split lines even when hidden.
+
+Key Changes
+Replaced conditional:
+
+csharp
+Copy
+Edit
+if (run != null && run.IsRaceBox && _runVisibility.TryGetValue(slot, out bool isVisible) && isVisible)
+with:
+
+csharp
+Copy
+Edit
+if (run != null && run.IsRaceBox)
+Moved visibility logic after plotting to control display state instead of skipping plotting.
+
+Outcome
+RaceBox logs now correctly toggle visibility after being hidden, even across multiple loads.
+All scatter lines and split lines restore correctly.
+-----------------------------------------------------------------
+✅ Dev Log Summary — 2025-07-30
+Topic: Project Status Review + Grid Contrast Improvement Planning
+Build: 1.07
+Branch: (TBD — grid styling feature not yet started)
+
+🔍 Project Status Review
+User requested full project status check. Confirmed:
+
+✅ RaceBox integration is complete through Stage 3B
+
+✅ All 3 RaceBox logs (slots 4–6) plot correctly
+
+✅ Split lines load, toggle, and hide per run slot
+
+✅ Axis auto-scaling and toggle bar integration is fully working
+
+❌ RaceBox G-Force Y/Z channels are not needed
+
+✅ RaceBox axes are already implemented (was marked incomplete)
+
+🎯 Next Feature: Improve Grid Contrast
+User wants to adjust ScottPlot grid line styling to make vertical split lines easier to see.
+
+✅ Goal:
+
+Soften or hide major/minor grid lines
+
+Improve visual contrast for RaceBox split lines
+
+Apply via Plot.Grid API (ScottPlot v5)
+
+🧠 Prompt Created:
+User asked for a clean new prompt to start the grid customization chat with exact method names and styling plan.
+
+✅ Status:
+Waiting to begin Grid Styling feature in a new Git branch and chat.
+
+-----------------------------------------------------------------
+✅ Dev Log Summary — 2025-07-30 — Grid Lines & Tick Debugging
+
+Feature: Manual major/minor tick spacing and grid line visibility in ScottPlot v5
+Area: PlotManager.cs (CastleOverlayV2)
+Branch: feature/grid-line-customization
+
+🔍 Work Completed:
+Investigated why minor grid lines were not rendering even after setting a NumericManual tick generator.
+
+Confirmed that:
+
+_plot.Plot.Grid.XAxisStyle.MinorLineStyle sets color/width correctly.
+
+_plot.Plot.Axes.Bottom.TickGenerator = new NumericManual() works for setting manual major and minor ticks.
+
+Discovered that ScottPlot v5 no longer uses ShowMinorLines, EnableVertical, or Grid.Major/Minor (these were v4).
+
+Verified correct pattern via real ScottPlot v5 Cookbook examples.
+
+✅ Final Working Code Block (confirmed correct per v5 source):
+csharp
+Copy
+Edit
+var tickGen = new ScottPlot.TickGenerators.NumericManual();
+
+for (double pos = 0; pos <= 10; pos += 0.05)
+    tickGen.AddMajor(pos, pos.ToString("0.00"));
+
+for (double pos = 0.005; pos <= 10; pos += 0.05)
+    tickGen.AddMinor(pos);
+
+_plot.Plot.Axes.Bottom.TickGenerator = tickGen;
+
+_plot.Plot.Grid.XAxisStyle.MajorLineStyle.Color = ScottPlot.Colors.Gray.WithAlpha(50);
+_plot.Plot.Grid.XAxisStyle.MajorLineStyle.Width = 1;
+
+_plot.Plot.Grid.XAxisStyle.MinorLineStyle.Color = ScottPlot.Colors.LightGray.WithAlpha(25);
+_plot.Plot.Grid.XAxisStyle.MinorLineStyle.Width = 0.5f;
+🧨 Issues Encountered:
+Multiple incorrect assumptions from outdated v4 API references (ShowMinorLines, EnableVertical).
+
+SetupPlotDefaults() was defined but not invoked anywhere — unused legacy method.
+
+Minor lines weren’t showing because TickGenerator wasn’t actually being used by active plots until correctly wired in the constructor.
+-----------------------------------------------------------------
+✅ Dev Log Summary — 2025-07-30
+Feature: Plot Grid & Visual Polish
+Branch: feature/plot-grid-polish
+Build: 1.08
+
+🧱 Scope Implemented
+🎯 Grid & Tick Improvements:
+
+Updated PlotRuns() to use NumericAutomatic tick generator.
+
+Added EvenlySpacedMinorTickGenerator(10) for minor grid lines.
+
+Configured:
+
+✅ Only vertical grid lines (X-axis)
+
+❌ All Y-axis grid lines hidden
+
+✅ MajorLineColor: Black @ 15% opacity
+
+✅ MinorLineColor: Black @ 5% opacity
+
+✅ Major width = 2, Minor width = 1
+
+🎯 Dynamic Axis Control:
+
+X-axis (Time) is hidden by default, only shown when logs are loaded.
+
+In ResetEmptyPlot():
+
+Hides all axis visuals including the default left axis.
+
+Removes all grid lines and ticks.
+
+Displays a centered “Waiting for log…” message.
+
+In PlotRuns():
+
+X-axis visuals restored when logs are plotted:
+
+Label
+
+Tick labels
+
+Tick lengths
+
+Frame
+
+🎯 Visual Tweaks:
+
+🧲 Split lines updated:
+
+Color changed to Black.WithAlpha(100)
+
+Applies to both t = 0.00 and discipline splits
+
+🖱️ Mouse hover line _cursor updated:
+
+Color changed to Red.WithAlpha(150)
+
+Pattern = Dashed, Width = 1
+
+📂 Files Updated:
+PlotManager.cs
+
+PlotRuns() — tick generator, grid config, axis show/hide
+
+ResetEmptyPlot() — full axis suppression, waiting message
+
+AddRaceBoxSplitLines() — black split line color
+
+PlotRaceBoxRun() — start line color change
+
+_cursor line color set to red
+
 
 -----------------------------------------------------------------
 
+-----------------------------------------------------------------
+
+-----------------------------------------------------------------
+
+-----------------------------------------------------------------
 
 -----------------------------------------------------------------

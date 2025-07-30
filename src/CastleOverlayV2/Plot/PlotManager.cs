@@ -93,12 +93,38 @@ namespace CastleOverlayV2.Plot
         public PlotManager(FormsPlot plotControl)
         {
             _plot = plotControl ?? throw new ArgumentNullException(nameof(plotControl));
-            SetupPlotDefaults();
+            _plot.Plot.Clear();
 
-            // ✅ Wire mouse move ONCE
+            // ⛔ No title or legend
+            _plot.Plot.Title(null);
+            _plot.Plot.Legend.IsVisible = false;
+
+            // ✅ Custom Tick Generator with both major and minor ticks
+            var tickGen = new ScottPlot.TickGenerators.NumericManual();
+
+            for (double pos = 0.0; pos <= 10.0; pos += 0.05)
+                tickGen.AddMajor(pos, pos.ToString("0.00"));
+
+            for (double pos = 0.005; pos <= 10.0; pos += 0.005)
+                tickGen.AddMinor(pos);
+
+            _plot.Plot.Axes.Bottom.TickGenerator = tickGen;
+
+            // ✅ Grid line styling for both major and minor
+            _plot.Plot.Grid.XAxisStyle.MajorLineStyle.Color = ScottPlot.Colors.Black.WithAlpha(40);
+            _plot.Plot.Grid.XAxisStyle.MajorLineStyle.Width = 1;
+
+            _plot.Plot.Grid.XAxisStyle.MinorLineStyle.Color = ScottPlot.Colors.Gray.WithAlpha(25);
+            _plot.Plot.Grid.XAxisStyle.MinorLineStyle.Width = 0.5f;
+
+
+            // ✅ Label settings
+            _plot.Plot.Axes.Bottom.Label.Text = "Time (s)";
+            _plot.Plot.Axes.Bottom.Label.FontSize = 12;
+
+            _plot.Refresh();
             _plot.MouseMove += FormsPlot_MouseMove;
         }
-
 
 
         //--------------------------------------------------------------------------------------------------//
@@ -123,9 +149,6 @@ namespace CastleOverlayV2.Plot
                 _splitLinesBySlot.Remove(kvp.Key);
             }
 
-
-
-
             Logger.Log("📊 PlotRuns() — ENTERED");
 
             if (runsBySlot == null || runsBySlot.Count == 0)
@@ -136,10 +159,6 @@ namespace CastleOverlayV2.Plot
 
             Logger.Log($"📊 PlotRuns() — Total loaded slots: {runsBySlot.Count}");
 
-            // === ✅ PLOT CASTLE RUNS ===
-            // === ✅ PLOT EACH RUN (RaceBox vs Castle) ===
-           
-
             Logger.Log("📊 PlotRuns() — Current channel visibility map:");
             foreach (var kvp in _channelVisibility)
             {
@@ -149,7 +168,6 @@ namespace CastleOverlayV2.Plot
             LogVisibilityStates();
 
 
-            // ✅ Force-enable RaceBox channels if not in visibility map yet
             _channelVisibility.TryAdd("RaceBox Speed", true);
             _channelVisibility.TryAdd("RaceBox G-Force X", true);
 
@@ -179,8 +197,6 @@ namespace CastleOverlayV2.Plot
                 return;
             }
 
-
-
             if (runsBySlot == null || runsBySlot.Count == 0)
                 throw new ArgumentException("No runs to plot.");
 
@@ -193,10 +209,18 @@ namespace CastleOverlayV2.Plot
             // === ✅ ADD HOVER CURSOR ===
             _cursor = _plot.Plot.Add.VerticalLine(0);
             _cursor.LinePattern = ScottPlot.LinePattern.Dashed;
-            _cursor.Color = ScottPlot.Colors.Black;
+            _cursor.Color = ScottPlot.Colors.Red;
 
             // === ✅ X AXIS: Time ===
             var xAxis = _plot.Plot.Axes.Bottom;
+
+            // ✅ Show bottom axis visuals (for loaded logs)
+            xAxis.Label.IsVisible = true;
+            xAxis.TickLabelStyle.IsVisible = true;
+            xAxis.MajorTickStyle.Length = 5;
+            xAxis.MinorTickStyle.Length = 3;
+            xAxis.FrameLineStyle.Width = 1;
+
             xAxis.Label.Text = "Time (s)";
             xAxis.TickGenerator = new ScottPlot.TickGenerators.NumericAutomatic(); // ✅ Use default generator
 
@@ -204,10 +228,6 @@ namespace CastleOverlayV2.Plot
             //-----------------------------------------------------------//
             SetupAllAxes();
 
-            //-----------------------------------------------------------//
-
-            // === ✅ PLOT ALL RUNS ===
-            //-----------------------------------------------------------//
             // === ✅ PLOT EACH RUN ===
             // Loops through every loaded log (1 or more Castle runs)
             foreach (var kvp in runsBySlot)
@@ -226,15 +246,13 @@ namespace CastleOverlayV2.Plot
                 if (run.IsRaceBox)
                     continue;
 
-
-
                 if (run.DataPoints.Count == 0)
                     continue;
 
 
-            //-----------------------------------------------------------//
-            // === ✅ Extract X values (Time) for this run ===
-            double[] xs = run.DataPoints.Select(dp => dp.Time).ToArray();
+                //-----------------------------------------------------------//
+                // === ✅ Extract X values (Time) for this run ===
+                double[] xs = run.DataPoints.Select(dp => dp.Time).ToArray();
 
                 //-----------------------------------------------------------//
                 // === ✅ Loop through all channels (Throttle, RPM, Voltage, etc.) ===
@@ -260,7 +278,7 @@ namespace CastleOverlayV2.Plot
 
                     // === ✅ Create the scatter plot for this channel ===
                     //if (channelLabel == "Throttle") // 👈 Replace with the name of the blue line
-                        //continue;
+                    //continue;
                     Scatter scatter = _plot.Plot.Add.Scatter(xs, ysToPlot);
                     scatter.Label = channelLabel;
 
@@ -276,7 +294,6 @@ namespace CastleOverlayV2.Plot
                         Logger.Log($"   Values: {string.Join(", ", rawYs.Take(5))}");
                     }
 
-
                     scatter.Color = ChannelColorMap.GetColor(channelLabel);
                     scatter.LinePattern = LineStyleHelper.GetLinePattern(slot - 1);
                     scatter.LineWidth = (float)LineStyleHelper.GetLineWidth(slot - 1);
@@ -285,17 +302,13 @@ namespace CastleOverlayV2.Plot
 
                     bool isChannelVisible = _channelVisibility.TryGetValue(channelLabel, out var chanVis) ? chanVis : true;
                     bool isRunVisible = _runVisibility.TryGetValue(slot, out var runVis) ? runVis : true;
-
-                    //scatter.IsVisible = isChannelVisible && isRunVisible;
-
-
                     //-----------------------------------------------------------//
                     // === ✅ Map this channel to its correct hidden or visible Y-axis ===
                     // This keeps each channel using its own true-unit scale.
                     if (channelLabel == "RPM") scatter.Axes.YAxis = rpmAxis;
                     else if (channelLabel == "Throttle") scatter.Axes.YAxis = throttleAxis;
                     else if (channelLabel == "Voltage") scatter.Axes.YAxis = voltageAxis;
-                    else if (channelLabel == "Current") scatter.Axes.YAxis = currentAxis;   
+                    else if (channelLabel == "Current") scatter.Axes.YAxis = currentAxis;
                     else if (channelLabel == "Ripple") scatter.Axes.YAxis = rippleAxis;
                     else if (channelLabel == "PowerOut") scatter.Axes.YAxis = powerAxis;
                     else if (channelLabel == "ESC Temp") scatter.Axes.YAxis = escTempAxis;
@@ -313,10 +326,6 @@ namespace CastleOverlayV2.Plot
 
                     Logger.Log($"Plotting scatter: Run Slot {slot}, Channel '{channelLabel}', Visible={scatter.IsVisible}");
 
-
-
-
-                    //-----------------------------------------------------------//
                     // === ✅ Add scatter to lists for hover and toggle bar ===
                     _scatters.Add(scatter);
                     _rawYMap[scatter] = rawYs;  // store true raw values for hover
@@ -358,15 +367,9 @@ namespace CastleOverlayV2.Plot
 
 
             }
-
-            // === ✅ FINAL PLOT SETTINGS ===
-
             // Auto-scale axes based on plotted data and axis rules
             _plot.Plot.Axes.AutoScale(); // Respects LockedVertical and other axis rules
 
-            // DO NOT hide all axes globally — individual axes already styled (ticks/labels hidden as needed)
-            // foreach (var axis in _plot.Plot.Axes.GetAxes())
-            //     axis.IsVisible = false;
             var yAxes = _plot.Plot.Axes.Left; // default primary axis
             Logger.Log($"📏 Y-Axis Range: {yAxes.Range.Min} → {yAxes.Range.Max}");
 
@@ -374,17 +377,32 @@ namespace CastleOverlayV2.Plot
             foreach (var s in _scatters.Where(s => s.IsVisible))
                 Logger.Log($"• {s.Label}, Points: {_rawYMap[s].Length}, Axis: {s.Axes.YAxis.Label.Text}");
 
-
             // Maintain consistent padding around the plot area
             PixelPadding padding = new(left: 40, right: 40, top: 10, bottom: 50);
             _plot.Plot.Layout.Fixed(padding);
 
             // Optionally hide the legend (unless needed later)
             _plot.Plot.Legend.IsVisible = false;
+            // ✅ Configure automatic ticks with minor spacing
+            var tickGen = new ScottPlot.TickGenerators.NumericAutomatic();
+            tickGen.MinorTickGenerator = new ScottPlot.TickGenerators.EvenlySpacedMinorTickGenerator(5);
+            _plot.Plot.Axes.Bottom.TickGenerator = tickGen;
+
+            // ✅ Vertical grid lines only
+            _plot.Plot.Grid.XAxisStyle.IsVisible = true;
+            _plot.Plot.Grid.YAxisStyle.IsVisible = false;
+
+            // ✅ Grid appearance
+            _plot.Plot.Grid.MajorLineColor = ScottPlot.Colors.Grey.WithAlpha(75);
+            _plot.Plot.Grid.MinorLineColor = ScottPlot.Colors.Grey.WithAlpha(25);
+            _plot.Plot.Grid.MajorLineWidth = 2;
+            _plot.Plot.Grid.MinorLineWidth = 1;
+
 
             // Refresh the plot with all changes
             _plot.Refresh();
-         }
+        }
+        
         //====================================================================================//
         private void SetupAllAxes()
         {
@@ -652,22 +670,6 @@ namespace CastleOverlayV2.Plot
         }
 
         /// <summary>
-        /// Apply default plot labels.
-        /// </summary>
-        private void SetupPlotDefaults()
-        {
-            // ✅ Set the title once
-            _plot.Plot.Title("Castle Log Overlay Tool");
-
-            // ✅ Give space for the title
-            PixelPadding padding = new(left: 40, right: 40, top: 10, bottom: 50);
-            _plot.Plot.Layout.Fixed(padding);
-
-            // ✅ Add any other permanent styles here
-            _plot.Plot.XLabel("Time (s)");
-        }
-
-        /// <summary>
         /// Return all channels for a run, scaled per factor.
         /// </summary>
         private IEnumerable<(string Label, double[] RawYs, double[] ScaledYs)> GetChannelsWithRaw(RunData run)
@@ -855,15 +857,61 @@ namespace CastleOverlayV2.Plot
             _plot.Plot.Clear();
             _plot.Plot.Axes.Rules.Clear();
 
+            // ✅ Disable vertical and horizontal grid lines
+            _plot.Plot.Grid.XAxisStyle.IsVisible = false;
+            _plot.Plot.Grid.YAxisStyle.IsVisible = false;
+
+            // ✅ Hide all known axes
+            var allAxes = new List<IAxis>
+    {
+        _plot.Plot.Axes.Bottom,
+        throttleAxis,
+         _plot.Plot.Axes.Left,
+        rpmAxis,
+        voltageAxis,
+        currentAxis,
+        rippleAxis,
+        powerAxis,
+        escTempAxis,
+        motorTempAxis,
+        motorTimingAxis,
+        accelAxis,
+        raceBoxSpeedAxis,
+        raceBoxGxAxis
+    };
+
+            foreach (var axis in allAxes)
+            {
+                if (axis == null) continue;
+
+                bool isBottom = axis == _plot.Plot.Axes.Bottom;
+
+                // ❌ Completely hide bottom axis in empty state
+                axis.Label.IsVisible = false;
+                axis.TickLabelStyle.IsVisible = false;
+                axis.MajorTickStyle.Length = 0;
+                axis.MinorTickStyle.Length = 0;
+                axis.FrameLineStyle.Width = 0;
+
+            }
+
+
+            // ✅ Add center placeholder text
+            var msg = _plot.Plot.Add.Text("Waiting for log...", 0, 0);
+            msg.Alignment = Alignment.MiddleCenter;
+            msg.FontSize = 18;
+            msg.Color = ScottPlot.Colors.Gray;
+
             // ✅ Maintain layout (title space)
             PixelPadding padding = new(left: 40, right: 40, top: 10, bottom: 50);
             _plot.Plot.Layout.Fixed(padding);
 
-            // ✅ Any runtime-only settings
+            // ✅ Hide legend
             _plot.Plot.Legend.IsVisible = false;
 
             _plot.Refresh();
         }
+
 
 
         private bool _isFourPoleMode = false;
@@ -955,8 +1003,8 @@ namespace CastleOverlayV2.Plot
             {
                 var vLine = _plot.Plot.Add.VerticalLine(t);
                 vLine.LinePattern = LineStyleHelper.GetLinePattern(99);
-                vLine.LineWidth = 1;
-                vLine.Color = ScottPlot.Colors.Gray.WithAlpha(100);
+                vLine.LineWidth = 2;
+                vLine.Color = ScottPlot.Colors.DarkBlue.WithAlpha(200);
                 lines.Add(vLine);
             }
 
