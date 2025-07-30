@@ -190,8 +190,20 @@ namespace CastleOverlayV2.Services
 
             Logger.Log($"[RaceBoxLoader] CSV read complete in LoadHeaderOnly — {allRows.Count} rows");
 
+            // 🛡️ Validate header rows exist before accessing them
+            if (allRows.Count <= 8)
+                throw new Exception("RaceBox file is too short — missing expected header rows (need at least 9).");
+
+            // 🛡️ Validate expected columns exist
+            if (allRows[7].Length <= 1)
+                throw new Exception("Row 8 is missing the run count value in column 2.");
+            if (allRows[8].Length <= 1)
+                throw new Exception("Row 9 is missing the discipline value in column 2.");
+
+            // ✅ Safe to parse
             int runCount = int.Parse(allRows[7][1]);
             string discipline = allRows[8][1];
+
 
             int firstCompleteRunIndex = -1;
 
