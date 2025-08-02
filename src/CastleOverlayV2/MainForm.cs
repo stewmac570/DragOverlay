@@ -355,12 +355,13 @@ namespace CastleOverlayV2
 
             raceBox1 = rbData;
             Logger.Log($"✅ RaceBox 1 loaded. RunCount = {rbData.RunCount}, FirstCompleteRun = {rbData.FirstCompleteRunIndex + 1}");
-
+            
 
             // === ✅ Convert RaceBox points into RunData for plotting ===
             var run = new RunData();
             run.IsRaceBox = true;
             run.SplitTimes = rbData.SplitTimes;
+            run.SplitLabels = rbData.SplitLabels;
             Logger.Log($"✅ SplitTimes loaded: {string.Join(", ", run.SplitTimes ?? new List<double>())}");
 
             run.FileName = Path.GetFileName(path);
@@ -468,6 +469,7 @@ namespace CastleOverlayV2
             var run = new RunData();
             run.IsRaceBox = true;
             run.SplitTimes = rbData.SplitTimes;   //1 
+            run.SplitLabels = rbData.SplitLabels;
             Logger.Log($"✅ SplitTimes loaded: {string.Join(", ", run.SplitTimes ?? new List<double>())}");
             run.FileName = Path.GetFileName(path);
 
@@ -539,6 +541,7 @@ namespace CastleOverlayV2
             run.IsRaceBox = true;
             run.FileName = Path.GetFileName(path);
             run.SplitTimes = rbData.SplitTimes;//2
+            run.SplitLabels = rbData.SplitLabels;
 
             run.Data["RaceBox Speed"] = points.Select(p => new DataPoint { Time = p.Time.TotalSeconds, Y = p.SpeedMph }).ToList();
             run.Data["RaceBox G-Force X"] = points.Select(p => new DataPoint { Time = p.Time.TotalSeconds, Y = p.GForceX }).ToList();
