@@ -44,6 +44,21 @@ namespace CastleOverlayV2.Services
                 }
                 Logger.Log($"[RaceBoxLoader] CSV read complete — total rows: {allRows.Count}");
 
+                // 🛡 Validate RaceBox signature in Row 1
+                // ✅ At least 9 rows, and row 8 = run count, row 9 = disciplines with semicolons
+                bool hasEnoughRows = allRows.Count > 8;
+                bool hasRunCount = hasEnoughRows && allRows[7].Length > 1 && int.TryParse(allRows[7][1], out _);
+                bool hasDisciplines = hasEnoughRows && allRows[8].Length > 1 && allRows[8][1].Contains(';');
+
+                if (!hasRunCount || !hasDisciplines)
+                {
+                    Logger.Log("❌ File rejected: not a RaceBox CSV — missing run count or disciplines format.");
+                    MessageBox.Show("This file is not a valid RaceBox export.\n\nExpected at least 9 header rows and discipline labels.",
+                        "Invalid File", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return null;
+                }
+
+              
                 // === Header-based Metadata Logging ===
                 Logger.Log("[RaceBoxLoader] Reading run count from row 8...");
                 int runCount = int.Parse(allRows[7][1]);  // Row 8: Runs
@@ -190,6 +205,17 @@ namespace CastleOverlayV2.Services
 
             Logger.Log($"[RaceBoxLoader] CSV read complete in LoadHeaderOnly — {allRows.Count} rows");
 
+            // 🛡 Validate RaceBox signature in Row 1
+            if (allRows.Count == 0 || allRows[0].Length == 0 || !string.Join(",", allRows[0]).Contains("RaceBox"))
+            {
+                Logger.Log("❌ File rejected: not a RaceBox CSV. First row = " +
+                    (allRows.Count > 0 ? string.Join(",", allRows[0]) : "[empty]"));
+                MessageBox.Show("This file is not a valid RaceBox export.\n\nPlease select a real RaceBox CSV file.",
+                    "Invalid File", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return null;
+            }
+
+
             // 🛡️ Validate header rows exist before accessing them
             if (allRows.Count <= 8)
                 throw new Exception("RaceBox file is too short — missing expected header rows (need at least 9).");
@@ -197,18 +223,29 @@ namespace CastleOverlayV2.Services
             // 🛡️ Validate expected columns exist
             if (allRows[7].Length <= 1)
                 throw new Exception("Row 8 is missing the run count value in column 2.");
+
+
             if (allRows[8].Length <= 1)
                 throw new Exception("Row 9 is missing the discipline value in column 2.");
-
             // ✅ Safe to parse
             int runCount = int.Parse(allRows[7][1]);
-            string discipline = allRows[8][1];        // "6 feet;66 feet;132 feet;140 feet"
 
-            // 🏷️ Extract split labels from the semicolon-separated string
+            // 🛡️ Defensive check for missing discipline value
+            if (allRows[8].Length <= 1 || string.IsNullOrWhiteSpace(allRows[8][1]))
+            {
+                Logger.Log("❌ Row 9 discipline value missing or empty. Raw row: " + string.Join(",", allRows[8]));
+                throw new Exception("Row 9 is missing the discipline value in column 2.");
+            }
+
+            // ✅ Extract split labels from semicolon-separated string
+            string discipline = allRows[8][1];  // e.g., "6 feet;66 feet;132 feet;140 feet"
+            Logger.Log($"[RaceBoxLoader] Raw discipline string: {discipline}");
+
             var splitLabels = discipline
                 .Split(';', StringSplitOptions.RemoveEmptyEntries)
                 .Select(s => s.Trim())
                 .ToList();
+
 
             int firstCompleteRunIndex = -1;
 
