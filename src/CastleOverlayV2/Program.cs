@@ -20,5 +20,6 @@ namespace CastleOverlayV2
             // Start the app with config injected into MainForm
             Application.Run(new MainForm(configService));
         }
+
     }
 }

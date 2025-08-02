@@ -202,8 +202,13 @@ namespace CastleOverlayV2.Services
 
             // ✅ Safe to parse
             int runCount = int.Parse(allRows[7][1]);
-            string discipline = allRows[8][1];
+            string discipline = allRows[8][1];        // "6 feet;66 feet;132 feet;140 feet"
 
+            // 🏷️ Extract split labels from the semicolon-separated string
+            var splitLabels = discipline
+                .Split(';', StringSplitOptions.RemoveEmptyEntries)
+                .Select(s => s.Trim())
+                .ToList();
 
             int firstCompleteRunIndex = -1;
 
@@ -261,8 +266,10 @@ namespace CastleOverlayV2.Services
                 RunCount = runCount,
                 Discipline = discipline,
                 FirstCompleteRunIndex = firstCompleteRunIndex >= 0 ? firstCompleteRunIndex : null,
-                SplitTimes = splitTimes
+                SplitTimes = splitTimes,
+                SplitLabels = splitLabels
             };
+
 
 
         }

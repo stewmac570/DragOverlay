@@ -18,6 +18,10 @@
 
         public List<double>? SplitTimes { get; set; }
 
+        // 🆕 NEW: User-friendly split labels from CSV (e.g., "66 feet", "132 feet")
+        public List<string>? SplitLabels { get; set; }
+  
+
         public RunData()
         {
             DataPoints = new List<DataPoint>();

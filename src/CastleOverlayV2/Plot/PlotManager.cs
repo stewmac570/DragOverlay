@@ -8,14 +8,11 @@ using ScottPlot.WinForms;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection.Emit;
 using System.Text;
 using System.Threading.Channels;
 using System.Windows.Forms;
-
-
-
-
-
+using ScottPlot.AxisPanels;
 
 namespace CastleOverlayV2.Plot
 {
@@ -47,14 +44,15 @@ namespace CastleOverlayV2.Plot
         // ✅ Track whether each run is visible
         private readonly Dictionary<int, bool> _runVisibility = new();
 
-
         // ✅ Store all loaded runs
         private readonly Dictionary<int, RunData> _runsBySlot = new();
         public IReadOnlyDictionary<int, RunData> Runs => _runsBySlot;
 
         private readonly Dictionary<int, List<VerticalLine>> _splitLinesBySlot = new();
-
-
+        // ✅ Tracks Text labels for each slot's split lines
+        private readonly Dictionary<int, List<Text>> _splitLabelsBySlot = new();
+               
+        private ScottPlot.IYAxis? _splitLabelAxis;
 
         // === Castle Axis References ===
         private IYAxis throttleAxis;
@@ -205,6 +203,7 @@ namespace CastleOverlayV2.Plot
             _scatters.Clear();
             _rawYMap.Clear();
             _plot.Plot.Axes.Rules.Clear();
+            _splitLabelAxis = null;
 
             // === ✅ ADD HOVER CURSOR ===
             _cursor = _plot.Plot.Add.VerticalLine(0);
@@ -227,6 +226,9 @@ namespace CastleOverlayV2.Plot
 
             //-----------------------------------------------------------//
             SetupAllAxes();
+
+            // 🔒 prepare hidden axis for split-time labels once
+            EnsureSplitLabelAxis();
 
             // === ✅ PLOT EACH RUN ===
             // Loops through every loaded log (1 or more Castle runs)
@@ -329,7 +331,6 @@ namespace CastleOverlayV2.Plot
                     // === ✅ Add scatter to lists for hover and toggle bar ===
                     _scatters.Add(scatter);
                     _rawYMap[scatter] = rawYs;  // store true raw values for hover
-
                 }
             }
 
@@ -343,17 +344,32 @@ namespace CastleOverlayV2.Plot
                     Logger.Log($"📈 Always plotting RaceBox run in slot {slot} (regardless of visibility)...");
                     PlotRaceBoxRun(slot, run);
 
-                    // Then control visibility AFTER they're added
+                    // 🔁 Re-render now to ensure Y-axis has real bounds before adding labels
+                    _plot.Refresh();
+
+                    // ✅ Add split lines and labels after rendering
+                    if (run.SplitTimes?.Count > 0)
+                        AddRaceBoxSplitLines(slot, run.SplitTimes, run.SplitLabels, includeZero: true);
+
+                    // 🔁 Then control visibility AFTER they're added
                     bool isVisible = _runVisibility.TryGetValue(slot, out var vis) ? vis : true;
 
-                    // Hide the lines if this run is hidden
+                    // Hide split lines if run is hidden
                     if (!isVisible && _splitLinesBySlot.TryGetValue(slot, out var lines))
                     {
                         foreach (var line in lines)
                             line.IsVisible = false;
                     }
 
-                    // Hide the scatters manually
+                    // Hide split labels if run is hidden
+                    if (!isVisible && _splitLabelsBySlot.TryGetValue(slot, out var lbls))
+                        {
+                        foreach (var lbl in lbls)
+                        lbl.IsVisible = false;
+                        }
+
+
+                    // Hide scatters if run is hidden
                     foreach (var scatter in _scatters)
                     {
                         if (_scatterSlotMap.TryGetValue(scatter, out int scatterSlot) && scatterSlot == slot)
@@ -366,9 +382,9 @@ namespace CastleOverlayV2.Plot
                 }
 
 
+
             }
-            // Auto-scale axes based on plotted data and axis rules
-            _plot.Plot.Axes.AutoScale(); // Respects LockedVertical and other axis rules
+
 
             var yAxes = _plot.Plot.Axes.Left; // default primary axis
             Logger.Log($"📏 Y-Axis Range: {yAxes.Range.Min} → {yAxes.Range.Max}");
@@ -378,7 +394,7 @@ namespace CastleOverlayV2.Plot
                 Logger.Log($"• {s.Label}, Points: {_rawYMap[s].Length}, Axis: {s.Axes.YAxis.Label.Text}");
 
             // Maintain consistent padding around the plot area
-            PixelPadding padding = new(left: 40, right: 40, top: 10, bottom: 50);
+            PixelPadding padding = new(left: 40, right: 40, top: 0, bottom: 50);
             _plot.Plot.Layout.Fixed(padding);
 
             // Optionally hide the legend (unless needed later)
@@ -484,6 +500,12 @@ namespace CastleOverlayV2.Plot
 
         private void HideAxis(IAxis axis)
         {
+            if (axis == null)
+            {
+                Logger.Log("⚠️ [HideAxis] Attempted to hide a null axis — skipping.");
+                return;
+            }
+
             axis.Label.IsVisible = false;
             axis.TickLabelStyle.IsVisible = false;
             axis.MajorTickStyle.Length = 0;
@@ -491,8 +513,9 @@ namespace CastleOverlayV2.Plot
             axis.FrameLineStyle.Width = 0;
         }
 
+
         //===============================================================================//
-         private void PlotRaceBoxRun(int slot, RunData run)
+        private void PlotRaceBoxRun(int slot, RunData run)
         {
             Logger.Log($"PlotRaceBoxRun called for slot {slot}, run.SplitTimes count: {run.SplitTimes?.Count ?? 0}");
 
@@ -576,8 +599,7 @@ namespace CastleOverlayV2.Plot
             if (run.SplitTimes != null && run.SplitTimes.Any())
             {
                 Logger.Log($"📏 Drawing {run.SplitTimes.Count} RaceBox split lines...");
-                AddRaceBoxSplitLines(slot, run.SplitTimes, includeZero: true);
-
+                AddRaceBoxSplitLines(slot, run.SplitTimes, run.SplitLabels, includeZero: true);
             }
 
         }
@@ -706,37 +728,46 @@ namespace CastleOverlayV2.Plot
 
         //=======================================================================
 
+        /// <summary>
+        /// Toggle visibility of every plottable that belongs to a run slot
+        /// (scatters, split lines, split labels, etc.)
+        /// </summary>
         public void ToggleRunVisibility(int slot, bool isVisibleNow)
         {
             _runVisibility[slot] = isVisibleNow;
-
             Logger.Log($"🔁 Toggled Run Visibility — Slot {slot}, NowVisible={isVisibleNow}");
 
-            bool hasAnyScatters = _scatters.Any(s => _scatterSlotMap.TryGetValue(s, out int sSlot) && sSlot == slot);
+            /* ----------------------------------------------------------------
+             * 1. If the user tries to show a slot that was never plotted (or
+             *    its scatters were disposed), rebuild it on-demand.
+             * -------------------------------------------------------------- */
+            bool hasAnyScatters = _scatters.Any(s =>
+                _scatterSlotMap.TryGetValue(s, out int sSlot) && sSlot == slot);
 
             if (isVisibleNow && !hasAnyScatters)
             {
-                Logger.Log($"♻️ No active plots for slot {slot}. Forcing replot.");
-
+                Logger.Log($"♻️ No active plots for slot {slot}. Forcing re-plot.");
                 if (_runsBySlot.TryGetValue(slot, out RunData run))
                 {
                     if (run.IsRaceBox)
                     {
-                        Logger.Log($"♻️ Replotting hidden RaceBox slot {slot}...");
+                        Logger.Log($"♻️ Re-plotting hidden RaceBox slot {slot}...");
                         PlotRaceBoxRun(slot, run);
                     }
                     else
                     {
                         PlotRuns(new Dictionary<int, RunData>(_runsBySlot));
-                        return;
                     }
                 }
             }
 
-            // 🔄 Show/hide matching scatters
+            /* ----------------------------------------------------------------
+             * 2. Show / hide all scatters belonging to this slot
+             * -------------------------------------------------------------- */
             foreach (var scatter in _scatters)
             {
-                if (_scatterSlotMap.TryGetValue(scatter, out int scatterSlot) && scatterSlot == slot)
+                if (_scatterSlotMap.TryGetValue(scatter, out int scatterSlot) &&
+                    scatterSlot == slot)
                 {
                     string channel = scatter.Label;
                     bool channelOn = _channelVisibility.TryGetValue(channel, out bool vis) ? vis : true;
@@ -744,20 +775,34 @@ namespace CastleOverlayV2.Plot
                 }
             }
 
-            // 🔄 Show/hide split lines
-            if (_splitLinesBySlot.TryGetValue(slot, out var lines))
-            {
-                foreach (var line in lines)
-                    line.IsVisible = isVisibleNow;
-            }
-            else if (isVisibleNow && _runsBySlot.TryGetValue(slot, out RunData run2) && run2.IsRaceBox && run2.SplitTimes?.Count > 0)
+            /* ----------------------------------------------------------------
+             * 3. Show / hide split lines *and* labels in a single helper
+             * -------------------------------------------------------------- */
+            SetSplitVisibility(slot, isVisibleNow);              // ← NEW
+
+            // -----------------------------------------------------------------
+            // 4. Rebuild split lines if the slot is being shown and no objects
+            //    currently exist (e.g., they were cleared when the log unloaded)
+            // -----------------------------------------------------------------
+            RunData run2;
+            bool hasRun = _runsBySlot.TryGetValue(slot, out run2);
+            bool needRebuild = isVisibleNow
+                             && (!_splitLinesBySlot.ContainsKey(slot)
+                                 || _splitLinesBySlot[slot].Count == 0)
+                             && hasRun
+                             && run2.IsRaceBox
+                             && run2.SplitTimes?.Count > 0;
+
+            if (needRebuild)
             {
                 Logger.Log($"➕ Rebuilding missing split lines for slot {slot} after re-show");
-                AddRaceBoxSplitLines(slot, run2.SplitTimes);
+                AddRaceBoxSplitLines(slot, run2.SplitTimes, run2.SplitLabels);
             }
+
 
             _plot.Refresh();
         }
+
 
 
 
@@ -799,8 +844,9 @@ namespace CastleOverlayV2.Plot
         /// </summary>
         public void FitToData()
         {
-            _plot.Plot.Axes.AutoScale();
             _plot.Refresh();
+            _plot.Plot.Axes.AutoScale();
+            
         }
 
         private Dictionary<string, bool> _channelVisibility = new();
@@ -842,6 +888,8 @@ namespace CastleOverlayV2.Plot
                     line.IsVisible = newState;
                 }
             }
+
+            SetSplitVisibility(slot, newState);
 
             _plot.Refresh();
 
@@ -983,34 +1031,160 @@ namespace CastleOverlayV2.Plot
             }
         }
 
-        private void AddRaceBoxSplitLines(int slot, List<double> splitTimes, bool includeZero = false)
+        private void AddRaceBoxSplitLines(int slot, List<double> splitTimes, List<string> splitLabels, bool includeZero = false)
         {
-            if (_splitLinesBySlot.ContainsKey(slot))
+            Logger.Log($"📍 [SplitLines] Begin → slot={slot}, count={splitTimes?.Count ?? 0}");
+           
+            EnsureSplitLabelAxis();
+
+            RemovePreviousSplitLines(slot);
+            RemovePreviousSplitLabels(slot);
+
+            var (times, labels) = PrepareSplitData(splitTimes, splitLabels, includeZero);
+            const double yLabel = 0.95; ;
+
+            _splitLinesBySlot[slot] = DrawSplitLines(times);
+            _splitLabelsBySlot[slot] = DrawSplitLabels(times, labels, yLabel);
+
+            Logger.Log($"✅ [SplitLines] Completed → slot={slot}, lines={times.Count}, yLabel={yLabel:F2}");
+
+            _plot.Refresh();
+
+        }
+        private (List<double> times, List<string> labels) PrepareSplitData(List<double> splitTimes, List<string> splitLabels, bool includeZero)
+        {
+            var times = new List<double>(splitTimes ?? new());
+            var labels = new List<string>(splitLabels ?? new());
+
+            if (includeZero && !times.Contains(0.0))
             {
-                foreach (var line in _splitLinesBySlot[slot])
-                    _plot.Plot.Remove(line);
-                _splitLinesBySlot.Remove(slot);
+                times.Insert(0, 0.0);
+                labels.Insert(0, "Start");
+                Logger.Log("➕ [SplitPrep] Inserted 0.00s → label='Start'");
             }
 
-            // ✅ Optionally include t = 0.00 as the first split line
-            var splitTimesCopy = new List<double>(splitTimes);
-            if (includeZero && !splitTimesCopy.Contains(0.0))
-                splitTimesCopy.Insert(0, 0.0);
+            if (times.Count != labels.Count)
+                Logger.Log($"⚠️ [SplitPrep] Label mismatch: {labels.Count} labels vs {times.Count} times");
 
+            return (times, labels);
+        }
+        private double GetSplitLabelYPosition(List<double> times)
+        {
+            double yLabel = 5; // <- locked value not linked to any axis
+            Logger.Log($"🔒 [YLock] Using fixed yLabel: {yLabel:F2}");
+            return yLabel;
+        }
+
+        private List<VerticalLine> DrawSplitLines(List<double> times)
+        {
             var lines = new List<VerticalLine>();
 
-            foreach (double t in splitTimesCopy)
+            foreach (double t in times)
             {
                 var vLine = _plot.Plot.Add.VerticalLine(t);
                 vLine.LinePattern = LineStyleHelper.GetLinePattern(99);
                 vLine.LineWidth = 2;
                 vLine.Color = ScottPlot.Colors.DarkBlue.WithAlpha(200);
                 lines.Add(vLine);
+
+                Logger.Log($"📍 [DrawLine] t={t:F3}s");
             }
 
-            _splitLinesBySlot[slot] = lines;
+            Logger.Log($"✅ [DrawLine] Total vertical lines drawn: {lines.Count}");
+            return lines;
+        }
+        /// <summary>
+        /// Draw text labels for every RaceBox split line.
+        /// All labels are fixed to the hidden _splitLabelAxis so they never
+        /// move when the primary Y-axis pans or zooms.
+        /// </summary>
+        private List<Text> DrawSplitLabels(List<double> times,
+                                   List<string> labels,
+                                   double yLabel)
+        {
+            // Axis already prepared by caller, but guard anyway
+            EnsureSplitLabelAxis();
+
+            var result = new List<Text>();
+
+            for (int i = 0; i < times.Count; i++)
+            {
+                string txt = i < labels.Count ? labels[i] : $"Split {i}";
+                double t = times[i];
+
+                var lbl = _plot.Plot.Add.Text(txt, t, yLabel);
+                lbl.Axes.YAxis = _splitLabelAxis!;   // 🔒 pin to locked axis
+                lbl.Alignment = Alignment.UpperCenter;
+
+                // styling (unchanged)
+                lbl.FontSize = 12;
+                lbl.FontColor = ScottPlot.Colors.DarkBlue;
+                lbl.BackgroundColor = ScottPlot.Colors.White.WithAlpha(180);
+                lbl.BorderColor = ScottPlot.Colors.DarkBlue;
+                lbl.BorderWidth = 1;
+                lbl.OffsetY = -2;
+                result.Add(lbl);
+            }
+            return result;
         }
 
 
+        private void RemovePreviousSplitLines(int slot)
+        {
+            if (_splitLinesBySlot.ContainsKey(slot))
+            {
+                foreach (var line in _splitLinesBySlot[slot])
+                    _plot.Plot.Remove(line);
+                _splitLinesBySlot.Remove(slot);
+                Logger.Log($"🧹 [Cleanup] Removed {slot} split lines");
+            }
+        }
+                private void RemovePreviousSplitLabels(int slot)
+        {
+            if (_splitLabelsBySlot.ContainsKey(slot))
+            {
+                foreach (var lbl in _splitLabelsBySlot[slot])
+                    _plot.Plot.Remove(lbl);
+                _splitLabelsBySlot.Remove(slot);
+                Logger.Log($"🧹 [Cleanup] Removed {slot} split labels");
+            }
+        }
+        /// <summary>
+        /// Show or hide split lines and their labels for the given slot
+        /// </summary>
+        private void SetSplitVisibility(int slot, bool visible)
+        {
+            if (_splitLinesBySlot.TryGetValue(slot, out var lines))
+                foreach (var ln in lines)
+                    ln.IsVisible = visible;
+
+            if (_splitLabelsBySlot.TryGetValue(slot, out var lbls))
+                foreach (var lbl in lbls)
+                    lbl.IsVisible = visible;
+        }
+
+        /// <summary>
+        /// Grabs the plot’s built-in right Y-axis, hides it,
+        /// and locks its vertical range to 0–1 so split labels never move.
+        /// Call this once *before* you add any label.
+        /// </summary>
+        private void EnsureSplitLabelAxis()
+    {
+        if (_splitLabelAxis is not null)
+            return;                                   // already prepared
+
+        _splitLabelAxis = _plot.Plot.Axes.Right;      // this axis always exists
+
+        // ① lock its numeric range forever
+        _plot.Plot.Axes.Rules.Add(new LockedVertical(_splitLabelAxis, 0.0, 1.0));
+
+        // ② hide frame, ticks, and label (same helper you use for Castle axes)
+        HideAxis(_splitLabelAxis);
+    }
+        /// </summary>
+        /// Place a split-line label 12 pixels from the top edge of the plot.
+        /// X is still data-space (seconds); Y is absolute pixel.
+       
     }
 }
+

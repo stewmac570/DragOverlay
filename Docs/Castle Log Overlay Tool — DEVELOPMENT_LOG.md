@@ -2649,9 +2649,91 @@ _cursor line color set to red
 
 
 -----------------------------------------------------------------
+Dev Log Update — Vertical Split-Line Labels (ScottPlot v5)
+Session Date: 2025-08-02 (continuation) | Feature Area: RaceBox → Split-Line Labels
+Current Build: DragOverlay — 1.09
+
+🎯 Revised Objective	Labels for RaceBox splits must:
+• auto-appear when a RaceBox log loads
+• stay absolutely fixed at the top when Castle curves rescale/zoom
+• hide/show with the RaceBox slot
+• display discipline text from CSV (“6 ft”, “66 ft”…).
+
+🛠️ Key Work Completed in this session
+Item	Implementation	Status
+Remove duplicate hidden axes	Deleted per-channel block that recreated _splitLabelAxis; added EnsureSplitLabelAxis() once per PlotRuns().	✅ drift source eliminated
+Axis lock rebuild	After Axes.Rules.Clear() set _splitLabelAxis = null to force re-locking on every redraw.	✅ axis always 0–1
+Label anchoring	• const double yLabel = 1.0 (was 0.95)
+• lbl.Alignment = Alignment.UpperCenter
+• lbl.OffsetY = -2 px
+• Removed top PixelPadding (10 → 0).	✅ labels glued to frame on zoom/resize
+Visibility control	• SetSplitVisibility() now flips both lines and labels.
+• Added call in both ToggleRunVisibility overloads.	✅ hide/show works
+CSV discipline → labels	RaceBoxLoader.LoadHeaderOnly()
+• Parsed semicolon list in row 9 → SplitLabels.
+MainForm.cs (3 handlers)
+• Forwarded rbData.SplitLabels into each RunData.	✅ labels now read “6 ft, 66 ft, 132 ft, 140 ft”
+Cleanup	Removed obsolete pixel helpers, anchor-scatter hack, dead GetSplitLabelYPosition().	✅ compile clean
+
+📈 Behaviour Verified (build 1.09)
+Labels remain flush to the frame while panning/zooming, even with Castle data loaded.
+
+Hide/Show buttons affect lines and labels together.
+
+Discipline text appears correctly from CSV for every run slot.
+
+📌 Next-Step Options (future work)
+Option	Effort	Notes
+Styling tweaks	tiny	change “feet” → “ft”, colors, font, etc.
+Pixel-anchored Annotation	small	replace hidden-axis trick entirely (optional).
+Auto-color lines & labels per slot	tiny	match Castle color map.
+
 
 -----------------------------------------------------------------
+✅ Dev Log Summary — Vertical Split Line Labels (ScottPlot v5)
+Session Date: 2025-08-02
+Feature Area: RaceBox Integration → Plot Split Line Labels
+Build: DragOverlay — Build 1.08
 
+🧠 Goal:
+Display text labels above vertical split lines in ScottPlot v5, using Plot.Add.Text() for RaceBox split markers.
+
+🛠️ Work Done:
+❌ Initial attempts failed silently:
+Labels were added using Plot.Add.Text(...), but nothing rendered on screen. No exceptions thrown.
+
+🧪 Y-axis adjustment attempted:
+Custom yTop and yBottom calculations used to shift label positions.
+❌ yTop/yBottom conflicts with existing axis range variables; caused compiler errors due to shadowing.
+
+✅ Plot refresh confirmed working:
+_plot.Refresh() invoked correctly after label creation — not the issue.
+
+❌ label.Debug(true) method not found:
+Attempted to outline label boxes for visibility, but Debug() method doesn’t exist in ScottPlot v5.
+
+✅ Split lines themselves are rendering correctly
+Vertical dashed lines from RaceBox split data appear in the plot.
+
+❌ Text still not visible despite being added
+Debug logs confirmed that Plot.Add.Text(...) was executing and positioning was calculated, but labels did not appear.
+
+📸 Multiple screenshots and logs confirmed:
+
+No label objects visible
+
+No exceptions
+
+Code paths were hit (confirmed with Debug.WriteLine)
+
+🔁 Next Step:
+Start a new chat with a new prompt (already prepared) to:
+
+Paste real working ScottPlot v5 label examples
+
+Validate correct usage
+
+Then reapply it to vertical line positions in existing code
 -----------------------------------------------------------------
 
 -----------------------------------------------------------------
