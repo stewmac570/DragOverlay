@@ -2735,6 +2735,53 @@ Validate correct usage
 
 Then reapply it to vertical line positions in existing code
 -----------------------------------------------------------------
+✅ Dev Log Update — CSV Loading Safety & Crash Prevention
+Session Date: 2025-08-02 | Feature Area: File Import Handling (Castle + RaceBox)
+Build: DragOverlay — 1.09
+
+🛡️ Bug Fixes & Stability Improvements
+Area	Fix
+RaceBox → Wrong File Crash	Added null check after RaceBoxLoader.LoadHeaderOnly(...) to prevent NullReferenceException if user selects Castle CSV or a malformed file
+RaceBox → Empty Telemetry	Added guard for points.Count == 0 after LoadTelemetry(); shows warning and skips plotting
+Castle Run 1	Added MessageBox feedback if log fails to load or has no data
+Improved catch block with visible error message
+Castle Run 2	Same safety updates as Run 1: UI warning for invalid or empty files, visible error details on crash
+Castle Run 3	Same updates as Run 1 & 2; now fully safe with error feedback and crash prevention
+
+🔍 Added Logging
+"rbData was null" and "No complete run" messages now show for bad RaceBox loads
+
+Detailed telemetry parsing logs help verify successful import and launch detection
+-----------------------------------------------------------------
+🆕 Feature: Global Castle Log X-Axis Shift
+Date: 2025-08-02
+Build: DragOverlay — 1.09
+File: PlotManager.cs
+
+Summary:
+Added a global Castle log offset to adjust all run start positions on the X-axis. This helps fine-tune alignment if logs appear slightly misaligned from t=0.
+
+Implementation Details:
+
+New field: private double _castleTimeShift = 0.00;
+
+New method: SetCastleTimeShift(double shiftSeconds)
+
+Applies shift during plotting: Time + shift inside PlotRuns()
+
+Does not modify raw RunData.DataPoints.Time values
+
+Call SetCastleTimeShift(...) before PlotAllRuns() to apply
+
+Example:
+
+csharp
+Copy
+Edit
+_plotManager.SetCastleTimeShift(0.05); // shift logs by +50ms
+-----------------------------------------------------------------
+
+-----------------------------------------------------------------
 
 -----------------------------------------------------------------
 

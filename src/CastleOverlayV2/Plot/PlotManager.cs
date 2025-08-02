@@ -254,7 +254,7 @@ namespace CastleOverlayV2.Plot
 
                 //-----------------------------------------------------------//
                 // === ✅ Extract X values (Time) for this run ===
-                double[] xs = run.DataPoints.Select(dp => dp.Time).ToArray();
+                double[] xs = run.DataPoints.Select(dp => dp.Time + _castleTimeShift).ToArray();
 
                 //-----------------------------------------------------------//
                 // === ✅ Loop through all channels (Throttle, RPM, Voltage, etc.) ===
@@ -380,9 +380,6 @@ namespace CastleOverlayV2.Plot
                         }
                     }
                 }
-
-
-
             }
 
 
@@ -1181,10 +1178,19 @@ namespace CastleOverlayV2.Plot
         // ② hide frame, ticks, and label (same helper you use for Castle axes)
         HideAxis(_splitLabelAxis);
     }
-        /// </summary>
-        /// Place a split-line label 12 pixels from the top edge of the plot.
-        /// X is still data-space (seconds); Y is absolute pixel.
-       
+        // CastleOverlayV2/Plot/PlotManager.cs
+
+        // Add to class-level fields
+        private double _castleTimeShift = 0.10;
+
+        // Call this to shift Castle log start time
+        public void SetCastleTimeShift(double shiftSeconds)
+        {
+            _castleTimeShift = shiftSeconds;
+            Logger.Log($"⏱️ Castle Time Shift set to {shiftSeconds:F3} seconds");
+        }
+
+
     }
 }
 

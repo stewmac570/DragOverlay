@@ -15,7 +15,7 @@ namespace CastleOverlayV2.Models
 
         public bool EnableDebugLogging { get; set; } = false;
 
-        public string BuildNumber { get; set; } = "1.08";
+        public string BuildNumber { get; set; } = "1.09";
 
 
         public Config()

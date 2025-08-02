@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
+using CastleOverlayV2.Utils;
 
 namespace CastleOverlayV2.Controls
 {
@@ -160,8 +161,10 @@ namespace CastleOverlayV2.Controls
                 {
                     IsVisible = !IsVisible;
                     _toggleButton.Text = IsVisible ? "Hide" : "Show";
+                    ApplyChannelColor(ChannelName, IsVisible);
                     ToggleChanged?.Invoke(ChannelName, IsVisible);
                 };
+
                 layout.Controls.Add(_toggleButton, 0, 0);
 
                 var nameLabel = new Label
@@ -206,8 +209,34 @@ namespace CastleOverlayV2.Controls
                     layout.Controls.Add(rpmModeButton, 0, 5);
                 }
 
+                ApplyChannelColor(ChannelName, IsVisible);
+
                 Controls.Add(layout);
             }
+            private void ApplyChannelColor(string channel, bool visible)
+            {
+                try
+                {
+                    var spColor = ChannelColorMap.GetColor(channel);
+                    var baseColor = Color.FromArgb(spColor.R, spColor.G, spColor.B);
+                    var buttonColor = visible ? baseColor : ControlPaint.Dark(baseColor);
+                    var textColor = UseWhiteText(buttonColor) ? Color.White : Color.Black;
+
+                    _toggleButton.BackColor = buttonColor;
+                    _toggleButton.ForeColor = textColor;
+                }
+                catch (Exception ex)
+                {
+                    Logger.Log($"❌ Color mapping failed for channel: {channel} → {ex.Message}");
+                }
+            }
+
+            private bool UseWhiteText(Color bg)
+            {
+                int brightness = (bg.R * 299 + bg.G * 587 + bg.B * 114) / 1000;
+                return brightness < 130;
+            }
+
 
             public void UpdateValues(double?[] values)
             {

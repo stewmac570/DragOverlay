@@ -209,16 +209,17 @@ namespace CastleOverlayV2
                 else
                 {
                     Logger.Log("Run 1 load failed or empty data.");
+                    MessageBox.Show("This file could not be loaded.\n\nIt may not be a valid Castle log or it contains no data.",
+                        "Import Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 }
             }
             catch (Exception ex)
             {
                 Logger.Log($"ERROR in Run1: {ex.Message}");
+                MessageBox.Show("An error occurred while loading the file.\n\n" + ex.Message,
+                    "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
-
-
-
 
         /// <summary>
         /// ✅ New: Load Run 2 slot
@@ -259,16 +260,17 @@ namespace CastleOverlayV2
                 else
                 {
                     Logger.Log("Run 2 load failed or empty data.");
+                    MessageBox.Show("This file could not be loaded.\n\nIt may not be a valid Castle log or it contains no data.",
+                        "Import Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 }
             }
             catch (Exception ex)
             {
                 Logger.Log($"ERROR in Run2: {ex.Message}");
+                MessageBox.Show("An error occurred while loading the file.\n\n" + ex.Message,
+                    "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
-
-
-
 
         /// <summary>
         /// ✅ New: Load Run 3 slot
@@ -306,14 +308,17 @@ namespace CastleOverlayV2
                 else
                 {
                     Logger.Log("Run 3 load failed or empty data.");
+                    MessageBox.Show("This file could not be loaded.\n\nIt may not be a valid Castle log or it contains no data.",
+                        "Import Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 }
             }
             catch (Exception ex)
             {
                 Logger.Log($"ERROR in Run3: {ex.Message}");
+                MessageBox.Show("An error occurred while loading the file.\n\n" + ex.Message,
+                    "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
-
 
         /// <summary>
         /// ✅ Load RaceBox CSV for Run 1 slot
@@ -329,11 +334,29 @@ namespace CastleOverlayV2
             Logger.Log($"Selected file: {path}");
 
             var rbData = RaceBoxLoader.LoadHeaderOnly(path);
-            if (rbData.FirstCompleteRunIndex == null)
+
+            // 🛡 Check if the loader returned null (invalid RaceBox file)
+            if (rbData == null)
             {
-                MessageBox.Show("No complete run found in this RaceBox file.");
+                Logger.Log("[MainForm] RaceBox header loading failed — rbData is null");
                 return;
             }
+
+            // 🛡 Then check if no run data was found
+            if (rbData.FirstCompleteRunIndex == null)
+            {
+                MessageBox.Show("No complete run found in this RaceBox file.", "Incomplete Run", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+
+            // 🛡 Then check if no run data was found
+            if (rbData.FirstCompleteRunIndex == null)
+            {
+                MessageBox.Show("No complete run found in this RaceBox file.", "Incomplete Run", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
 
             Logger.Log($"Header loaded: {rbData.RunCount} runs found, FirstCompleteRun = {rbData.FirstCompleteRunIndex + 1}");
             Logger.Log("Parsing RaceBox telemetry for Slot 1...");
@@ -450,11 +473,19 @@ namespace CastleOverlayV2
             if (path == null) return;
 
             var rbData = RaceBoxLoader.LoadHeaderOnly(path);
-            if (rbData.FirstCompleteRunIndex == null)
+
+            if (rbData == null)
             {
-                MessageBox.Show("No complete run found in this RaceBox file.");
+                Logger.Log("[MainForm] LoadHeaderOnly returned null (invalid RaceBox file)");
                 return;
             }
+
+            if (rbData.FirstCompleteRunIndex == null)
+            {
+                MessageBox.Show("No complete run found in this RaceBox file.", "Incomplete Run", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
 
             Logger.Log($"Header loaded: {rbData.RunCount} runs found, FirstCompleteRun = {rbData.FirstCompleteRunIndex + 1}");
             Logger.Log("Parsing RaceBox telemetry for Slot 2...");
@@ -462,7 +493,15 @@ namespace CastleOverlayV2
             var loader = new RaceBoxLoader();
             var points = await Task.Run(() => loader.LoadTelemetry(path, rbData.FirstCompleteRunIndex.Value));
 
-            Logger.Log($"📈 RaceBox telemetry parsed: {points.Count} rows for RaceBox2 → run5");
+            if (points == null || points.Count == 0)
+            {
+                Logger.Log("❌ RaceBox telemetry load failed or returned no points.");
+                MessageBox.Show("RaceBox telemetry is empty or could not be parsed.", "Telemetry Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            Logger.Log($"📈 RaceBox telemetry parsed: {points.Count} rows for RaceBox3 → run6");
+
 
             raceBox2 = rbData;
 
@@ -521,11 +560,18 @@ namespace CastleOverlayV2
             if (path == null) return;
 
             var rbData = RaceBoxLoader.LoadHeaderOnly(path);
-            if (rbData.FirstCompleteRunIndex == null)
+            if (rbData == null)
             {
-                MessageBox.Show("No complete run found in this RaceBox file.");
+                Logger.Log("[MainForm] RaceBox header load failed — rbData was null");
                 return;
             }
+
+            if (rbData.FirstCompleteRunIndex == null)
+            {
+                MessageBox.Show("No complete run found in this RaceBox file.", "Incomplete Run", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
 
             Logger.Log($"Header loaded: {rbData.RunCount} runs found, FirstCompleteRun = {rbData.FirstCompleteRunIndex + 1}");
             Logger.Log("Parsing RaceBox telemetry for Slot 3...");
