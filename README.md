@@ -20,14 +20,21 @@
 
 ---
 
-## 🖼 Screenshot
+## 🖼 Screenshots
 
+Below are updated screenshots from DragOverlay v1.10 with Castle + RaceBox integration.
 
-![Main Overlay View](src/CastleOverlayV2/Resources/DragOverlay_All_Data.png)
-*Overlay of 3 Castle logs aligned to launch point*
+### 🏁 Overlay with Castle + RaceBox Logs
+![Overlay View](src/CastleOverlayV2/Resources/main-ui-v1.10_1.png)
 
-![Channel Toggle Example](src/CastleOverlayV2/Resources/DragOverlay_Select_Channels.png)
-*Dynamic per-channel toggling with live hover values*
+### 📍 Split Line Labels with Discipline Times
+![Split Labels](src/CastleOverlayV2/Resources/main-ui-v1.10_2.png)
+
+### 🎛️ Toggle Bar with Channel Visibility
+![Toggle Panel](src/CastleOverlayV2/Resources/main-ui-v1.10_3.png)
+
+### 🖱️ Hover Cursor with Real-Time Values
+![Drag Overlay](src/CastleOverlayV2/Resources/main-ui-v1.10_4.png)
 
 ---
 
