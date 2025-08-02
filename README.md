@@ -4,25 +4,42 @@
 ![.NET](https://img.shields.io/badge/.NET-8.0-blue)
 ![Platform](https://img.shields.io/badge/platform-Windows-lightgrey)
 
-**DragOverlay** is a lightweight Windows tool built for RC drag racers using Castle ESCs. It overlays up to **3 Castle log files**, aligns them to launch, and presents a clean ScottPlot-based chart — with Castle Link 2–style colors, and toggles.
+**DragOverlay** is a lightweight WinForms tool for visualizing Castle ESC data and RaceBox telemetry for RC drag racing. It overlays up to 3 Castle logs, optionally syncs RaceBox GPS data, and presents all runs on a shared ScottPlot chart — with hover, toggles, split lines, and Castle-style colors.
+
+🎯 Inspired by Castle Link 2. Built for real racers.
 
 ---
 
-## 📊 Features
+## 🚀 Key Features
 
-✅ Load and overlay **1–3 Castle `.csv` log files**  
-✅ **Auto-align** runs to ESC launch (based on Throttle rise or Power Out)  
-✅ Clean chart with **Castle-style channel colors** and **hover tooltips**  
-✅ Toggle channels on/off dynamically  
-✅ Hover shows real values for all visible runs  
-✅ Supports 2P / 4P motor mode toggle (RPM scaling)  
-✅ Saves preferences to `config.json`  
+### 📦 Castle ESC Logs
+- Overlay up to 3 Castle `.csv` logs
+- Auto-align all runs to launch (`Throttle > 1.65ms` + `PowerOut > 10`)
+- Castle-style line styles: blue/red/green with solid/dash/dot
+- Per-channel toggles for:
+  - RPM, Throttle, Voltage, Current, Ripple, PowerOut, ESC Temp, Motor Timing, Acceleration, GovGain
+- ESC Temp mapped from `"Temperature"` column
+- 2P / 4P RPM toggle (with hover + config persistence)
+- Time trimming: keeps only -0.5s → +2.5s around launch
+- Global X-axis offset for log tuning
+- Hover cursor shows live Y-values for each visible channel + run
+- Chart always stays clean — hidden axes, Castle-style layout
+
+### 📍 RaceBox Integration
+- Load 1 RaceBox log per Castle slot (Run 1–3)
+- Aligns RaceBox telemetry to Castle launch time (t = 0)
+- Plots:
+  - RaceBox Speed (converted to mph)
+  - RaceBox G-Force X
+- Split time rendering for: 6ft, 66ft, 132ft, etc.
+- Discipline labels appear at top of plot
+- Toggle visibility + delete per RaceBox slot
+- Color + line pattern matched to Castle slot
+- Hover + axis logic fully supported
 
 ---
 
 ## 🖼 Screenshots
-
-Below are updated screenshots from DragOverlay v1.10 with Castle + RaceBox integration.
 
 ### 🏁 Overlay with Castle + RaceBox Logs
 ![Overlay View](src/CastleOverlayV2/Resources/main-ui-v1.10_1.png)
@@ -34,54 +51,44 @@ Below are updated screenshots from DragOverlay v1.10 with Castle + RaceBox integ
 ![Toggle Panel](src/CastleOverlayV2/Resources/main-ui-v1.10_3.png)
 
 ### 🖱️ Hover Cursor with Real-Time Values
-![Drag Overlay](src/CastleOverlayV2/Resources/main-ui-v1.10_4.png)
+![Hover Cursor](src/CastleOverlayV2/Resources/main-ui-v1.10_4.png)
 
 ---
 
-## 🔧 Tech Stack
+## ⚙️ Tech Stack
 
-- **.NET 8 / WinForms**
-- [ScottPlot v5](https://scottplot.net/)
-- [CsvHelper](https://joshclose.github.io/CsvHelper/)
-- `config.json` for persistent user defaults
+- **.NET 8** (WinForms)
+- **ScottPlot v5.0.8** — charts, cursor, split lines
+- **CsvHelper v33.1.0** — Castle log parser
+- **Newtonsoft.Json** — config persistence
 
 ---
 
-## 🏁 How to Build
+## 📁 Project Structure
+
+| Folder                         | Purpose                                    |
+|-------------------------------|--------------------------------------------|
+| `/src/CastleOverlayV2/`       | Main app source code (UI, services, models)|
+| `/src/CastleOverlayV2/Resources/` | Runtime icons + screenshots           |
+| `/config/`                    | Local config.json (user preferences)       |
+| `/docs/`                      | Features, delivery plan, structure docs    |
+| `/logs/`                      | Test Castle CSV logs                       |
+
+---
+
+## 🛠️ How to Build
 
 1. Clone this repo
 2. Open `CastleOverlayV2.sln` in **Visual Studio 2022+**
 3. Set `CastleOverlayV2` as the startup project
-4. Build and run
+4. Build in **Release mode**
+5. Run the generated `.exe` from `bin\Release\net8.0-windows\`
 
 ---
 
-## 📁 Folder Layout
+## 💾 Config System
 
-| Folder     | Purpose                        |
-|------------|--------------------------------|
-| `/src/`    | Full source code (WinForms)    |
-| `/config/` | App settings (`config.json`)   |
-| `/logs/`   | Sample Castle `.csv` logs      |
-| `/tests/`  | Working MWE for rollback       |
-| `/docs/`   | FEATURES.md, STRUCTURE.md, etc.|
+On first launch, a config file is created:
 
----
-
-## ⚖ License
-
-MIT — see [`LICENSE`](./LICENSE)
-
----
-
-## 🏷 Tags
-
-`Castle ESC` • `RC Drag Racing` • `ScottPlot` • `Data Overlay` • `WinForms` • `Telemetry Tools`
-
----
-
-## 🙋‍♂️ Author
-
-Made by **Stewart McMillan** for real-world RC testing and tuning.
-
-Got a Castle log to compare? This tool makes it fast.
+```plaintext
+AppData\Roaming\DragOverlay\config.json
