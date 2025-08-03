@@ -1,12 +1,21 @@
-# DragOverlay
+# 🏁 DragOverlay
 
-![MIT License](https://img.shields.io/badge/license-MIT-green)
-![.NET](https://img.shields.io/badge/.NET-8.0-blue)
-![Platform](https://img.shields.io/badge/platform-Windows-lightgrey)
+**Latest Version:** [DragOverlay v1.10](https://github.com/stewmac570/DragOverlay/releases/download/v1.10/DragOverlayInstaller_1.10.exe)  
+🟢 Click to download and install — no setup required.  
+🟡 Windows may ask for permission the first time.
 
-**DragOverlay** is a lightweight WinForms tool for visualizing Castle ESC data and RaceBox telemetry for RC drag racing. It overlays up to 3 Castle logs, optionally syncs RaceBox GPS data, and presents all runs on a shared ScottPlot chart — with hover, toggles, split lines, and Castle-style colors.
+---
 
-🎯 Inspired by Castle Link 2. Built for real racers.
+![Main UI](./Resources/main-ui-v1.10_1.png)
+
+[![MIT License](https://img.shields.io/badge/license-MIT-green)](https://opensource.org/licenses/MIT)
+[![.NET](https://img.shields.io/badge/.NET-8.0-blue)](https://dotnet.microsoft.com/en-us/download)
+[![Platform](https://img.shields.io/badge/platform-Windows-lightgrey)](#)
+
+**DragOverlay** is a lightweight WinForms tool for visualizing Castle ESC data and RaceBox telemetry for RC drag racing.  
+It overlays up to 3 Castle logs, optionally syncs RaceBox GPS data, and plots everything together with Castle-style colors and line styles.
+
+💡 Inspired by Castle Link 2. **Built for real racers.**
 
 ---
 
