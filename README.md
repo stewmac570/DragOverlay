@@ -1,12 +1,12 @@
 # 🏁 DragOverlay
-
+**Download Installer**
 **Latest Version:** [DragOverlay v1.10](https://github.com/stewmac570/DragOverlay/releases/download/v1.10/DragOverlayInstaller_1.10.exe)  
 🟢 Click to download and install — no setup required.  
 🟡 Windows may ask for permission the first time.
 
 ---
 
-![Main UI](./Resources/main-ui-v1.10_1.png)
+![Main UI](src/CastleOverlayV2/Resources/main-ui-v1.10_1.png)
 
 [![MIT License](https://img.shields.io/badge/license-MIT-green)](https://opensource.org/licenses/MIT)
 [![.NET](https://img.shields.io/badge/.NET-8.0-blue)](https://dotnet.microsoft.com/en-us/download)
