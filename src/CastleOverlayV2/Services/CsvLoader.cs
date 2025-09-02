@@ -227,42 +227,69 @@ namespace CastleOverlayV2.Services
 
         private static int DetectDragStartIndex(List<DataPoint> data)
         {
-            for (int i = 1; i < data.Count; i++)
+            int sustainWindow = 5; // require ~5 samples in a row (≈250 ms if 50 ms/sample)
+
+            for (int i = 1; i < data.Count - sustainWindow; i++)
             {
                 double prevThrottle = data[i - 1].Throttle;
                 double currThrottle = data[i].Throttle;
 
                 double currPower = data[i].PowerOut;
-                double currRPM = data[i].Speed;
                 double currAccel = data[i].Acceleration;
                 double currCurrent = data[i].Current;
 
-                // Rule 1: classic throttle spike
-                if (prevThrottle <= 1.65 && currThrottle > 1.65 && currPower > 10 && currAccel > 1.0)
-{
-                    Logger.Log($"DetectDragStartIndex: Launch detected (throttle spike) at row {i}");
-                    return i;
-}
+                // --- Rule 1: throttle spike must sustain ---
+                if (prevThrottle <= 1.65 && currThrottle > 1.65)
+                {
+                    bool sustained = true;
+                    for (int k = 0; k < sustainWindow; k++)
+                    {
+                        if (data[i + k].PowerOut < 20.0 || data[i + k].Acceleration < 0.5)
+                        {
+                            sustained = false;
+                            break;
+                        }
+                    }
 
-// Rule 2: fallback — high power event
-int triggerScore = 0;
-if (currPower > 65.0) triggerScore++;
-if (currRPM > 5000) triggerScore++;
-if (currAccel > 1.0) triggerScore++;
-if (currThrottle > 40.0) triggerScore++;
-if (currCurrent > 5.0) triggerScore++;
+                    if (sustained)
+                    {
+                        Logger.Log($"DetectDragStartIndex: Sustained launch detected at row {i}");
+                        return i;
+                    }
+                }
 
-if (triggerScore >= 3)
-{
-                    Logger.Log($"DetectDragStartIndex: Fallback launch detected (triggerScore={triggerScore}) at row {i}");
-                    return i;
-}
+                // --- Rule 2: fallback multi-signal score, also sustained ---
+                int triggerScore = 0;
+                if (currPower > 65.0) triggerScore++;
+                if (data[i].Speed > 5000) triggerScore++;
+                if (currAccel > 1.0) triggerScore++;
+                if (currThrottle > 1.7) triggerScore++; // throttle in ms, not %
+                if (currCurrent > 5.0) triggerScore++;
 
+                if (triggerScore >= 3)
+                {
+                    bool sustained = true;
+                    for (int k = 0; k < sustainWindow; k++)
+                    {
+                        if (data[i + k].PowerOut < 20.0)
+                        {
+                            sustained = false;
+                            break;
+                        }
+                    }
+
+                    if (sustained)
+                    {
+                        Logger.Log($"DetectDragStartIndex: Sustained fallback launch detected at row {i}");
+                        return i;
+                    }
+                }
             }
 
             Logger.Log("DetectDragStartIndex: No drag pass detected.");
             return -1;
         }
+
 
         private static List<DataPoint> AutoTrim(List<DataPoint> data, int index)
         {
