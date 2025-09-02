@@ -1,4 +1,5 @@
-﻿namespace CastleOverlayV2
+﻿// File: src/CastleOverlayV2/MainForm.Designer.cs
+namespace CastleOverlayV2
 {
     partial class MainForm
     {
@@ -24,8 +25,6 @@
         private System.Windows.Forms.Button btnDeleteRaceBox2;
         private System.Windows.Forms.Button btnToggleRaceBox3;
         private System.Windows.Forms.Button btnDeleteRaceBox3;
-
-
 
         protected override void Dispose(bool disposing)
         {
@@ -56,29 +55,26 @@
 
             this.topButtonPanel = new System.Windows.Forms.FlowLayoutPanel();
 
-
+            this.btnLoadRaceBox1 = new System.Windows.Forms.Button();
             this.btnLoadRaceBox2 = new System.Windows.Forms.Button();
             this.btnLoadRaceBox3 = new System.Windows.Forms.Button();
 
-            this.btnToggleRaceBox1 = new System.Windows.Forms.Button(); // ✅ CORRECT SPOT
-            this.btnDeleteRaceBox1 = new System.Windows.Forms.Button(); // ✅ CORRECT SPOT
-
+            this.btnToggleRaceBox1 = new System.Windows.Forms.Button();
+            this.btnDeleteRaceBox1 = new System.Windows.Forms.Button();
             this.btnToggleRaceBox2 = new System.Windows.Forms.Button();
             this.btnDeleteRaceBox2 = new System.Windows.Forms.Button();
             this.btnToggleRaceBox3 = new System.Windows.Forms.Button();
             this.btnDeleteRaceBox3 = new System.Windows.Forms.Button();
 
-
             this.SuspendLayout();
 
-
-            this.topButtonPanel.FlowDirection = System.Windows.Forms.FlowDirection.LeftToRight; // ✅ buttons flow L→R
-            this.topButtonPanel.Dock = System.Windows.Forms.DockStyle.Top;                       // ✅ sticks to top of form
-            this.topButtonPanel.Height = 60;                                                    // ✅ gives initial height
-            this.topButtonPanel.Padding = new System.Windows.Forms.Padding(10, 5, 0, 5);        // ✅ nice inner spacing
-            this.topButtonPanel.AutoSize = true;                                                // ✅ grows to fit buttons
-            this.topButtonPanel.AutoSizeMode = System.Windows.Forms.AutoSizeMode.GrowAndShrink;// ✅ only grows as needed
-
+            // === Top panel ===
+            this.topButtonPanel.FlowDirection = System.Windows.Forms.FlowDirection.LeftToRight;
+            this.topButtonPanel.Dock = System.Windows.Forms.DockStyle.Top;
+            this.topButtonPanel.Height = 64;
+            this.topButtonPanel.Padding = new System.Windows.Forms.Padding(12, 8, 0, 8); // ⬅ slightly more breathing room
+            this.topButtonPanel.AutoSize = true;
+            this.topButtonPanel.AutoSizeMode = System.Windows.Forms.AutoSizeMode.GrowAndShrink;
 
             // === Run 1 Buttons ===
             this.btnLoadRun1 = new System.Windows.Forms.Button();
@@ -86,35 +82,36 @@
             this.btnDeleteRun1 = new System.Windows.Forms.Button();
             this.btnLoadRaceBox1 = new System.Windows.Forms.Button();
 
-            // === Castle Run 1 ===
+            // --- Castle Run 1
             this.btnLoadRun1.Text = "Load Run 1";
+            this.btnLoadRun1.AutoSize = false;                                 // fixed width
+            this.btnLoadRun1.Size = new System.Drawing.Size(266, 30);          // ⬅ +33% from 200px → 266px
+            this.btnLoadRun1.MinimumSize = new System.Drawing.Size(266, 30);   // enforce width
             this.btnToggleRun1.Text = "Hide";
             this.btnDeleteRun1.Text = "Delete";
-            this.btnLoadRun1.AutoSize = true;
             this.btnToggleRun1.AutoSize = true;
             this.btnDeleteRun1.AutoSize = true;
             this.btnLoadRun1.Click += new System.EventHandler(this.LoadRun1Button_Click);
             this.btnToggleRun1.Click += new System.EventHandler(this.ToggleRun1Button_Click);
             this.btnDeleteRun1.Click += new System.EventHandler(this.DeleteRun1Button_Click);
 
-            // === RaceBox Run 1 ===
+            // --- RaceBox Run 1
             this.btnLoadRaceBox1 = new System.Windows.Forms.Button();
             this.btnToggleRaceBox1 = new System.Windows.Forms.Button();
             this.btnDeleteRaceBox1 = new System.Windows.Forms.Button();
 
             this.btnLoadRaceBox1.Text = "Load RaceBox 1";
+            this.btnLoadRaceBox1.AutoSize = false;                              // fixed width
+            this.btnLoadRaceBox1.Size = new System.Drawing.Size(266, 30);       // ⬅ +33%
+            this.btnLoadRaceBox1.MinimumSize = new System.Drawing.Size(266, 30);
             this.btnToggleRaceBox1.Text = "Hide";
             this.btnDeleteRaceBox1.Text = "Delete";
-
-            this.btnLoadRaceBox1.AutoSize = true;
             this.btnToggleRaceBox1.AutoSize = true;
             this.btnDeleteRaceBox1.AutoSize = true;
 
             this.btnLoadRaceBox1.Click += new System.EventHandler(this.LoadRaceBox1Button_Click);
             this.btnToggleRaceBox1.Click += new System.EventHandler(this.ToggleRaceBox1Button_Click);
             this.btnDeleteRaceBox1.Click += new System.EventHandler(this.DeleteRaceBox1Button_Click);
-            ;
-
 
             // === Run 1 Panel ===
             var panelRun1 = new TableLayoutPanel();
@@ -122,7 +119,7 @@
             panelRun1.RowCount = 2;
             panelRun1.AutoSize = true;
             panelRun1.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            panelRun1.Margin = new Padding(6);
+            panelRun1.Margin = new Padding(16, 8, 16, 8); // ⬅ spaced out to match wider buttons
             panelRun1.Padding = new Padding(4);
             panelRun1.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             panelRun1.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
@@ -139,21 +136,26 @@
             panelRun1.Controls.Add(this.btnDeleteRaceBox1, 2, 1);
 
             this.topButtonPanel.Controls.Add(panelRun1);
-            this.topButtonPanel.Controls.Add(Spacer());
-
+            this.topButtonPanel.Controls.Add(Spacer()); // gap between Run 1 and Run 2 groups
 
             // === Run 2 Buttons ===
             this.btnLoadRun2.Text = "Load Run 2";
+            this.btnLoadRun2.AutoSize = false;
+            this.btnLoadRun2.Size = new System.Drawing.Size(266, 30);         // ⬅ +33%
+            this.btnLoadRun2.MinimumSize = new System.Drawing.Size(266, 30);
+
             this.btnToggleRun2.Text = "Hide";
             this.btnDeleteRun2.Text = "Delete";
-            this.btnLoadRaceBox2.Text = "Load RaceBox 2";
-            this.btnToggleRaceBox2.Text = "Hide";
-            this.btnDeleteRaceBox2.Text = "Delete";
-
-            this.btnLoadRun2.AutoSize = true;
             this.btnToggleRun2.AutoSize = true;
             this.btnDeleteRun2.AutoSize = true;
-            this.btnLoadRaceBox2.AutoSize = true;
+
+            this.btnLoadRaceBox2.Text = "Load RaceBox 2";
+            this.btnLoadRaceBox2.AutoSize = false;
+            this.btnLoadRaceBox2.Size = new System.Drawing.Size(266, 30);      // ⬅ +33%
+            this.btnLoadRaceBox2.MinimumSize = new System.Drawing.Size(266, 30);
+
+            this.btnToggleRaceBox2.Text = "Hide";
+            this.btnDeleteRaceBox2.Text = "Delete";
             this.btnToggleRaceBox2.AutoSize = true;
             this.btnDeleteRaceBox2.AutoSize = true;
 
@@ -170,34 +172,41 @@
             panelRun2.RowCount = 2;
             panelRun2.AutoSize = true;
             panelRun2.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            panelRun2.Margin = new Padding(6);
+            panelRun2.Margin = new Padding(16, 8, 16, 8); // ⬅ spaced out
             panelRun2.Padding = new Padding(4);
             panelRun2.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             panelRun2.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             panelRun2.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+
             panelRun2.Controls.Add(this.btnLoadRun2, 0, 0);
             panelRun2.Controls.Add(this.btnToggleRun2, 1, 0);
             panelRun2.Controls.Add(this.btnDeleteRun2, 2, 0);
+
             panelRun2.Controls.Add(this.btnLoadRaceBox2, 0, 1);
             panelRun2.Controls.Add(this.btnToggleRaceBox2, 1, 1);
             panelRun2.Controls.Add(this.btnDeleteRaceBox2, 2, 1);
+
             this.topButtonPanel.Controls.Add(panelRun2);
-            this.topButtonPanel.Controls.Add(Spacer());
-
-
+            this.topButtonPanel.Controls.Add(Spacer()); // gap between Run 2 and Run 3 groups
 
             // === Run 3 Buttons ===
             this.btnLoadRun3.Text = "Load Run 3";
+            this.btnLoadRun3.AutoSize = false;
+            this.btnLoadRun3.Size = new System.Drawing.Size(266, 30);         // ⬅ +33%
+            this.btnLoadRun3.MinimumSize = new System.Drawing.Size(266, 30);
+
             this.btnToggleRun3.Text = "Hide";
             this.btnDeleteRun3.Text = "Delete";
-            this.btnLoadRaceBox3.Text = "Load RaceBox 3";
-            this.btnToggleRaceBox3.Text = "Hide";
-            this.btnDeleteRaceBox3.Text = "Delete";
-
-            this.btnLoadRun3.AutoSize = true;
             this.btnToggleRun3.AutoSize = true;
             this.btnDeleteRun3.AutoSize = true;
-            this.btnLoadRaceBox3.AutoSize = true;
+
+            this.btnLoadRaceBox3.Text = "Load RaceBox 3";
+            this.btnLoadRaceBox3.AutoSize = false;
+            this.btnLoadRaceBox3.Size = new System.Drawing.Size(266, 30);      // ⬅ +33%
+            this.btnLoadRaceBox3.MinimumSize = new System.Drawing.Size(266, 30);
+
+            this.btnToggleRaceBox3.Text = "Hide";
+            this.btnDeleteRaceBox3.Text = "Delete";
             this.btnToggleRaceBox3.AutoSize = true;
             this.btnDeleteRaceBox3.AutoSize = true;
 
@@ -214,20 +223,21 @@
             panelRun3.RowCount = 2;
             panelRun3.AutoSize = true;
             panelRun3.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            panelRun3.Margin = new Padding(6);
+            panelRun3.Margin = new Padding(16, 8, 16, 8); // ⬅ spaced out
             panelRun3.Padding = new Padding(4);
             panelRun3.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             panelRun3.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             panelRun3.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+
             panelRun3.Controls.Add(this.btnLoadRun3, 0, 0);
             panelRun3.Controls.Add(this.btnToggleRun3, 1, 0);
             panelRun3.Controls.Add(this.btnDeleteRun3, 2, 0);
+
             panelRun3.Controls.Add(this.btnLoadRaceBox3, 0, 1);
             panelRun3.Controls.Add(this.btnToggleRaceBox3, 1, 1);
             panelRun3.Controls.Add(this.btnDeleteRaceBox3, 2, 1);
+
             this.topButtonPanel.Controls.Add(panelRun3);
-
-
 
             //---------------------------------------
             // === FormsPlot ===
@@ -246,17 +256,15 @@
             this.Name = "MainForm";
             this.Text = "DragOverlay V1";
 
-
-
             this.ResumeLayout(false);
             this.PerformLayout();
 
             // === Spacer method (local function) ===
-            Control Spacer()
+            System.Windows.Forms.Control Spacer()
             {
-                return new Panel
+                return new System.Windows.Forms.Panel
                 {
-                    Width = 20,
+                    Width = 40,  // ⬅ wider gaps between run groups to suit wider buttons
                     Height = 1
                 };
             }

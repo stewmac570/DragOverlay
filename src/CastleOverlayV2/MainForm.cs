@@ -1,12 +1,11 @@
+// File: src/CastleOverlayV2/MainForm.cs
 using CastleOverlayV2.Controls;
-using CastleOverlayV2.Models;
 using CastleOverlayV2.Models;
 using CastleOverlayV2.Plot;
 using CastleOverlayV2.Services;
-using CastleOverlayV2.Services;
 using System.Reflection;
 using System.Text;
-
+using System.IO;
 
 namespace CastleOverlayV2
 {
@@ -14,7 +13,7 @@ namespace CastleOverlayV2
     {
         private readonly PlotManager _plotManager;
 
-        // ✅ New: ConfigService instance for Phase 4
+        // ✅ Config (preserved as-is)
         private readonly ConfigService _configService;
 
         // ✅ Multi-run slots
@@ -22,7 +21,7 @@ namespace CastleOverlayV2
         private RunData run2;
         private RunData run3;
         private RunData run4;
-        private RunData run5; 
+        private RunData run5;
         private RunData run6;
 
         // ✅ RaceBox slots (Stage 1 only uses header metadata)
@@ -33,7 +32,6 @@ namespace CastleOverlayV2
         private ChannelToggleBar _channelToggleBar;
 
         private bool _isFourPoleMode = false;
-
 
         public MainForm(ConfigService configService)
         {
@@ -52,50 +50,39 @@ namespace CastleOverlayV2
             string buildNumber = _configService.GetBuildNumber();  // already implemented
             this.Text = $"DragOverlay — Build {buildNumber}";
 
-
             Logger.Log("MainForm initialized");
-
             Logger.Log("=======================================");
             Logger.Log($"🟢 New Session Started — {DateTime.Now}");
             Logger.Log("=======================================");
 
-
             // ✅ Disable all toggle/delete buttons at startup
             btnToggleRun1.Enabled = false;
             btnDeleteRun1.Enabled = false;
-
-
             btnToggleRun2.Enabled = false;
             btnDeleteRun2.Enabled = false;
-
             btnToggleRun3.Enabled = false;
             btnDeleteRun3.Enabled = false;
 
             // ✅ Disable RaceBox toggle/delete buttons at startup
             btnToggleRaceBox1.Enabled = false;
             btnDeleteRaceBox1.Enabled = false;
-
             btnToggleRaceBox2.Enabled = false;
             btnDeleteRaceBox2.Enabled = false;
-
             btnToggleRaceBox3.Enabled = false;
             btnDeleteRaceBox3.Enabled = false;
-
 
             // Maximize the window on startup
             this.WindowState = FormWindowState.Maximized;
 
-            // ✅ Init ConfigService + load config
+            // ✅ Init ConfigService + load config (preserved)
             _configService = new ConfigService();
             var config = _configService.Config;
 
-            Logger.Log("Config loaded at startup:");
             Logger.Log("Config loaded at startup:");
             foreach (var kvp in config.ChannelVisibility)
             {
                 Logger.Log($"  Channel: {kvp.Key}, Visible: {kvp.Value}");
             }
-
 
             // Wire up the PlotManager with your FormsPlot control (must match your Designer)
             _plotManager = new PlotManager(formsPlot1);
@@ -104,23 +91,23 @@ namespace CastleOverlayV2
             formsPlot1.Dock = DockStyle.Fill;
 
             var channelNames = new List<string>
-{
-    "RPM",
-    "Throttle",
-    "Voltage",
-    "Current",
-    "Ripple",
-    "PowerOut",
-    "MotorTemp",
-    "ESC Temp",
-    "MotorTiming",
-    "Acceleration"
-};
+            {
+                "RPM",
+                "Throttle",
+                "Voltage",
+                "Current",
+                "Ripple",
+                "PowerOut",
+                "MotorTemp",
+                "ESC Temp",
+                "MotorTiming",
+                "Acceleration"
+            };
 
-            // ✅ 2️⃣ Use config states for toggles
+            // ✅ Use config states for toggles
             var initialStates = config.ChannelVisibility ?? new Dictionary<string, bool>();
 
-            // ✅ 3️⃣ Create ChannelToggleBar
+            // ✅ Create ChannelToggleBar
             _channelToggleBar = new ChannelToggleBar(channelNames, initialStates);
             _channelToggleBar.ChannelVisibilityChanged += OnChannelVisibilityChanged;
             _channelToggleBar.RpmModeChanged += OnRpmModeChanged;
@@ -139,7 +126,17 @@ namespace CastleOverlayV2
             // ✅ Apply saved RPM mode from config.json
             _isFourPoleMode = config.IsFourPoleMode;
             _plotManager.SetFourPoleMode(_isFourPoleMode);
+        }
 
+        /// <summary>
+        /// ✅ Helper: Shorten a file name for button text
+        /// </summary>
+        private static string TruncateFileName(string filePath, int maxChars = 28)
+        {
+            string fileName = Path.GetFileName(filePath) ?? string.Empty;
+            if (fileName.Length <= maxChars) return fileName;
+            if (maxChars <= 3) return fileName.Substring(0, maxChars);
+            return fileName.Substring(0, maxChars - 3) + "...";
         }
 
         /// <summary>
@@ -162,12 +159,10 @@ namespace CastleOverlayV2
                     {
                         var loader = new CsvLoader(_configService);
                         run1 = await Task.Run(() => loader.Load(filePath));
-       
                     }
                     catch (Exception ex)
                     {
                         Logger.Log($"LoadCsvButton_Click ERROR: {ex.Message}");
-
                     }
                 }
             }
@@ -198,6 +193,9 @@ namespace CastleOverlayV2
 
                     // Ensure run visibility is true on load for slot 1 (not 0)
                     _plotManager.SetRunVisibility(1, true);
+
+                    // ✅ Show filename on the (now-wider) button
+                    btnLoadRun1.Text = $"Run 1: {TruncateFileName(filePath)}";
 
                     PlotAllRuns();
 
@@ -243,6 +241,9 @@ namespace CastleOverlayV2
 
                     _plotManager.SetRun(2, run2);
                     _plotManager.SetRunVisibility(2, true);
+
+                    // ✅ Show filename on the button
+                    btnLoadRun2.Text = $"Run 2: {TruncateFileName(filePath)}";
 
                     PlotAllRuns();
 
@@ -298,6 +299,9 @@ namespace CastleOverlayV2
                     // Ensure run visibility is true on load for slot 3
                     _plotManager.SetRunVisibility(3, true);
 
+                    // ✅ Show filename on the button
+                    btnLoadRun3.Text = $"Run 3: {TruncateFileName(filePath)}";
+
                     PlotAllRuns();
 
                     // Sync toggle button text with visibility state
@@ -335,28 +339,17 @@ namespace CastleOverlayV2
 
             var rbData = RaceBoxLoader.LoadHeaderOnly(path);
 
-            // 🛡 Check if the loader returned null (invalid RaceBox file)
             if (rbData == null)
             {
                 Logger.Log("[MainForm] RaceBox header loading failed — rbData is null");
                 return;
             }
 
-            // 🛡 Then check if no run data was found
             if (rbData.FirstCompleteRunIndex == null)
             {
                 MessageBox.Show("No complete run found in this RaceBox file.", "Incomplete Run", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
-
-
-            // 🛡 Then check if no run data was found
-            if (rbData.FirstCompleteRunIndex == null)
-            {
-                MessageBox.Show("No complete run found in this RaceBox file.", "Incomplete Run", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
-
 
             Logger.Log($"Header loaded: {rbData.RunCount} runs found, FirstCompleteRun = {rbData.FirstCompleteRunIndex + 1}");
             Logger.Log("Parsing RaceBox telemetry for Slot 1...");
@@ -378,15 +371,12 @@ namespace CastleOverlayV2
 
             raceBox1 = rbData;
             Logger.Log($"✅ RaceBox 1 loaded. RunCount = {rbData.RunCount}, FirstCompleteRun = {rbData.FirstCompleteRunIndex + 1}");
-            
 
             // === ✅ Convert RaceBox points into RunData for plotting ===
             var run = new RunData();
             run.IsRaceBox = true;
             run.SplitTimes = rbData.SplitTimes;
             run.SplitLabels = rbData.SplitLabels;
-            Logger.Log($"✅ SplitTimes loaded: {string.Join(", ", run.SplitTimes ?? new List<double>())}");
-
             run.FileName = Path.GetFileName(path);
 
             // ✅ Store Castle-style DataPoints into per-channel dictionary
@@ -408,14 +398,15 @@ namespace CastleOverlayV2
                 Time = p.Time.TotalSeconds
             }).ToList();
 
-            //---------------------------------------------
             Logger.Log($"✅ Run4 channels: {string.Join(", ", run.Data.Keys)}");
 
             // === ✅ Assign RaceBox 1 into slot 4 (paired with Castle Run1) ===
             run4 = run;
-
             _plotManager.SetRun(4, run); // ❗ Critical for visibility logic
+            _plotManager.SetRunVisibility(4, true);
 
+            // ✅ Show filename on the (now-wider) button
+            btnLoadRaceBox1.Text = $"RaceBox 1: {TruncateFileName(path)}";
 
             btnToggleRaceBox1.Enabled = true;
             btnDeleteRaceBox1.Enabled = true;
@@ -447,7 +438,6 @@ namespace CastleOverlayV2
                 Logger.Log("ℹ️ RaceBox G-Force X already exists in toggle bar");
             }
 
-            // === 🧽 Force layout refresh if we added new controls
             if (addedChannels)
             {
                 Logger.Log("🔄 Forcing layout refresh after adding RaceBox toggles");
@@ -462,7 +452,6 @@ namespace CastleOverlayV2
                 Logger.Log($"✅ Run1 point count (G-Force X): {gxPoints.Count}");
 
             PlotAllRuns();
-
         }
 
         private async void LoadRaceBox2Button_Click(object sender, EventArgs e)
@@ -486,7 +475,6 @@ namespace CastleOverlayV2
                 return;
             }
 
-
             Logger.Log($"Header loaded: {rbData.RunCount} runs found, FirstCompleteRun = {rbData.FirstCompleteRunIndex + 1}");
             Logger.Log("Parsing RaceBox telemetry for Slot 2...");
 
@@ -500,16 +488,14 @@ namespace CastleOverlayV2
                 return;
             }
 
-            Logger.Log($"📈 RaceBox telemetry parsed: {points.Count} rows for RaceBox3 → run6");
-
+            Logger.Log($"📈 RaceBox telemetry parsed: {points.Count} rows for RaceBox2 → run5");
 
             raceBox2 = rbData;
 
             var run = new RunData();
             run.IsRaceBox = true;
-            run.SplitTimes = rbData.SplitTimes;   //1 
+            run.SplitTimes = rbData.SplitTimes;
             run.SplitLabels = rbData.SplitLabels;
-            Logger.Log($"✅ SplitTimes loaded: {string.Join(", ", run.SplitTimes ?? new List<double>())}");
             run.FileName = Path.GetFileName(path);
 
             run.Data["RaceBox Speed"] = points.Select(p => new DataPoint { Time = p.Time.TotalSeconds, Y = p.SpeedMph }).ToList();
@@ -518,10 +504,13 @@ namespace CastleOverlayV2
 
             run5 = run;
 
-
-            // ✅ FIX: Register run + enable buttons
+            // ✅ Register run + enable buttons
             _plotManager.SetRun(5, run);
             _plotManager.SetRunVisibility(5, true);
+
+            // ✅ Show filename on the button
+            btnLoadRaceBox2.Text = $"RaceBox 2: {TruncateFileName(path)}";
+
             btnToggleRaceBox2.Enabled = true;
             btnDeleteRaceBox2.Enabled = true;
 
@@ -550,8 +539,6 @@ namespace CastleOverlayV2
             PlotAllRuns();
         }
 
-
-
         private async void LoadRaceBox3Button_Click(object sender, EventArgs e)
         {
             Logger.Log("RaceBox Load Button Clicked — Slot 3");
@@ -572,7 +559,6 @@ namespace CastleOverlayV2
                 return;
             }
 
-
             Logger.Log($"Header loaded: {rbData.RunCount} runs found, FirstCompleteRun = {rbData.FirstCompleteRunIndex + 1}");
             Logger.Log("Parsing RaceBox telemetry for Slot 3...");
 
@@ -586,7 +572,7 @@ namespace CastleOverlayV2
             var run = new RunData();
             run.IsRaceBox = true;
             run.FileName = Path.GetFileName(path);
-            run.SplitTimes = rbData.SplitTimes;//2
+            run.SplitTimes = rbData.SplitTimes;
             run.SplitLabels = rbData.SplitLabels;
 
             run.Data["RaceBox Speed"] = points.Select(p => new DataPoint { Time = p.Time.TotalSeconds, Y = p.SpeedMph }).ToList();
@@ -595,9 +581,13 @@ namespace CastleOverlayV2
 
             run6 = run;
 
-            // ✅ FIX: Register run + enable buttons
+            // ✅ Register run + enable buttons
             _plotManager.SetRun(6, run);
             _plotManager.SetRunVisibility(6, true);
+
+            // ✅ Show filename on the button
+            btnLoadRaceBox3.Text = $"RaceBox 3: {TruncateFileName(path)}";
+
             btnToggleRaceBox3.Enabled = true;
             btnDeleteRaceBox3.Enabled = true;
 
@@ -626,38 +616,36 @@ namespace CastleOverlayV2
             PlotAllRuns();
         }
 
-
         private string GetCsvFilePath()
-{
-    Logger.Log("Opening file picker...");
-
-    using (var ofd = new OpenFileDialog())
-    {
-        ofd.Title = "Select RaceBox CSV file";
-        ofd.Filter = "CSV files (*.csv)|*.csv|All files (*.*)|*.*";
-
-        var result = ofd.ShowDialog();
-        Logger.Log($"File dialog result: {result}");
-
-        if (result == DialogResult.OK)
         {
-            Logger.Log($"Selected file: {ofd.FileName}");
-            return ofd.FileName;
-        }
-        else
-        {
-            Logger.Log("No file selected.");
-            return null;
-        }
-    }
-}
+            Logger.Log("Opening file picker...");
 
+            using (var ofd = new OpenFileDialog())
+            {
+                ofd.Title = "Select CSV file";
+                ofd.Filter = "CSV files (*.csv)|*.csv|All files (*.*)|*.*";
+
+                var result = ofd.ShowDialog();
+                Logger.Log($"File dialog result: {result}");
+
+                if (result == DialogResult.OK)
+                {
+                    Logger.Log($"Selected file: {ofd.FileName}");
+                    return ofd.FileName;
+                }
+                else
+                {
+                    Logger.Log("No file selected.");
+                    return null;
+                }
+            }
+        }
 
         /// <summary>
         /// ✅ Helper: Collect non-null runs and plot all
         /// </summary>
         private void PlotAllRuns()
-{
+        {
             Logger.Log("PlotAllRuns called with runs:");
             if (run1 != null) Logger.Log($"  Run 1: {run1.DataPoints.Count} points");
             if (run2 != null) Logger.Log($"  Run 2: {run2.DataPoints.Count} points");
@@ -674,20 +662,17 @@ namespace CastleOverlayV2
             if (run5 != null) runsToPlot[5] = run5;
             if (run6 != null) runsToPlot[6] = run6;
 
-
             var visibilityMap = _channelToggleBar.GetChannelStates();
 
-    Logger.Log("PlotAllRuns — Channel visibility map before applying:");
-    foreach (var kvp in visibilityMap)
-    {
-        Logger.Log($"  Channel: {kvp.Key}, Visible: {kvp.Value}");
-    }
+            Logger.Log("PlotAllRuns — Channel visibility map before applying:");
+            foreach (var kvp in visibilityMap)
+            {
+                Logger.Log($"  Channel: {kvp.Key}, Visible: {kvp.Value}");
+            }
 
-    _plotManager.SetInitialChannelVisibility(visibilityMap);
-    _plotManager.PlotRuns(runsToPlot);
-}
-
-
+            _plotManager.SetInitialChannelVisibility(visibilityMap);
+            _plotManager.PlotRuns(runsToPlot);
+        }
 
         /// <summary>
         /// ✅ Toggle changed — update plot and persist to config
@@ -707,7 +692,6 @@ namespace CastleOverlayV2
             PlotAllRuns();
         }
 
-
         /// <summary>
         /// ✅ Hover data updates toggle bar
         /// </summary>
@@ -719,11 +703,9 @@ namespace CastleOverlayV2
         private void ToggleRun1Button_Click(object sender, EventArgs e)
         {
             LogClick("Toggle Run 1");
-
             bool isNowVisible = _plotManager.ToggleRunVisibility(1);
             btnToggleRun1.Text = isNowVisible ? "Hide" : "Show";
         }
-
 
         private void ToggleRun2Button_Click(object sender, EventArgs e)
         {
@@ -732,14 +714,12 @@ namespace CastleOverlayV2
             btnToggleRun2.Text = isNowVisible ? "Hide" : "Show";
         }
 
-
         private void ToggleRun3Button_Click(object sender, EventArgs e)
         {
             LogClick("Toggle Run 3");
             bool isNowVisible = _plotManager.ToggleRunVisibility(3);
             btnToggleRun3.Text = isNowVisible ? "Hide" : "Show";
         }
-
 
         private void DeleteRun1Button_Click(object sender, EventArgs e)
         {
@@ -759,7 +739,6 @@ namespace CastleOverlayV2
             DeleteRun(3);
         }
 
-
         private void DeleteRun(int slot)
         {
             // Reset buttons and clear local run reference
@@ -771,6 +750,7 @@ namespace CastleOverlayV2
                     btnToggleRun1.Enabled = false;
                     btnDeleteRun1.Enabled = false;
                     btnToggleRun1.Text = "Hide";
+                    btnLoadRun1.Text = "Load Run 1"; // 🔄 reset label
                     break;
                 case 2:
                     run2 = null;
@@ -778,6 +758,7 @@ namespace CastleOverlayV2
                     btnToggleRun2.Enabled = false;
                     btnDeleteRun2.Enabled = false;
                     btnToggleRun2.Text = "Hide";
+                    btnLoadRun2.Text = "Load Run 2"; // 🔄 reset label
                     break;
                 case 3:
                     run3 = null;
@@ -785,6 +766,7 @@ namespace CastleOverlayV2
                     btnToggleRun3.Enabled = false;
                     btnDeleteRun3.Enabled = false;
                     btnToggleRun3.Text = "Hide";
+                    btnLoadRun3.Text = "Load Run 3"; // 🔄 reset label
                     break;
                 case 4:
                     run4 = null;
@@ -792,6 +774,7 @@ namespace CastleOverlayV2
                     btnToggleRaceBox1.Enabled = false;
                     btnDeleteRaceBox1.Enabled = false;
                     btnToggleRaceBox1.Text = "Hide";
+                    btnLoadRaceBox1.Text = "Load RaceBox 1"; // 🔄 reset label
                     break;
                 case 5:
                     run5 = null;
@@ -799,6 +782,7 @@ namespace CastleOverlayV2
                     btnToggleRaceBox2.Enabled = false;
                     btnDeleteRaceBox2.Enabled = false;
                     btnToggleRaceBox2.Text = "Hide";
+                    btnLoadRaceBox2.Text = "Load RaceBox 2"; // 🔄 reset label
                     break;
                 case 6:
                     run6 = null;
@@ -806,6 +790,7 @@ namespace CastleOverlayV2
                     btnToggleRaceBox3.Enabled = false;
                     btnDeleteRaceBox3.Enabled = false;
                     btnToggleRaceBox3.Text = "Hide";
+                    btnLoadRaceBox3.Text = "Load RaceBox 3"; // 🔄 reset label
                     break;
             }
 
@@ -826,8 +811,6 @@ namespace CastleOverlayV2
             _plotManager.PlotRuns(activeRuns);
         }
 
-
-
         private void OnRpmModeChanged(bool isFourPole)
         {
             _isFourPoleMode = isFourPole;
@@ -843,10 +826,9 @@ namespace CastleOverlayV2
             _configService.SetRpmMode(isFourPole); // ✅ persist to config.json
         }
 
-
         private void LogClick(string buttonName)
         {
-            Logger.Log($"🔘 Button clicked: {buttonName}");
+            Logger.Log($" 🔘 Button clicked: {buttonName}");
         }
 
         private void ToggleRaceBox1Button_Click(object sender, EventArgs e)
@@ -864,6 +846,7 @@ namespace CastleOverlayV2
             LogClick("Delete RaceBox 1");
             DeleteRun(4); // ✅ Reuse Castle logic
         }
+
         private void ToggleRaceBox2Button_Click(object sender, EventArgs e)
         {
             LogClick("Toggle RaceBox 2");
@@ -895,9 +878,5 @@ namespace CastleOverlayV2
             LogClick("Delete RaceBox 3");
             DeleteRun(6); // Reuse shared delete logic
         }
-
-
-
-
     }
 }
