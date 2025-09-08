@@ -3,9 +3,14 @@ using CastleOverlayV2.Controls;
 using CastleOverlayV2.Models;
 using CastleOverlayV2.Plot;
 using CastleOverlayV2.Services;
-using System.Reflection;
-using System.Text;
+using System;
+using System.Collections.Generic;
+using System.Drawing;
 using System.IO;
+using System.Linq;
+using System.Reflection;
+using System.Threading.Tasks;
+using System.Windows.Forms;
 
 namespace CastleOverlayV2
 {
@@ -33,6 +38,11 @@ namespace CastleOverlayV2
 
         private bool _isFourPoleMode = false;
 
+        // 🆕 Nudge step sizes (ms) when using modifiers
+        private const double SHIFT_FINE_MS = 1;     // Ctrl
+        private const double SHIFT_NORMAL_MS = 100; // No modifier (only when you explicitly want ms mode)
+        private const double SHIFT_COARSE_MS = 1000; // Shift
+
         public MainForm(ConfigService configService)
         {
             _configService = configService;
@@ -43,9 +53,7 @@ namespace CastleOverlayV2
                 .GetManifestResourceStream("CastleOverlayV2.Resources.DragOverlay.ico");
 
             if (iconStream != null)
-            {
                 this.Icon = new Icon(iconStream);
-            }
 
             string buildNumber = _configService.GetBuildNumber();  // already implemented
             this.Text = $"DragOverlay — Build {buildNumber}";
@@ -71,6 +79,14 @@ namespace CastleOverlayV2
             btnToggleRaceBox3.Enabled = false;
             btnDeleteRaceBox3.Enabled = false;
 
+            // 🆕 Disable all shift buttons at startup
+            SetShiftButtonsEnabled(1, false, isRaceBox: false);
+            SetShiftButtonsEnabled(2, false, isRaceBox: false);
+            SetShiftButtonsEnabled(3, false, isRaceBox: false);
+            SetShiftButtonsEnabled(1, false, isRaceBox: true);
+            SetShiftButtonsEnabled(2, false, isRaceBox: true);
+            SetShiftButtonsEnabled(3, false, isRaceBox: true);
+
             // Maximize the window on startup
             this.WindowState = FormWindowState.Maximized;
 
@@ -80,9 +96,7 @@ namespace CastleOverlayV2
 
             Logger.Log("Config loaded at startup:");
             foreach (var kvp in config.ChannelVisibility)
-            {
                 Logger.Log($"  Channel: {kvp.Key}, Visible: {kvp.Value}");
-            }
 
             // Wire up the PlotManager with your FormsPlot control (must match your Designer)
             _plotManager = new PlotManager(formsPlot1);
@@ -203,6 +217,9 @@ namespace CastleOverlayV2
                     btnToggleRun1.Text = _plotManager.GetRunVisibility(1) ? "Hide" : "Show";
                     btnToggleRun1.Enabled = true;
                     btnDeleteRun1.Enabled = true;
+
+                    // 🆕 Enable shift controls for this slot
+                    SetShiftButtonsEnabled(1, true, isRaceBox: false);
                 }
                 else
                 {
@@ -257,6 +274,9 @@ namespace CastleOverlayV2
                     btnDeleteRun2.Parent?.PerformLayout();
                     btnToggleRun2.Refresh();
                     btnDeleteRun2.Refresh();
+
+                    // 🆕 Enable shift controls for this slot
+                    SetShiftButtonsEnabled(2, true, isRaceBox: false);
                 }
                 else
                 {
@@ -308,6 +328,9 @@ namespace CastleOverlayV2
                     btnToggleRun3.Text = _plotManager.GetRunVisibility(3) ? "Hide" : "Show";
                     btnToggleRun3.Enabled = true;
                     btnDeleteRun3.Enabled = true;
+
+                    // 🆕 Enable shift controls for this slot
+                    SetShiftButtonsEnabled(3, true, isRaceBox: false);
                 }
                 else
                 {
@@ -451,6 +474,9 @@ namespace CastleOverlayV2
             if (run.Data.TryGetValue("RaceBox G-Force X", out var gxPoints))
                 Logger.Log($"✅ Run1 point count (G-Force X): {gxPoints.Count}");
 
+            // 🆕 Enable shift controls for RaceBox slot 1 (slot 4)
+            SetShiftButtonsEnabled(1, true, isRaceBox: true);
+
             PlotAllRuns();
         }
 
@@ -536,6 +562,9 @@ namespace CastleOverlayV2
                 _channelToggleBar.Refresh();
             }
 
+            // 🆕 Enable shift controls for RaceBox slot 2 (slot 5)
+            SetShiftButtonsEnabled(2, true, isRaceBox: true);
+
             PlotAllRuns();
         }
 
@@ -613,6 +642,9 @@ namespace CastleOverlayV2
                 _channelToggleBar.Refresh();
             }
 
+            // 🆕 Enable shift controls for RaceBox slot 3 (slot 6)
+            SetShiftButtonsEnabled(3, true, isRaceBox: true);
+
             PlotAllRuns();
         }
 
@@ -647,12 +679,12 @@ namespace CastleOverlayV2
         private void PlotAllRuns()
         {
             Logger.Log("PlotAllRuns called with runs:");
-            if (run1 != null) Logger.Log($"  Run 1: {run1.DataPoints.Count} points");
-            if (run2 != null) Logger.Log($"  Run 2: {run2.DataPoints.Count} points");
-            if (run3 != null) Logger.Log($"  Run 3: {run3.DataPoints.Count} points");
-            if (run4 != null) Logger.Log($"  Run 4: {run4.DataPoints.Count} points");
-            if (run5 != null) Logger.Log($"  Run 5: {run5.DataPoints.Count} points");
-            if (run6 != null) Logger.Log($"  Run 6: {run6.DataPoints.Count} points");
+            if (run1 != null) Logger.Log($"  Run 1: {run1.DataPoints.Count} points, shift={run1.TimeShiftMs} ms");
+            if (run2 != null) Logger.Log($"  Run 2: {run2.DataPoints.Count} points, shift={run2.TimeShiftMs} ms");
+            if (run3 != null) Logger.Log($"  Run 3: {run3.DataPoints.Count} points, shift={run3.TimeShiftMs} ms");
+            if (run4 != null) Logger.Log($"  Run 4: {run4.DataPoints.Count} points, shift={run4.TimeShiftMs} ms");
+            if (run5 != null) Logger.Log($"  Run 5: {run5.DataPoints.Count} points, shift={run5.TimeShiftMs} ms");
+            if (run6 != null) Logger.Log($"  Run 6: {run6.DataPoints.Count} points, shift={run6.TimeShiftMs} ms");
 
             var runsToPlot = new Dictionary<int, RunData>();
             if (run1 != null) runsToPlot[1] = run1;
@@ -660,15 +692,14 @@ namespace CastleOverlayV2
             if (run3 != null) runsToPlot[3] = run3;
             if (run4 != null) runsToPlot[4] = run4;
             if (run5 != null) runsToPlot[5] = run5;
+            if (run6 != null) run6.IsRaceBox = true; // keep flag; slot 6 belongs to racebox
             if (run6 != null) runsToPlot[6] = run6;
 
             var visibilityMap = _channelToggleBar.GetChannelStates();
 
             Logger.Log("PlotAllRuns — Channel visibility map before applying:");
             foreach (var kvp in visibilityMap)
-            {
                 Logger.Log($"  Channel: {kvp.Key}, Visible: {kvp.Value}");
-            }
 
             _plotManager.SetInitialChannelVisibility(visibilityMap);
             _plotManager.PlotRuns(runsToPlot);
@@ -751,6 +782,7 @@ namespace CastleOverlayV2
                     btnDeleteRun1.Enabled = false;
                     btnToggleRun1.Text = "Hide";
                     btnLoadRun1.Text = "Load Run 1"; // 🔄 reset label
+                    SetShiftButtonsEnabled(1, false, isRaceBox: false);
                     break;
                 case 2:
                     run2 = null;
@@ -759,6 +791,7 @@ namespace CastleOverlayV2
                     btnDeleteRun2.Enabled = false;
                     btnToggleRun2.Text = "Hide";
                     btnLoadRun2.Text = "Load Run 2"; // 🔄 reset label
+                    SetShiftButtonsEnabled(2, false, isRaceBox: false);
                     break;
                 case 3:
                     run3 = null;
@@ -767,6 +800,7 @@ namespace CastleOverlayV2
                     btnDeleteRun3.Enabled = false;
                     btnToggleRun3.Text = "Hide";
                     btnLoadRun3.Text = "Load Run 3"; // 🔄 reset label
+                    SetShiftButtonsEnabled(3, false, isRaceBox: false);
                     break;
                 case 4:
                     run4 = null;
@@ -775,6 +809,7 @@ namespace CastleOverlayV2
                     btnDeleteRaceBox1.Enabled = false;
                     btnToggleRaceBox1.Text = "Hide";
                     btnLoadRaceBox1.Text = "Load RaceBox 1"; // 🔄 reset label
+                    SetShiftButtonsEnabled(1, false, isRaceBox: true);
                     break;
                 case 5:
                     run5 = null;
@@ -783,6 +818,7 @@ namespace CastleOverlayV2
                     btnDeleteRaceBox2.Enabled = false;
                     btnToggleRaceBox2.Text = "Hide";
                     btnLoadRaceBox2.Text = "Load RaceBox 2"; // 🔄 reset label
+                    SetShiftButtonsEnabled(2, false, isRaceBox: true);
                     break;
                 case 6:
                     run6 = null;
@@ -791,6 +827,7 @@ namespace CastleOverlayV2
                     btnDeleteRaceBox3.Enabled = false;
                     btnToggleRaceBox3.Text = "Hide";
                     btnLoadRaceBox3.Text = "Load RaceBox 3"; // 🔄 reset label
+                    SetShiftButtonsEnabled(3, false, isRaceBox: true);
                     break;
             }
 
@@ -818,6 +855,7 @@ namespace CastleOverlayV2
 
             var runsToPlot = new Dictionary<int, RunData>();
             if (run1 != null) runsToPlot[1] = run1;
+            if (run2 != null) run2.TimeShiftMs += 0; // keep compiler happy if stripped warnings; no-op
             if (run2 != null) runsToPlot[2] = run2;
             if (run3 != null) runsToPlot[3] = run3;
 
@@ -877,6 +915,128 @@ namespace CastleOverlayV2
         {
             LogClick("Delete RaceBox 3");
             DeleteRun(6); // Reuse shared delete logic
+        }
+
+        // ======================================================================================
+        // 🆕 Time-shift helpers and handlers
+
+        // Returns the user-requested delta for this click:
+        // - Ctrl → fine ms, Shift → coarse ms
+        // - No modifier → exactly one “dot” (median Δt) for this slot
+        private double GetClickDeltaMs(int slot)
+        {
+            if ((ModifierKeys & Keys.Control) == Keys.Control) return SHIFT_FINE_MS;
+            if ((ModifierKeys & Keys.Shift) == Keys.Shift) return SHIFT_COARSE_MS;
+
+            // Default: one sample step (“one dot”)
+            double stepSec = _plotManager.GetSampleStepSeconds(slot);
+            if (stepSec <= 0) stepSec = 0.01; // safety
+            return stepSec * 1000.0;
+        }
+
+        private void ApplyShift(ref RunData run, int slot, double deltaMs)
+        {
+            if (run == null) return;
+            run.TimeShiftMs += deltaMs;
+            Logger.Log($"⏱️ Run {slot} shift {(deltaMs >= 0 ? "+" : "")}{deltaMs} ms → total {run.TimeShiftMs} ms");
+            PlotAllRuns();
+        }
+
+        private void ResetShift(ref RunData run, int slot)
+        {
+            if (run == null) return;
+            run.TimeShiftMs = 0;
+            Logger.Log($"⏱️ Run {slot} shift reset → 0 ms");
+            PlotAllRuns();
+        }
+
+        private void SetShiftButtonsEnabled(int slotIndex, bool enabled, bool isRaceBox)
+        {
+            if (!isRaceBox)
+            {
+                switch (slotIndex)
+                {
+                    case 1:
+                        btnShiftLeftRun1.Enabled = enabled;
+                        btnShiftRightRun1.Enabled = enabled;
+                        btnShiftResetRun1.Enabled = enabled;
+                        break;
+                    case 2:
+                        btnShiftLeftRun2.Enabled = enabled;
+                        btnShiftRightRun2.Enabled = enabled;
+                        btnShiftResetRun2.Enabled = enabled;
+                        break;
+                    case 3:
+                        btnShiftLeftRun3.Enabled = enabled;
+                        btnShiftRightRun3.Enabled = enabled;
+                        btnShiftResetRun3.Enabled = enabled;
+                        break;
+                }
+            }
+            else
+            {
+                switch (slotIndex)
+                {
+                    case 1:
+                        btnShiftLeftRB1.Enabled = enabled;
+                        btnShiftRightRB1.Enabled = enabled;
+                        btnShiftResetRB1.Enabled = enabled;
+                        break;
+                    case 2:
+                        btnShiftLeftRB2.Enabled = enabled;
+                        btnShiftRightRB2.Enabled = enabled;
+                        btnShiftResetRB2.Enabled = enabled;
+                        break;
+                    case 3:
+                        btnShiftLeftRB3.Enabled = enabled;
+                        btnShiftRightRB3.Enabled = enabled;
+                        btnShiftResetRB3.Enabled = enabled;
+                        break;
+                }
+            }
+        }
+
+        // --- Run 1 (Castle slot 1)
+        private void ShiftLeftRun1_Click(object sender, EventArgs e) => ApplyShift(ref run1, 1, -GetClickDeltaMs(1));
+        private void ShiftRightRun1_Click(object sender, EventArgs e) => ApplyShift(ref run1, 1, +GetClickDeltaMs(1));
+        private void ShiftResetRun1_Click(object sender, EventArgs e) => ResetShift(ref run1, 1);
+
+        // --- Run 2 (Castle slot 2)
+        private void ShiftLeftRun2_Click(object sender, EventArgs e) => ApplyShift(ref run2, 2, -GetClickDeltaMs(2));
+        private void ShiftRightRun2_Click(object sender, EventArgs e) => ApplyShift(ref run2, 2, +GetClickDeltaMs(2));
+        private void ShiftResetRun2_Click(object sender, EventArgs e) => ResetShift(ref run2, 2);
+
+        // --- Run 3 (Castle slot 3)
+        private void ShiftLeftRun3_Click(object sender, EventArgs e) => ApplyShift(ref run3, 3, -GetClickDeltaMs(3));
+        private void ShiftRightRun3_Click(object sender, EventArgs e) => ApplyShift(ref run3, 3, +GetClickDeltaMs(3));
+        private void ShiftResetRun3_Click(object sender, EventArgs e) => ResetShift(ref run3, 3);
+
+        // --- RaceBox 1 (slot 4, UI group 1)
+        private void ShiftLeftRB1_Click(object sender, EventArgs e) => ApplyShift(ref run4, 4, -GetClickDeltaMs(4));
+        private void ShiftRightRB1_Click(object sender, EventArgs e) => ApplyShift(ref run4, 4, +GetClickDeltaMs(4));
+        private void ShiftResetRB1_Click(object sender, EventArgs e) => ResetShift(ref run4, 4);
+
+        // --- RaceBox 2 (slot 5, UI group 2)
+        private void ShiftLeftRB2_Click(object sender, EventArgs e) => ApplyShift(ref run5, 5, -GetClickDeltaMs(5));
+        private void ShiftRightRB2_Click(object sender, EventArgs e) => ApplyShift(ref run5, 5, +GetClickDeltaMs(5));
+        private void ShiftResetRB2_Click(object sender, EventArgs e) => ResetShift(ref run5, 5);
+
+        // --- RaceBox 3 (slot 6, UI group 3)
+        private void ShiftLeftRB3_Click(object sender, EventArgs e) => ApplyShift(ref run6, 6, -GetClickDeltaMs(6));
+        private void ShiftRightRB3_Click(object sender, EventArgs e) => ApplyShift(ref run6, 6, +GetClickDeltaMs(6));
+        private void ShiftResetRB3_Click(object sender, EventArgs e) => ResetShift(ref run6, 6);
+
+        // Optional helper if you want to call “move one sample” directly somewhere else:
+        private void ShiftRunOneSample(int slot, int direction) // direction: -1 left, +1 right
+        {
+            if (!_plotManager.Runs.TryGetValue(slot, out var run) || run is null)
+                return;
+
+            double stepSec = _plotManager.GetSampleStepSeconds(slot);
+            int stepMs = (int)Math.Round(stepSec * 1000.0);
+            run.TimeShiftMs += direction * stepMs;
+
+            _plotManager.PlotRuns(_plotManager.Runs.ToDictionary(k => k.Key, v => v.Value));
         }
     }
 }
