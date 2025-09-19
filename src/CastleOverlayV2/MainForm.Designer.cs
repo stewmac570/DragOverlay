@@ -25,6 +25,8 @@ namespace CastleOverlayV2
         private System.Windows.Forms.Button btnDeleteRaceBox2;
         private System.Windows.Forms.Button btnToggleRaceBox3;
         private System.Windows.Forms.Button btnDeleteRaceBox3;
+        private System.Windows.Forms.TableLayoutPanel mainContainer;   // <— NEW
+
 
         // 🆕 Per-slot time-shift controls (Castle 1–3, RaceBox 1–3)
         private System.Windows.Forms.Button btnShiftLeftRun1;
@@ -51,6 +53,43 @@ namespace CastleOverlayV2
         private System.Windows.Forms.Button btnShiftRightRB3;
         private System.Windows.Forms.Button btnShiftResetRB3;
 
+        // --- Ellipsis menus per slot ---
+        private System.Windows.Forms.ContextMenuStrip ctxRun1;
+        private System.Windows.Forms.ToolStripMenuItem miRun1Toggle;
+        private System.Windows.Forms.ToolStripMenuItem miRun1Remove;
+        private System.Windows.Forms.ToolStripMenuItem miRun1Reset;
+        private System.Windows.Forms.Button btnMenuRun1;
+
+        private System.Windows.Forms.ContextMenuStrip ctxRB1;
+        private System.Windows.Forms.ToolStripMenuItem miRB1Toggle;
+        private System.Windows.Forms.ToolStripMenuItem miRB1Remove;
+        private System.Windows.Forms.ToolStripMenuItem miRB1Reset;
+        private System.Windows.Forms.Button btnMenuRB1;
+
+        private System.Windows.Forms.ContextMenuStrip ctxRun2;
+        private System.Windows.Forms.ToolStripMenuItem miRun2Toggle;
+        private System.Windows.Forms.ToolStripMenuItem miRun2Remove;
+        private System.Windows.Forms.ToolStripMenuItem miRun2Reset;
+        private System.Windows.Forms.Button btnMenuRun2;
+
+        private System.Windows.Forms.ContextMenuStrip ctxRB2;
+        private System.Windows.Forms.ToolStripMenuItem miRB2Toggle;
+        private System.Windows.Forms.ToolStripMenuItem miRB2Remove;
+        private System.Windows.Forms.ToolStripMenuItem miRB2Reset;
+        private System.Windows.Forms.Button btnMenuRB2;
+
+        private System.Windows.Forms.ContextMenuStrip ctxRun3;
+        private System.Windows.Forms.ToolStripMenuItem miRun3Toggle;
+        private System.Windows.Forms.ToolStripMenuItem miRun3Remove;
+        private System.Windows.Forms.ToolStripMenuItem miRun3Reset;
+        private System.Windows.Forms.Button btnMenuRun3;
+
+        private System.Windows.Forms.ContextMenuStrip ctxRB3;
+        private System.Windows.Forms.ToolStripMenuItem miRB3Toggle;
+        private System.Windows.Forms.ToolStripMenuItem miRB3Remove;
+        private System.Windows.Forms.ToolStripMenuItem miRB3Reset;
+        private System.Windows.Forms.Button btnMenuRB3;
+
         protected override void Dispose(bool disposing)
         {
             if (disposing && (components != null))
@@ -64,6 +103,8 @@ namespace CastleOverlayV2
 
         private void InitializeComponent()
         {
+            this.components = new System.ComponentModel.Container();
+
             this.formsPlot1 = new ScottPlot.WinForms.FormsPlot();
 
             this.btnLoadRun1 = new System.Windows.Forms.Button();
@@ -116,15 +157,74 @@ namespace CastleOverlayV2
             this.btnShiftRightRB3 = new System.Windows.Forms.Button();
             this.btnShiftResetRB3 = new System.Windows.Forms.Button();
 
-            this.SuspendLayout();
+            // ===== Menus (instantiate) =====
+            this.ctxRun1 = new System.Windows.Forms.ContextMenuStrip(this.components);
+            this.miRun1Toggle = new System.Windows.Forms.ToolStripMenuItem();
+            this.miRun1Remove = new System.Windows.Forms.ToolStripMenuItem();
+            this.miRun1Reset = new System.Windows.Forms.ToolStripMenuItem();
+            this.btnMenuRun1 = new System.Windows.Forms.Button();
 
-            // === Top panel ===
+            this.ctxRB1 = new System.Windows.Forms.ContextMenuStrip(this.components);
+            this.miRB1Toggle = new System.Windows.Forms.ToolStripMenuItem();
+            this.miRB1Remove = new System.Windows.Forms.ToolStripMenuItem();
+            this.miRB1Reset = new System.Windows.Forms.ToolStripMenuItem();
+            this.btnMenuRB1 = new System.Windows.Forms.Button();
+
+            this.ctxRun2 = new System.Windows.Forms.ContextMenuStrip(this.components);
+            this.miRun2Toggle = new System.Windows.Forms.ToolStripMenuItem();
+            this.miRun2Remove = new System.Windows.Forms.ToolStripMenuItem();
+            this.miRun2Reset = new System.Windows.Forms.ToolStripMenuItem();
+            this.btnMenuRun2 = new System.Windows.Forms.Button();
+
+            this.ctxRB2 = new System.Windows.Forms.ContextMenuStrip(this.components);
+            this.miRB2Toggle = new System.Windows.Forms.ToolStripMenuItem();
+            this.miRB2Remove = new System.Windows.Forms.ToolStripMenuItem();
+            this.miRB2Reset = new System.Windows.Forms.ToolStripMenuItem();
+            this.btnMenuRB2 = new System.Windows.Forms.Button();
+
+            this.ctxRun3 = new System.Windows.Forms.ContextMenuStrip(this.components);
+            this.miRun3Toggle = new System.Windows.Forms.ToolStripMenuItem();
+            this.miRun3Remove = new System.Windows.Forms.ToolStripMenuItem();
+            this.miRun3Reset = new System.Windows.Forms.ToolStripMenuItem();
+            this.btnMenuRun3 = new System.Windows.Forms.Button();
+
+            this.ctxRB3 = new System.Windows.Forms.ContextMenuStrip(this.components);
+            this.miRB3Toggle = new System.Windows.Forms.ToolStripMenuItem();
+            this.miRB3Remove = new System.Windows.Forms.ToolStripMenuItem();
+            this.miRB3Reset = new System.Windows.Forms.ToolStripMenuItem();
+            this.btnMenuRB3 = new System.Windows.Forms.Button();
+
+            this.SuspendLayout();
+            // === Main container (2 rows: buttons + plot) ===
+            this.mainContainer = new System.Windows.Forms.TableLayoutPanel();
+            this.mainContainer.Name = "mainContainer";
+            this.mainContainer.ColumnCount = 1;
+            this.mainContainer.RowCount = 2;
+            this.mainContainer.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.mainContainer.Margin = new System.Windows.Forms.Padding(0);
+            this.mainContainer.Padding = new System.Windows.Forms.Padding(0);
+
+            // Row 0 auto-sizes to fit the buttons
+            this.mainContainer.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.AutoSize));
+            // Row 1 takes the remaining vertical space for the plot
+            this.mainContainer.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 100F));
+
+            // Single column consumes all width
+            this.mainContainer.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 100F));
+
+
+            // === Top panel (single horizontal row, no wrapping) ===
             this.topButtonPanel.FlowDirection = System.Windows.Forms.FlowDirection.LeftToRight;
-            this.topButtonPanel.Dock = System.Windows.Forms.DockStyle.Top;
-            this.topButtonPanel.Height = 64;
-            this.topButtonPanel.Padding = new System.Windows.Forms.Padding(12, 8, 0, 8);
-            this.topButtonPanel.AutoSize = true;
+            this.topButtonPanel.WrapContents = false;
+            this.topButtonPanel.AutoScroll = false;                         // no scroll, keep height tight
+            this.topButtonPanel.Dock = System.Windows.Forms.DockStyle.Fill; // fills row 0 cell
+            this.topButtonPanel.Padding = new System.Windows.Forms.Padding(4, 2, 4, 2); // thinner chrome
+            this.topButtonPanel.AutoSize = true;                            // let it size to content
             this.topButtonPanel.AutoSizeMode = System.Windows.Forms.AutoSizeMode.GrowAndShrink;
+            this.topButtonPanel.Margin = new System.Windows.Forms.Padding(0, 0, 0, 2); // tiny gap to plot
+
+
+
 
             // === Run 1 Buttons ===
             this.btnLoadRun1.Text = "Load Run 1";
@@ -170,15 +270,23 @@ namespace CastleOverlayV2
             this.btnShiftRightRB1.Click += new System.EventHandler(this.ShiftRightRB1_Click);
             this.btnShiftResetRB1.Click += new System.EventHandler(this.ShiftResetRB1_Click);
 
+            // === Hide Toggle/Delete/Reset (moved to menu)
+            this.btnToggleRun1.Visible = false;
+            this.btnDeleteRun1.Visible = false;
+            this.btnShiftResetRun1.Visible = false;
+            this.btnToggleRaceBox1.Visible = false;
+            this.btnDeleteRaceBox1.Visible = false;
+            this.btnShiftResetRB1.Visible = false;
+
             // === Run 1 Panel ===
             var panelRun1 = new System.Windows.Forms.TableLayoutPanel();
-            panelRun1.ColumnCount = 6; // Load, Toggle, Delete, «, », ⟲
+            panelRun1.ColumnCount = 7; // Load, Toggle, Delete, «, », ⟲, …
             panelRun1.RowCount = 2;
             panelRun1.AutoSize = true;
             panelRun1.AutoSizeMode = System.Windows.Forms.AutoSizeMode.GrowAndShrink;
-            panelRun1.Margin = new System.Windows.Forms.Padding(16, 8, 16, 8);
-            panelRun1.Padding = new System.Windows.Forms.Padding(4);
-            for (int i = 0; i < 6; i++)
+            panelRun1.Margin = new System.Windows.Forms.Padding(4, 4, 4, 0);
+            panelRun1.Padding = new System.Windows.Forms.Padding(0);
+            for (int i = 0; i < 7; i++)
                 panelRun1.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.AutoSize));
 
             // Row 0 — Castle
@@ -196,6 +304,54 @@ namespace CastleOverlayV2
             panelRun1.Controls.Add(this.btnShiftLeftRB1, 3, 1);
             panelRun1.Controls.Add(this.btnShiftRightRB1, 4, 1);
             panelRun1.Controls.Add(this.btnShiftResetRB1, 5, 1);
+
+            // ===== Menus for Run1 / RB1 =====
+            // ---- Helper to configure any 3-item menu quickly ----
+            void ConfigureMenu(System.Windows.Forms.ContextMenuStrip ctx,
+                               System.Windows.Forms.ToolStripMenuItem mToggle,
+                               System.Windows.Forms.ToolStripMenuItem mRemove,
+                               System.Windows.Forms.ToolStripMenuItem mReset,
+                               System.EventHandler onToggle, System.EventHandler onRemove, System.EventHandler onReset)
+            {
+                mToggle.Text = "Toggle Visibility";
+                mRemove.Text = "Remove";
+                mReset.Text = "Reset Nudge";
+
+                mToggle.Click += onToggle;
+                mRemove.Click += onRemove;
+                mReset.Click += onReset;
+
+                ctx.Items.AddRange(new System.Windows.Forms.ToolStripItem[] { mToggle, mRemove, mReset });
+            }
+
+            // ---- Helper to configure “…” button quickly ----
+            void ConfigureEllipsisButton(System.Windows.Forms.Button btn, System.Windows.Forms.ContextMenuStrip ctx)
+            {
+                btn.Text = "…";
+                btn.AutoSize = false;
+                btn.Size = new System.Drawing.Size(28, 30);
+                btn.MinimumSize = new System.Drawing.Size(28, 30);
+                btn.Margin = new System.Windows.Forms.Padding(6, 0, 0, 0);
+                btn.UseVisualStyleBackColor = true;
+                btn.ContextMenuStrip = ctx;
+                btn.Click += (s, e) =>
+                {
+                    if (btn.ContextMenuStrip != null)
+                        btn.ContextMenuStrip.Show(btn, new System.Drawing.Point(0, btn.Height));
+                };
+            }
+
+            // Bind menus to existing buttons via handlers in MainForm.cs
+            ConfigureMenu(this.ctxRun1, this.miRun1Toggle, this.miRun1Remove, this.miRun1Reset,
+                this.miRun1Toggle_Click, this.miRun1Remove_Click, this.miRun1Reset_Click);
+            ConfigureMenu(this.ctxRB1, this.miRB1Toggle, this.miRB1Remove, this.miRB1Reset,
+                this.miRB1Toggle_Click, this.miRB1Remove_Click, this.miRB1Reset_Click);
+
+            ConfigureEllipsisButton(this.btnMenuRun1, this.ctxRun1);
+            ConfigureEllipsisButton(this.btnMenuRB1, this.ctxRB1);
+
+            panelRun1.Controls.Add(this.btnMenuRun1, 6, 0);
+            panelRun1.Controls.Add(this.btnMenuRB1, 6, 1);
 
             this.topButtonPanel.Controls.Add(panelRun1);
             this.topButtonPanel.Controls.Add(Spacer());
@@ -245,17 +401,26 @@ namespace CastleOverlayV2
             this.btnShiftRightRB2.Click += new System.EventHandler(this.ShiftRightRB2_Click);
             this.btnShiftResetRB2.Click += new System.EventHandler(this.ShiftResetRB2_Click);
 
+            // === Hide Toggle/Delete/Reset (moved to menu)
+            this.btnToggleRun2.Visible = false;
+            this.btnDeleteRun2.Visible = false;
+            this.btnShiftResetRun2.Visible = false;
+            this.btnToggleRaceBox2.Visible = false;
+            this.btnDeleteRaceBox2.Visible = false;
+            this.btnShiftResetRB2.Visible = false;
+
             // === Run 2 Panel ===
             var panelRun2 = new System.Windows.Forms.TableLayoutPanel();
-            panelRun2.ColumnCount = 6;
+            panelRun2.ColumnCount = 7;
             panelRun2.RowCount = 2;
             panelRun2.AutoSize = true;
             panelRun2.AutoSizeMode = System.Windows.Forms.AutoSizeMode.GrowAndShrink;
-            panelRun2.Margin = new System.Windows.Forms.Padding(16, 8, 16, 8);
-            panelRun2.Padding = new System.Windows.Forms.Padding(4);
-            for (int i = 0; i < 6; i++)
+            panelRun2.Margin = new System.Windows.Forms.Padding(4, 4, 4, 0);
+            panelRun2.Padding = new System.Windows.Forms.Padding(0);
+            for (int i = 0; i < 7; i++)
                 panelRun2.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.AutoSize));
 
+            // Row 0 — Castle
             panelRun2.Controls.Add(this.btnLoadRun2, 0, 0);
             panelRun2.Controls.Add(this.btnToggleRun2, 1, 0);
             panelRun2.Controls.Add(this.btnDeleteRun2, 2, 0);
@@ -263,12 +428,25 @@ namespace CastleOverlayV2
             panelRun2.Controls.Add(this.btnShiftRightRun2, 4, 0);
             panelRun2.Controls.Add(this.btnShiftResetRun2, 5, 0);
 
+            // Row 1 — RaceBox
             panelRun2.Controls.Add(this.btnLoadRaceBox2, 0, 1);
             panelRun2.Controls.Add(this.btnToggleRaceBox2, 1, 1);
             panelRun2.Controls.Add(this.btnDeleteRaceBox2, 2, 1);
             panelRun2.Controls.Add(this.btnShiftLeftRB2, 3, 1);
             panelRun2.Controls.Add(this.btnShiftRightRB2, 4, 1);
             panelRun2.Controls.Add(this.btnShiftResetRB2, 5, 1);
+
+            // ===== Menus for Run2 / RB2 =====
+            ConfigureMenu(this.ctxRun2, this.miRun2Toggle, this.miRun2Remove, this.miRun2Reset,
+                this.miRun2Toggle_Click, this.miRun2Remove_Click, this.miRun2Reset_Click);
+            ConfigureMenu(this.ctxRB2, this.miRB2Toggle, this.miRB2Remove, this.miRB2Reset,
+                this.miRB2Toggle_Click, this.miRB2Remove_Click, this.miRB2Reset_Click);
+
+            ConfigureEllipsisButton(this.btnMenuRun2, this.ctxRun2);
+            ConfigureEllipsisButton(this.btnMenuRB2, this.ctxRB2);
+
+            panelRun2.Controls.Add(this.btnMenuRun2, 6, 0);
+            panelRun2.Controls.Add(this.btnMenuRB2, 6, 1);
 
             this.topButtonPanel.Controls.Add(panelRun2);
             this.topButtonPanel.Controls.Add(Spacer());
@@ -318,17 +496,26 @@ namespace CastleOverlayV2
             this.btnShiftRightRB3.Click += new System.EventHandler(this.ShiftRightRB3_Click);
             this.btnShiftResetRB3.Click += new System.EventHandler(this.ShiftResetRB3_Click);
 
+            // === Hide Toggle/Delete/Reset (moved to menu)
+            this.btnToggleRun3.Visible = false;
+            this.btnDeleteRun3.Visible = false;
+            this.btnShiftResetRun3.Visible = false;
+            this.btnToggleRaceBox3.Visible = false;
+            this.btnDeleteRaceBox3.Visible = false;
+            this.btnShiftResetRB3.Visible = false;
+
             // === Run 3 Panel ===
             var panelRun3 = new System.Windows.Forms.TableLayoutPanel();
-            panelRun3.ColumnCount = 6;
+            panelRun3.ColumnCount = 7;
             panelRun3.RowCount = 2;
             panelRun3.AutoSize = true;
             panelRun3.AutoSizeMode = System.Windows.Forms.AutoSizeMode.GrowAndShrink;
-            panelRun3.Margin = new System.Windows.Forms.Padding(16, 8, 16, 8);
-            panelRun3.Padding = new System.Windows.Forms.Padding(4);
-            for (int i = 0; i < 6; i++)
+            panelRun3.Margin = new System.Windows.Forms.Padding(4, 4, 4, 0);
+            panelRun3.Padding = new System.Windows.Forms.Padding(0);
+            for (int i = 0; i < 7; i++)
                 panelRun3.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.AutoSize));
 
+            // Row 0 — Castle
             panelRun3.Controls.Add(this.btnLoadRun3, 0, 0);
             panelRun3.Controls.Add(this.btnToggleRun3, 1, 0);
             panelRun3.Controls.Add(this.btnDeleteRun3, 2, 0);
@@ -336,12 +523,25 @@ namespace CastleOverlayV2
             panelRun3.Controls.Add(this.btnShiftRightRun3, 4, 0);
             panelRun3.Controls.Add(this.btnShiftResetRun3, 5, 0);
 
+            // Row 1 — RaceBox
             panelRun3.Controls.Add(this.btnLoadRaceBox3, 0, 1);
             panelRun3.Controls.Add(this.btnToggleRaceBox3, 1, 1);
             panelRun3.Controls.Add(this.btnDeleteRaceBox3, 2, 1);
             panelRun3.Controls.Add(this.btnShiftLeftRB3, 3, 1);
             panelRun3.Controls.Add(this.btnShiftRightRB3, 4, 1);
             panelRun3.Controls.Add(this.btnShiftResetRB3, 5, 1);
+
+            // ===== Menus for Run3 / RB3 =====
+            ConfigureMenu(this.ctxRun3, this.miRun3Toggle, this.miRun3Remove, this.miRun3Reset,
+                this.miRun3Toggle_Click, this.miRun3Remove_Click, this.miRun3Reset_Click);
+            ConfigureMenu(this.ctxRB3, this.miRB3Toggle, this.miRB3Remove, this.miRB3Reset,
+                this.miRB3Toggle_Click, this.miRB3Remove_Click, this.miRB3Reset_Click);
+
+            ConfigureEllipsisButton(this.btnMenuRun3, this.ctxRun3);
+            ConfigureEllipsisButton(this.btnMenuRB3, this.ctxRB3);
+
+            panelRun3.Controls.Add(this.btnMenuRun3, 6, 0);
+            panelRun3.Controls.Add(this.btnMenuRB3, 6, 1);
 
             this.topButtonPanel.Controls.Add(panelRun3);
 
@@ -352,41 +552,62 @@ namespace CastleOverlayV2
             this.formsPlot1.Name = "formsPlot1";
             this.formsPlot1.Size = new System.Drawing.Size(800, 460);
             this.formsPlot1.TabIndex = 0;
+            this.formsPlot1.Margin = new System.Windows.Forms.Padding(0);
 
-            // === MainForm ===
-            this.AutoScaleDimensions = new System.Drawing.SizeF(8F, 20F);
-            this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(800, 460);
-            this.Controls.Add(this.formsPlot1);
-            this.Controls.Add(this.topButtonPanel);
+            // squeeze the control's chrome
+            this.formsPlot1.Margin = new System.Windows.Forms.Padding(0);
+            this.formsPlot1.Padding = new System.Windows.Forms.Padding(0);
+
+
+            // Put top panel in row 0 (auto-sized)
+            this.topButtonPanel.Margin = new System.Windows.Forms.Padding(0);
+            this.topButtonPanel.Dock = System.Windows.Forms.DockStyle.Fill; // inside the table cell
+
+            // Put plot in row 1 (fills remaining space)
+            this.formsPlot1.Margin = new System.Windows.Forms.Padding(0);
+            this.formsPlot1.Dock = System.Windows.Forms.DockStyle.Fill;
+
+            // Add both to the table, then add the table to the form
+            this.mainContainer.Controls.Add(this.topButtonPanel, 0, 0);
+            this.mainContainer.Controls.Add(this.formsPlot1, 0, 1);
+
+            this.Controls.Add(this.mainContainer);
+
+
+            // (belt & suspenders)
+            this.formsPlot1.SendToBack();
+            this.topButtonPanel.BringToFront();
+
+            //this.Controls.SetChildIndex(this.topButtonPanel, 0);
+            //this.Controls.SetChildIndex(this.formsPlot1, 1);
+
             this.Name = "MainForm";
             this.Text = "DragOverlay V1";
 
             this.ResumeLayout(false);
             this.PerformLayout();
+        }
+        #endregion
 
-            // === Local helpers ===
-            void ConfigureShiftButton(System.Windows.Forms.Button btn, string text, string tip)
-            {
-                btn.Text = text;
-                btn.AutoSize = false;
-                btn.Size = new System.Drawing.Size(28, 30);
-                btn.MinimumSize = new System.Drawing.Size(28, 30);
-                btn.Margin = new System.Windows.Forms.Padding(6, 0, 0, 0);
-                var tt = new System.Windows.Forms.ToolTip();
-                tt.SetToolTip(btn, tip);
-            }
-
-            System.Windows.Forms.Control Spacer()
-            {
-                return new System.Windows.Forms.Panel
-                {
-                    Width = 40,
-                    Height = 1
-                };
-            }
+        // ===== Local helpers (must be OUTSIDE InitializeComponent) =====
+        private void ConfigureShiftButton(System.Windows.Forms.Button btn, string text, string tip)
+        {
+            btn.Text = text;
+            btn.AutoSize = false;
+            btn.Size = new System.Drawing.Size(28, 30);
+            btn.MinimumSize = new System.Drawing.Size(28, 30);
+            btn.Margin = new System.Windows.Forms.Padding(6, 0, 0, 0);
+            var tt = new System.Windows.Forms.ToolTip(this.components);
+            tt.SetToolTip(btn, tip);
         }
 
-        #endregion
+        private System.Windows.Forms.Control Spacer()
+        {
+            return new System.Windows.Forms.Panel
+            {
+                Width = 40,
+                Height = 1
+            };
+        }
     }
 }
