@@ -19,8 +19,10 @@ namespace CastleOverlayV2.Controls
         public ChannelToggleBar(List<string> channelNames, Dictionary<string, bool> initialStates)
         {
             Dock = DockStyle.Bottom;
-            AutoSize = false;
-            Height = 130;
+
+            // ⬇️ Let the control shrink to content height (frees vertical space for the plot)
+            AutoSize = true;
+            AutoSizeMode = AutoSizeMode.GrowAndShrink;
 
             BuildLayout(channelNames, initialStates);
         }
@@ -33,7 +35,7 @@ namespace CastleOverlayV2.Controls
             {
                 Dock = DockStyle.Fill,
                 ColumnCount = channelNames.Count,
-                RowCount = 1,
+                RowCount = 1, // single row (buttons + values inside each ChannelRow)
                 Margin = new Padding(0),
                 Padding = new Padding(0),
                 AutoSize = true,
@@ -114,7 +116,7 @@ namespace CastleOverlayV2.Controls
         }
 
         /// <summary>
-        /// One vertical toggle block with Show/Hide, 3 log values, optional 2P/4P
+        /// One vertical toggle block with [ChannelName Button], 3 log values, optional 2P/4P
         /// </summary>
         private class ChannelRow : UserControl
         {
@@ -140,7 +142,7 @@ namespace CastleOverlayV2.Controls
                 var layout = new TableLayoutPanel
                 {
                     ColumnCount = 1,
-                    RowCount = 6,
+                    RowCount = 5, // Button + 3 values (+ RPM button optionally bumps to 6)
                     AutoSize = true,
                     AutoSizeMode = AutoSizeMode.GrowAndShrink,
                     CellBorderStyle = TableLayoutPanelCellBorderStyle.None,
@@ -148,9 +150,10 @@ namespace CastleOverlayV2.Controls
                     Padding = new Padding(0)
                 };
 
+                // 🔁 Toggle button now shows the CHANNEL NAME (not "Show/Hide")
                 _toggleButton = new Button
                 {
-                    Text = IsVisible ? "Hide" : "Show",
+                    Text = channelName,
                     AutoSize = true,
                     Anchor = AnchorStyles.Top,
                     BackColor = SystemColors.ControlLight,
@@ -160,23 +163,14 @@ namespace CastleOverlayV2.Controls
                 _toggleButton.Click += (s, e) =>
                 {
                     IsVisible = !IsVisible;
-                    _toggleButton.Text = IsVisible ? "Hide" : "Show";
                     ApplyChannelColor(ChannelName, IsVisible);
                     ToggleChanged?.Invoke(ChannelName, IsVisible);
                 };
-
                 layout.Controls.Add(_toggleButton, 0, 0);
 
-                var nameLabel = new Label
-                {
-                    Text = channelName,
-                    TextAlign = ContentAlignment.MiddleCenter,
-                    AutoSize = true,
-                    Anchor = AnchorStyles.None,
-                    Font = new Font(SystemFonts.DefaultFont.FontFamily, 10, FontStyle.Bold)
-                };
-                layout.Controls.Add(nameLabel, 0, 1);
+                // 🗑️ Removed the separate name label row to save height
 
+                // 📊 3 value rows (now directly under the button)
                 for (int i = 0; i < 3; i++)
                 {
                     var lbl = new Label
@@ -188,11 +182,13 @@ namespace CastleOverlayV2.Controls
                         Font = new Font(SystemFonts.DefaultFont.FontFamily, 10, FontStyle.Bold)
                     };
                     _valueLabels[i] = lbl;
-                    layout.Controls.Add(lbl, 0, i + 2);
+                    layout.Controls.Add(lbl, 0, i + 1); // was i + 2 (due to removed name label)
                 }
 
+                // ⚙️ RPM mode toggle (2P/4P) stays, but moves up one row index
                 if (channelName == "RPM")
                 {
+                    layout.RowCount = 6;
                     var rpmModeButton = new Button
                     {
                         Text = "2 Pole",
@@ -206,13 +202,14 @@ namespace CastleOverlayV2.Controls
                         rpmModeButton.Text = _isFourPole ? "4 Pole" : "2 Pole";
                         RpmModeChanged?.Invoke(_isFourPole);
                     };
-                    layout.Controls.Add(rpmModeButton, 0, 5);
+                    layout.Controls.Add(rpmModeButton, 0, 4); // was row 5
                 }
 
                 ApplyChannelColor(ChannelName, IsVisible);
 
                 Controls.Add(layout);
             }
+
             private void ApplyChannelColor(string channel, bool visible)
             {
                 try
@@ -236,7 +233,6 @@ namespace CastleOverlayV2.Controls
                 int brightness = (bg.R * 299 + bg.G * 587 + bg.B * 114) / 1000;
                 return brightness < 130;
             }
-
 
             public void UpdateValues(double?[] values)
             {

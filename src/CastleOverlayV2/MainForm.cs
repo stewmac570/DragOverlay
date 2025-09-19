@@ -43,11 +43,25 @@ namespace CastleOverlayV2
         private const double SHIFT_NORMAL_MS = 100; // No modifier (only when you explicitly want ms mode)
         private const double SHIFT_COARSE_MS = 1000; // Shift
 
+        // Menus for the "..." buttons (Run 1–3)
+        private ContextMenuStrip _menuRun1;
+        private ContextMenuStrip _menuRun2;
+        private ContextMenuStrip _menuRun3;
+
+        // Menus for the "..." buttons (RaceBox 1–3)
+        private ContextMenuStrip _menuRB1;
+        private ContextMenuStrip _menuRB2;
+        private ContextMenuStrip _menuRB3;
+
+
+
         public MainForm(ConfigService configService)
         {
             _configService = configService;
 
             InitializeComponent();
+
+
 
             var iconStream = Assembly.GetExecutingAssembly()
                 .GetManifestResourceStream("CastleOverlayV2.Resources.DragOverlay.ico");
@@ -91,12 +105,16 @@ namespace CastleOverlayV2
             this.WindowState = FormWindowState.Maximized;
 
             // ✅ Init ConfigService + load config (preserved)
-            _configService = new ConfigService();
             var config = _configService.Config;
 
+
             Logger.Log("Config loaded at startup:");
-            foreach (var kvp in config.ChannelVisibility)
-                Logger.Log($"  Channel: {kvp.Key}, Visible: {kvp.Value}");
+            if (config.ChannelVisibility != null)
+            {
+                foreach (var kvp in config.ChannelVisibility)
+                    Logger.Log($"  Channel: {kvp.Key}, Visible: {kvp.Value}");
+            }
+
 
             // Wire up the PlotManager with your FormsPlot control (must match your Designer)
             _plotManager = new PlotManager(formsPlot1);
@@ -140,6 +158,65 @@ namespace CastleOverlayV2
             // ✅ Apply saved RPM mode from config.json
             _isFourPoleMode = config.IsFourPoleMode;
             _plotManager.SetFourPoleMode(_isFourPoleMode);
+
+            InitializeEllipsisMenus();
+
+        }
+        private void InitializeEllipsisMenus()
+        {
+            // Build RUN menus → wire to existing handlers
+            _menuRun1 = BuildMenu(miRun1Toggle_Click, miRun1Remove_Click, miRun1Reset_Click);
+            _menuRun2 = BuildMenu(miRun2Toggle_Click, miRun2Remove_Click, miRun2Reset_Click);
+            _menuRun3 = BuildMenu(miRun3Toggle_Click, miRun3Remove_Click, miRun3Reset_Click);
+
+            // Build RACEBOX menus → wire to existing handlers
+            _menuRB1 = BuildMenu(miRB1Toggle_Click, miRB1Remove_Click, miRB1Reset_Click);
+            _menuRB2 = BuildMenu(miRB2Toggle_Click, miRB2Remove_Click, miRB2Reset_Click);
+            _menuRB3 = BuildMenu(miRB3Toggle_Click, miRB3Remove_Click, miRB3Reset_Click);
+
+            // Wire the “…” buttons (adjust names here if your Designer uses different ones)
+            //WireMenuButton(btnMoreRun1, _menuRun1);
+            //WireMenuButton(btnMoreRun2, _menuRun2);
+           // WireMenuButton(btnMoreRun3, _menuRun3);
+
+            //WireMenuButton(btnMoreRB1, _menuRB1);
+            //WireMenuButton(btnMoreRB2, _menuRB2);
+            //WireMenuButton(btnMoreRB3, _menuRB3);
+        }
+
+        private static ContextMenuStrip BuildMenu(EventHandler onToggle, EventHandler onDelete, EventHandler onResetShift)
+        {
+            var cms = new ContextMenuStrip
+            {
+                ShowImageMargin = false,
+                AutoClose = true
+            };
+
+            // Texts match your existing intent: toggle visibility, delete run, reset SHIFT (not “view”)
+            cms.Items.Add(new ToolStripMenuItem("Hide/Show", null, onToggle));
+            cms.Items.Add(new ToolStripMenuItem("Delete", null, onDelete));
+            cms.Items.Add(new ToolStripSeparator());
+            cms.Items.Add(new ToolStripMenuItem("Reset Shift", null, onResetShift));
+
+            return cms;
+        }
+
+        private static void WireMenuButton(Button btn, ContextMenuStrip menu)
+        {
+            if (btn == null || btn.IsDisposed || menu == null) return;
+
+            // Rewire cleanly
+            btn.Click -= (s, e) => { };
+            btn.Click += (s, e) => ShowMenu(menu, btn);
+
+            // Nice-to-have: keyboard menu (Shift+F10) if user focuses the button
+            btn.ContextMenuStrip = menu;
+        }
+
+        private static void ShowMenu(ContextMenuStrip menu, Control anchor)
+        {
+            if (menu == null || anchor == null || anchor.IsDisposed) return;
+            menu.Show(anchor, new System.Drawing.Point(0, anchor.Height));
         }
 
         /// <summary>
@@ -1038,5 +1115,48 @@ namespace CastleOverlayV2
 
             _plotManager.PlotRuns(_plotManager.Runs.ToDictionary(k => k.Key, v => v.Value));
         }
+
+        // ================================
+        // Ellipsis menu handlers (Run 1)
+        // ================================
+        private void miRun1Toggle_Click(object sender, EventArgs e) => ToggleRun1Button_Click(sender, e);
+        private void miRun1Remove_Click(object sender, EventArgs e) => DeleteRun1Button_Click(sender, e);
+        private void miRun1Reset_Click(object sender, EventArgs e) => ShiftResetRun1_Click(sender, e);
+
+        // ================================
+        // Ellipsis menu handlers (RaceBox 1)
+        // ================================
+        private void miRB1Toggle_Click(object sender, EventArgs e) => ToggleRaceBox1Button_Click(sender, e);
+        private void miRB1Remove_Click(object sender, EventArgs e) => DeleteRaceBox1Button_Click(sender, e);
+        private void miRB1Reset_Click(object sender, EventArgs e) => ShiftResetRB1_Click(sender, e);
+
+        // ================================
+        // Ellipsis menu handlers (Run 2)
+        // ================================
+        private void miRun2Toggle_Click(object sender, EventArgs e) => ToggleRun2Button_Click(sender, e);
+        private void miRun2Remove_Click(object sender, EventArgs e) => DeleteRun2Button_Click(sender, e);
+        private void miRun2Reset_Click(object sender, EventArgs e) => ShiftResetRun2_Click(sender, e);
+
+        // ================================
+        // Ellipsis menu handlers (RaceBox 2)
+        // ================================
+        private void miRB2Toggle_Click(object sender, EventArgs e) => ToggleRaceBox2Button_Click(sender, e);
+        private void miRB2Remove_Click(object sender, EventArgs e) => DeleteRaceBox2Button_Click(sender, e);
+        private void miRB2Reset_Click(object sender, EventArgs e) => ShiftResetRB2_Click(sender, e);
+
+        // ================================
+        // Ellipsis menu handlers (Run 3)
+        // ================================
+        private void miRun3Toggle_Click(object sender, EventArgs e) => ToggleRun3Button_Click(sender, e);
+        private void miRun3Remove_Click(object sender, EventArgs e) => DeleteRun3Button_Click(sender, e);
+        private void miRun3Reset_Click(object sender, EventArgs e) => ShiftResetRun3_Click(sender, e);
+
+        // ================================
+        // Ellipsis menu handlers (RaceBox 3)
+        // ================================
+        private void miRB3Toggle_Click(object sender, EventArgs e) => ToggleRaceBox3Button_Click(sender, e);
+        private void miRB3Remove_Click(object sender, EventArgs e) => DeleteRaceBox3Button_Click(sender, e);
+        private void miRB3Reset_Click(object sender, EventArgs e) => ShiftResetRB3_Click(sender, e);
+
     }
 }
