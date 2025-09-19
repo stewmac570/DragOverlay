@@ -15,7 +15,7 @@ namespace CastleOverlayV2.Models
 
         public bool EnableDebugLogging { get; set; } = false;
 
-        public string BuildNumber { get; set; } = "1.12";
+        public string BuildNumber { get; set; } = "1.13";
 
 
         public Config()
@@ -23,7 +23,7 @@ namespace CastleOverlayV2.Models
             ChannelVisibility = new Dictionary<string, bool>
             {
                 { "RPM", true },
-                { "Throttle", true },
+                { "Throttle %", true },
                 { "Voltage", true },
                 { "Current", true },
                 { "Ripple", true },

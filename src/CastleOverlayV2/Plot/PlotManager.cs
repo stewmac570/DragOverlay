@@ -272,7 +272,7 @@ namespace CastleOverlayV2.Plot
                     s.Axes.YAxis = channelLabel switch
                     {
                         "RPM" => rpmAxis,
-                        "Throttle" => throttleAxis,
+                        "Throttle %" => throttleAxis,   // <— NEW
                         "Voltage" => voltageAxis,
                         "Current" => currentAxis,
                         "Ripple" => rippleAxis,
@@ -281,8 +281,9 @@ namespace CastleOverlayV2.Plot
                         "MotorTemp" => motorTempAxis,
                         "MotorTiming" => motorTimingAxis,
                         "Acceleration" => accelAxis,
-                        _ => throttleAxis
+                        //_ => throttleAxis
                     };
+
 
                     bool chOn = _channelVisibility.TryGetValue(channelLabel, out var v) ? v : true;
                     bool runOn = _runVisibility.TryGetValue(slot, out var rv) ? rv : true;
@@ -337,10 +338,13 @@ namespace CastleOverlayV2.Plot
         {
             _plot.Plot.Axes.Rules.Clear();
 
+            // Throttle as PERCENT
             throttleAxis = _plot.Plot.Axes.Left;
-            throttleAxis.Label.Text = "Throttle (ms)";
-            _plot.Plot.Axes.Rules.Add(new LockedVertical(throttleAxis, 1.4, 2.0));
+            throttleAxis.Label.Text = "Throttle (%)";
+            // show the whole range; keep hidden by default like before
+            _plot.Plot.Axes.Rules.Add(new LockedVertical(throttleAxis, -100, 120));
             HideAxis(throttleAxis);
+
 
             rpmAxis = _plot.Plot.Axes.AddRightAxis();
             rpmAxis.Label.Text = "RPM";
@@ -365,7 +369,7 @@ namespace CastleOverlayV2.Plot
 
             powerAxis = _plot.Plot.Axes.AddLeftAxis();
             powerAxis.Label.Text = "Power Out (W)";
-            _plot.Plot.Axes.Rules.Add(new LockedVertical(powerAxis, 0, 110));
+            _plot.Plot.Axes.Rules.Add(new LockedVertical(powerAxis, 0, 120));
             HideAxis(powerAxis);
 
             escTempAxis = _plot.Plot.Axes.AddRightAxis();
@@ -597,7 +601,7 @@ namespace CastleOverlayV2.Plot
                 run.DataPoints.Select(sel).ToArray();
 
             yield return ("RPM", GetRaw(dp => dp.Speed), GetRaw(dp => dp.Speed));
-            yield return ("Throttle", GetRaw(dp => dp.Throttle), GetRaw(dp => dp.Throttle));
+            yield return ("Throttle %", GetRaw(dp => dp.ThrottlePercent), GetRaw(dp => dp.ThrottlePercent));
             yield return ("Voltage", GetRaw(dp => dp.Voltage), GetRaw(dp => dp.Voltage));
             yield return ("Current", GetRaw(dp => dp.Current), GetRaw(dp => dp.Current));
             yield return ("Ripple", GetRaw(dp => dp.Ripple), GetRaw(dp => dp.Ripple));

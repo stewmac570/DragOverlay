@@ -31,8 +31,8 @@ namespace CastleOverlayV2.Services
                 Delimiter = ","
             };
 
-            // ---- Debug log writer (optional) ---------------------------------
-            StreamWriter log = null;
+            // ---- Debug log (optional) -----------------------------------------
+            StreamWriter? log = null;
             if (_configService.IsDebugLoggingEnabled())
             {
                 try
@@ -40,25 +40,21 @@ namespace CastleOverlayV2.Services
                     string logPath = Path.Combine(
                         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
                         "DragOverlay",
-                        "debug_log.txt"
-                    );
+                        "debug_log.txt");
                     log = new StreamWriter(logPath, false);
                     log.WriteLine($"[CsvLoader] Load started at {DateTime.Now}");
                     log.WriteLine($"File: {filePath}");
                 }
-                catch (IOException)
-                {
-                    // ignore logging failures
-                }
+                catch { /* ignore logging failures */ }
             }
-            // ------------------------------------------------------------------
+            // -------------------------------------------------------------------
 
             // Castle radio endpoints (ms). Defaults if not found in header.
             var cal = new ThrottleCal
             {
-                MinMs = 1.048,   // Full Reverse
-                NeutralMs = 1.500,
-                MaxMs = 1.910    // Full Forward
+                MinMs = 1.048, // Full Reverse
+                NeutralMs = 1.500, // Neutral
+                MaxMs = 1.910  // Full Forward
             };
 
             using (var reader = new StreamReader(filePath))
@@ -76,27 +72,24 @@ namespace CastleOverlayV2.Services
                         skipCount++;
                         log?.WriteLine($"[DEBUG] Meta: {meta}");
 
-                        // Optional header lines we can capture (if present)
+                        // Optional header lines:
                         //   # Full Reverse: 1.048 ms
                         //   # Neutral: 1.500 ms
                         //   # Full Forward: 1.910 ms
                         if (meta.Contains("Full Reverse:", StringComparison.OrdinalIgnoreCase))
                         {
-                            if (double.TryParse(
-                                meta.Split(':').Last().Replace("ms", "", StringComparison.OrdinalIgnoreCase).Trim(),
-                                out double v)) cal.MinMs = v;
+                            if (double.TryParse(meta.Split(':').Last().Replace("ms", "", StringComparison.OrdinalIgnoreCase).Trim(), out double v))
+                                cal.MinMs = v;
                         }
                         else if (meta.Contains("Neutral:", StringComparison.OrdinalIgnoreCase))
                         {
-                            if (double.TryParse(
-                                meta.Split(':').Last().Replace("ms", "", StringComparison.OrdinalIgnoreCase).Trim(),
-                                out double v)) cal.NeutralMs = v;
+                            if (double.TryParse(meta.Split(':').Last().Replace("ms", "", StringComparison.OrdinalIgnoreCase).Trim(), out double v))
+                                cal.NeutralMs = v;
                         }
                         else if (meta.Contains("Full Forward:", StringComparison.OrdinalIgnoreCase))
                         {
-                            if (double.TryParse(
-                                meta.Split(':').Last().Replace("ms", "", StringComparison.OrdinalIgnoreCase).Trim(),
-                                out double v)) cal.MaxMs = v;
+                            if (double.TryParse(meta.Split(':').Last().Replace("ms", "", StringComparison.OrdinalIgnoreCase).Trim(), out double v))
+                                cal.MaxMs = v;
                         }
                     }
                     else
@@ -106,7 +99,7 @@ namespace CastleOverlayV2.Services
                 }
 
                 log?.WriteLine($"Skipped {skipCount} metadata lines.");
-                log?.WriteLine($"ThrottleCal(ms): min={cal.MinMs:F3} neu={cal.NeutralMs:F3} max={cal.MaxMs:F3}");
+                log?.WriteLine($"ThrottleCal (initial ms): min={cal.MinMs:F3} neu={cal.NeutralMs:F3} max={cal.MaxMs:F3}");
 
                 using (var csv = new CsvReader(reader, config))
                 {
@@ -122,6 +115,18 @@ namespace CastleOverlayV2.Services
                     int rowIndex = 0;
                     const int rowMax = 10000;
                     bool launchPointFound = false;
+
+                    // collect pre-launch throttle to auto-center neutral
+                    var preLaunchThrottleMs = new List<double>(256);
+
+                    // Helper: safe column reader
+                    double GetDouble(string col)
+                    {
+                        string raw = csv.GetField<string>(col);
+                        if (string.IsNullOrWhiteSpace(raw)) return 0.0;
+                        raw = raw.Replace("b", "").Replace("%", "").Trim();
+                        return double.TryParse(raw, out double result) ? result : 0.0;
+                    }
 
                     while (csv.Read())
                     {
@@ -140,12 +145,33 @@ namespace CastleOverlayV2.Services
                             double.TryParse(rawPowerOut, out powerOut);
                         }
 
-                        // Launch gate (same behavior as before)
+                        // Throttle in ms for this row (needed for both % and launch heuristics)
+                        double throttleMs = GetDouble("Throttle");
+
+                        // collect pre-launch idle baseline
+                        if (!launchPointFound && throttleMs > 0)
+                            preLaunchThrottleMs.Add(throttleMs);
+
+                        // Detect launch (same rule as before)
                         if (!launchPointFound && powerOut >= 5.0)
                         {
                             launchPointFound = true;
+
+                            // Auto-center neutral to the actual idle baseline (median)
+                            if (preLaunchThrottleMs.Count >= 5)
+                            {
+                                double baseline = preLaunchThrottleMs.OrderBy(v => v)
+                                                                    .ElementAt(preLaunchThrottleMs.Count / 2);
+                                // clamp inside [Min, Max] to be safe
+                                cal.NeutralMs = Math.Max(Math.Min(baseline, Math.Max(cal.MinMs, cal.MaxMs)),
+                                                         Math.Min(cal.MinMs, cal.MaxMs));
+                                log?.WriteLine($"[ThrottleCal] Neutral auto-centered to idle baseline: {cal.NeutralMs:F4} ms");
+                            }
+
                             log?.WriteLine($"Launch found at row {rowIndex}");
                         }
+
+                        // skip rows until launch is found (preserve previous behavior)
                         if (!launchPointFound)
                         {
                             rowIndex++;
@@ -155,24 +181,14 @@ namespace CastleOverlayV2.Services
                         // RPM fallback
                         string rpmField = csv.HeaderRecord.Contains("RPM") ? "RPM" : "Speed";
 
-                        // Safe column reader
-                        double GetDouble(string col)
-                        {
-                            string raw = csv.GetField<string>(col);
-                            if (string.IsNullOrWhiteSpace(raw)) return 0.0;
-                            raw = raw.Replace("b", "").Replace("%", "").Trim();
-                            return double.TryParse(raw, out double result) ? result : 0.0;
-                        }
-
-                        // Throttle ms + derived %
-                        double throttleMs = GetDouble("Throttle");
+                        // % from ms (with deadband)
                         double throttlePct = MsToPercent(throttleMs, cal);
 
                         var point = new DataPoint
                         {
                             Time = rowIndex * 0.05,
-                            Throttle = throttleMs,              // keep original behavior (ms)
-                            ThrottlePercent = throttlePct,      // new derived value [-100..+100]
+                            Throttle = throttleMs,            // keep ms for existing logic
+                            ThrottlePercent = throttlePct,    // new derived value [-100..+100]
                             PowerOut = powerOut,
                             Voltage = GetDouble("Voltage"),
                             Ripple = GetDouble("Ripple"),
@@ -187,10 +203,6 @@ namespace CastleOverlayV2.Services
                         log?.WriteLine($"Row {rowIndex}: Throttle(ms)={throttleMs:F4}  Throttle(%)={throttlePct:F1}");
 
                         runData.DataPoints.Add(point);
-                        log?.WriteLine($"Row {rowIndex}: ADDED — Time={point.Time:F2} Speed={point.Speed}");
-                        log?.WriteLine($"Row {rowIndex}: ADDED — Time={point.Time:F2} MotorTemp={point.MotorTemp}");
-                        Logger.Log($"Row {rowIndex}: ADDED — Time={point.Time:F2} Acceleration={point.Acceleration}");
-
                         rowIndex++;
                     }
 
@@ -211,8 +223,7 @@ namespace CastleOverlayV2.Services
                         "No drag pass detected in this log.\nAuto-trim was skipped.",
                         "DragOverlay",
                         MessageBoxButtons.OK,
-                        MessageBoxIcon.Warning
-                    );
+                        MessageBoxIcon.Warning);
                 }
                 else
                 {
@@ -226,16 +237,14 @@ namespace CastleOverlayV2.Services
             {
                 Logger.Log("CsvLoader: Skipping AutoTrim — log too short or too brief.");
             }
-            // ------------------------------------------------------------------
+            // -------------------------------------------------------------------
 
             // Debug previews
             if (runData.DataPoints.Count > 0)
             {
                 var accelBeforeTrim = runData.DataPoints.Select(dp => dp.Acceleration).Take(20).ToArray();
                 Logger.Log($"🧪 Raw Acceleration (pre-trim): {string.Join(", ", accelBeforeTrim)}");
-            }
-            if (runData.DataPoints.Count > 0)
-            {
+
                 var accelVals = runData.DataPoints.Select(dp => dp.Acceleration).Take(10).ToArray();
                 Logger.Log($"🧪 Trimmed Acceleration values: {string.Join(", ", accelVals)}");
             }
@@ -258,7 +267,9 @@ namespace CastleOverlayV2.Services
             public double MaxMs;     // full forward
         }
 
-        // ms -> % using piecewise linear mapping around Neutral
+        /// <summary>
+        /// ms -> % using piecewise linear mapping around Neutral with a small deadband.
+        /// </summary>
         private static double MsToPercent(double ms, ThrottleCal cal)
         {
             double min = Math.Min(cal.MinMs, cal.MaxMs);
@@ -268,18 +279,25 @@ namespace CastleOverlayV2.Services
             if (!(min < neu && neu < max))
                 return 0.0;
 
+            double pct;
             if (ms >= neu)
             {
                 double span = Math.Max(1e-9, max - neu);
-                double pct = (ms - neu) / span * 100.0;
-                return Math.Min(100.0, Math.Max(0.0, pct));
+                pct = (ms - neu) / span * 100.0;
             }
             else
             {
                 double span = Math.Max(1e-9, neu - min);
-                double pct = -(neu - ms) / span * 100.0;
-                return Math.Max(-100.0, Math.Min(0.0, pct));
+                pct = -(neu - ms) / span * 100.0;
             }
+
+            // snap tiny jitter to zero so idle shows 0%
+            const double deadbandPct = 1.5;
+            if (Math.Abs(pct) < deadbandPct)
+                pct = 0.0;
+
+            // clamp hard limits
+            return Math.Max(-100.0, Math.Min(100.0, pct));
         }
 
         private static int DetectDragStartIndex(List<DataPoint> data)
