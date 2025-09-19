@@ -18,5 +18,9 @@
 
         // ✅ RaceBox Y-axis data for plotting (used for RaceBox Speed / G-X only)
         public double Y { get; set; }
+
+        // File: src/CastleOverlayV2/Models/DataPoint.cs
+        public double ThrottlePercent { get; set; }  // [-100..+100]
+
     }
 }
