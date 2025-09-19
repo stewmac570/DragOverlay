@@ -125,7 +125,7 @@ namespace CastleOverlayV2
             var channelNames = new List<string>
             {
                 "RPM",
-                "Throttle",
+                "Throttle %",
                 "Voltage",
                 "Current",
                 "Ripple",
@@ -136,24 +136,47 @@ namespace CastleOverlayV2
                 "Acceleration"
             };
 
-            // ✅ Use config states for toggles
-            var initialStates = config.ChannelVisibility ?? new Dictionary<string, bool>();
+            // ✅ Normalize config states (map legacy keys and typos to the new one)
+            var rawStates = _configService.Config.ChannelVisibility ?? new Dictionary<string, bool>();
+            var initialStates = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
 
-            // ✅ Create ChannelToggleBar
+            foreach (var kv in rawStates)
+            {
+                string key = kv.Key;
+
+                // map legacy/typo to the single canonical key
+                if (key.Equals("Throttle", StringComparison.OrdinalIgnoreCase) ||
+                    key.Equals("Throttle %.", StringComparison.OrdinalIgnoreCase))
+                    key = "Throttle %";
+
+                // last-one-wins merge
+                initialStates[key] = kv.Value;
+            }
+
+            // (optional) persist the normalized keys so they don't come back next launch
+            _configService.Config.ChannelVisibility = initialStates;
+            // _configService.Save(); // if you have a save method, call it here
+
+            // ✅ Create ChannelToggleBar using ONLY canonical channel names
             _channelToggleBar = new ChannelToggleBar(channelNames, initialStates);
             _channelToggleBar.ChannelVisibilityChanged += OnChannelVisibilityChanged;
             _channelToggleBar.RpmModeChanged += OnRpmModeChanged;
             Controls.Add(_channelToggleBar);
 
-            // ✅ Inject any missing channels from config that weren't in original list
-            foreach (var kvp in config.ChannelVisibility)
+            // ✅ Inject any missing channels from *normalized* config that are also in our allowed list
+            var allowed = new HashSet<string>(channelNames, StringComparer.OrdinalIgnoreCase);
+            foreach (var kv in initialStates)
             {
-                if (!_channelToggleBar.GetChannelStates().ContainsKey(kvp.Key))
+                if (!allowed.Contains(kv.Key))
+                    continue; // ignore unknown/legacy names
+
+                if (!_channelToggleBar.GetChannelStates().ContainsKey(kv.Key))
                 {
-                    Logger.Log($"🧩 Adding extra config channel to toggle bar: {kvp.Key} → {kvp.Value}");
-                    _channelToggleBar.AddChannel(kvp.Key, kvp.Value);
+                    Logger.Log($"🧩 Adding extra config channel to toggle bar: {kv.Key} → {kv.Value}");
+                    _channelToggleBar.AddChannel(kv.Key, kv.Value);
                 }
             }
+
 
             // ✅ Apply saved RPM mode from config.json
             _isFourPoleMode = config.IsFourPoleMode;
