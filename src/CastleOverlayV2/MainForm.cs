@@ -61,7 +61,8 @@ namespace CastleOverlayV2
 
             InitializeComponent();
 
-
+            ApplyRunTypeUI();
+            UpdateRunTypeLockState();
 
             var iconStream = Assembly.GetExecutingAssembly()
                 .GetManifestResourceStream("CastleOverlayV2.Resources.DragOverlay.ico");
@@ -334,6 +335,8 @@ namespace CastleOverlayV2
                 MessageBox.Show("An error occurred while loading the file.\n\n" + ex.Message,
                     "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
+            UpdateRunTypeLockState();
+
         }
 
         /// <summary>
@@ -391,6 +394,8 @@ namespace CastleOverlayV2
                 MessageBox.Show("An error occurred while loading the file.\n\n" + ex.Message,
                     "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
+            UpdateRunTypeLockState();
+
         }
 
         /// <summary>
@@ -445,6 +450,7 @@ namespace CastleOverlayV2
                 MessageBox.Show("An error occurred while loading the file.\n\n" + ex.Message,
                     "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
+            UpdateRunTypeLockState();
         }
 
         /// <summary>
@@ -578,6 +584,8 @@ namespace CastleOverlayV2
             SetShiftButtonsEnabled(1, true, isRaceBox: true);
 
             PlotAllRuns();
+
+            UpdateRunTypeLockState();
         }
 
         private async void LoadRaceBox2Button_Click(object sender, EventArgs e)
@@ -666,6 +674,8 @@ namespace CastleOverlayV2
             SetShiftButtonsEnabled(2, true, isRaceBox: true);
 
             PlotAllRuns();
+
+            UpdateRunTypeLockState();
         }
 
         private async void LoadRaceBox3Button_Click(object sender, EventArgs e)
@@ -746,6 +756,8 @@ namespace CastleOverlayV2
             SetShiftButtonsEnabled(3, true, isRaceBox: true);
 
             PlotAllRuns();
+
+            UpdateRunTypeLockState();
         }
 
         private string GetCsvFilePath()
@@ -856,6 +868,7 @@ namespace CastleOverlayV2
         {
             LogClick("Delete Run 1");
             DeleteRun(1);
+
         }
 
         private void DeleteRun2Button_Click(object sender, EventArgs e)
@@ -946,6 +959,8 @@ namespace CastleOverlayV2
             if (run6 != null) activeRuns[6] = run6;
 
             _plotManager.PlotRuns(activeRuns);
+
+
         }
 
         private void OnRpmModeChanged(bool isFourPole)
@@ -969,53 +984,37 @@ namespace CastleOverlayV2
             Logger.Log($" 🔘 Button clicked: {buttonName}");
         }
 
-        private void ToggleRaceBox1Button_Click(object sender, EventArgs e)
+        // ================================
+        // RaceBox: consolidated handlers
+        // ================================
+        private void ToggleRaceBox(int slot, Button toggleButtonOrNull)
         {
-            LogClick("Toggle RaceBox 1");
+            LogClick($"Toggle RaceBox {slot - 3}"); // slots 4..6 → labels 1..3
 
-            bool isVisible = _plotManager.ToggleRunVisibility(4); // Slot 4 = RaceBox 1
-            btnToggleRaceBox1.Text = isVisible ? "Hide" : "Show";
+            bool isVisible = _plotManager.ToggleRunVisibility(slot);
 
-            Logger.Log($"🔁 Toggled RaceBox Run 1 visibility → {(isVisible ? "Visible" : "Hidden")}");
+            // Only update button text if a real button was passed and it’s visible in the layout
+            if (toggleButtonOrNull != null && !toggleButtonOrNull.IsDisposed && toggleButtonOrNull.Visible)
+                toggleButtonOrNull.Text = isVisible ? "Hide" : "Show";
+
+            Logger.Log($"🔁 Toggled RaceBox Run {slot - 3} visibility → {(isVisible ? "Visible" : "Hidden")}");
         }
 
-        private void DeleteRaceBox1Button_Click(object sender, EventArgs e)
+        private void DeleteRaceBox(int slot)
         {
-            LogClick("Delete RaceBox 1");
-            DeleteRun(4); // ✅ Reuse Castle logic
+            LogClick($"Delete RaceBox {slot - 3}");
+            DeleteRun(slot); // central delete logic handles UI + plot + UpdateRunTypeLockState()
         }
 
-        private void ToggleRaceBox2Button_Click(object sender, EventArgs e)
-        {
-            LogClick("Toggle RaceBox 2");
+        // ==== Wrappers kept for existing event wires (buttons or menus) ====
+        private void ToggleRaceBox1Button_Click(object sender, EventArgs e) => ToggleRaceBox(4, btnToggleRaceBox1);
+        private void ToggleRaceBox2Button_Click(object sender, EventArgs e) => ToggleRaceBox(5, btnToggleRaceBox2);
+        private void ToggleRaceBox3Button_Click(object sender, EventArgs e) => ToggleRaceBox(6, btnToggleRaceBox3);
 
-            bool isVisible = _plotManager.ToggleRunVisibility(5); // Slot 5 = RaceBox 2
-            btnToggleRaceBox2.Text = isVisible ? "Hide" : "Show";
+        private void DeleteRaceBox1Button_Click(object sender, EventArgs e) => DeleteRaceBox(4);
+        private void DeleteRaceBox2Button_Click(object sender, EventArgs e) => DeleteRaceBox(5);
+        private void DeleteRaceBox3Button_Click(object sender, EventArgs e) => DeleteRaceBox(6);
 
-            Logger.Log($"🔁 Toggled RaceBox Run 2 visibility → {(isVisible ? "Visible" : "Hidden")}");
-        }
-
-        private void ToggleRaceBox3Button_Click(object sender, EventArgs e)
-        {
-            LogClick("Toggle RaceBox 3");
-
-            bool isVisible = _plotManager.ToggleRunVisibility(6); // Slot 6 = RaceBox 3
-            btnToggleRaceBox3.Text = isVisible ? "Hide" : "Show";
-
-            Logger.Log($"🔁 Toggled RaceBox Run 3 visibility → {(isVisible ? "Visible" : "Hidden")}");
-        }
-
-        private void DeleteRaceBox2Button_Click(object sender, EventArgs e)
-        {
-            LogClick("Delete RaceBox 2");
-            DeleteRun(5); // Reuse shared delete logic
-        }
-
-        private void DeleteRaceBox3Button_Click(object sender, EventArgs e)
-        {
-            LogClick("Delete RaceBox 3");
-            DeleteRun(6); // Reuse shared delete logic
-        }
 
         // ======================================================================================
         // 🆕 Time-shift helpers and handlers
@@ -1180,6 +1179,134 @@ namespace CastleOverlayV2
         private void miRB3Toggle_Click(object sender, EventArgs e) => ToggleRaceBox3Button_Click(sender, e);
         private void miRB3Remove_Click(object sender, EventArgs e) => DeleteRaceBox3Button_Click(sender, e);
         private void miRB3Reset_Click(object sender, EventArgs e) => ShiftResetRB3_Click(sender, e);
+
+        // ================================
+        // Run Type UI (Drag vs Speed) — Compact Pill Switch
+        // ================================
+        #region RunType
+
+        // Keep this single source of truth:
+        private bool _isSpeedRunMode = false; // false=Drag, true=Speed
+                                              // --- RunType colors ---
+        private readonly Color _rtActiveFg = Color.FromArgb(35, 35, 35);      // near-black
+        private readonly Color _rtInactiveFg = Color.FromArgb(140, 140, 140);   // grey
+        private readonly Color _rtActiveBg = Color.FromArgb(225, 235, 255);   // light tint behind active
+        private readonly Color _rtBaseBg = Color.FromArgb(235, 235, 235);   // pill base background
+
+        private bool IsAnyRunLoaded()
+        {
+            return run1 != null || run2 != null || run3 != null ||
+                   run4 != null || run5 != null || run6 != null;
+        }
+
+        /// <summary>Position/paint the pill and (re)apply layout.</summary>
+        private void SyncRunTypeUI()
+        {
+            // slide knob (0 for Drag, 54 for Speed)
+            if (runTypeKnob != null)
+                runTypeKnob.Left = _isSpeedRunMode ? 54 : 0;
+
+            // container background (neutral)
+            if (runTypeSwitch != null)
+                runTypeSwitch.BackColor = _rtBaseBg;
+
+            // active vs inactive styling
+            // active vs inactive styling (active = black/bold, inactive = grey/regular)
+            bool speed = _isSpeedRunMode;
+            var activeFg = Color.FromArgb(35, 35, 35);
+            var inactiveFg = Color.FromArgb(140, 140, 140);
+
+            if (runTypeDrag != null)
+            {
+                runTypeDrag.ForeColor = speed ? inactiveFg : activeFg;
+                runTypeDrag.Font = new Font(runTypeDrag.Font, speed ? FontStyle.Regular : FontStyle.Bold);
+            }
+
+            if (runTypeSpeed != null)
+            {
+                runTypeSpeed.ForeColor = speed ? activeFg : inactiveFg;
+                runTypeSpeed.Font = new Font(runTypeSpeed.Font, speed ? FontStyle.Bold : FontStyle.Regular);
+            }
+
+
+            // lock when any run is loaded
+            bool locked = IsAnyRunLoaded();
+            if (runTypeSwitch != null)
+                runTypeSwitch.Enabled = !locked;
+
+            string tip = locked
+                ? "Clear all loaded logs to change mode."
+                : "Drag | Speed";
+
+            var tt = new ToolTip(this.components);
+            if (runTypeSwitch != null) tt.SetToolTip(runTypeSwitch, tip);
+            if (runTypeKnob != null) tt.SetToolTip(runTypeKnob, tip);
+            if (runTypeDrag != null) tt.SetToolTip(runTypeDrag, "Drag");
+            if (runTypeSpeed != null) tt.SetToolTip(runTypeSpeed, "Speed");
+
+            // keep your existing visibility rules
+            ApplyRunTypeUI();
+        }
+
+
+        /// <summary>
+        /// Classic map:
+        /// - Speed: hide ALL RaceBox rows (1–3) + Castle Run 3 row
+        /// - Drag:  show everything
+        /// </summary>
+        private void ApplyRunTypeUI()
+        {
+            bool isSpeedRun = _isSpeedRunMode;
+
+            // RaceBox 1
+            btnLoadRaceBox1.Visible = !isSpeedRun;
+            btnShiftLeftRB1.Visible = !isSpeedRun;
+            btnShiftRightRB1.Visible = !isSpeedRun;
+            btnMenuRB1.Visible = !isSpeedRun;
+
+            // RaceBox 2
+            btnLoadRaceBox2.Visible = !isSpeedRun;
+            btnShiftLeftRB2.Visible = !isSpeedRun;
+            btnShiftRightRB2.Visible = !isSpeedRun;
+            btnMenuRB2.Visible = !isSpeedRun;
+
+            // RaceBox 3
+            btnLoadRaceBox3.Visible = !isSpeedRun;
+            btnShiftLeftRB3.Visible = !isSpeedRun;
+            btnShiftRightRB3.Visible = !isSpeedRun;
+            btnMenuRB3.Visible = !isSpeedRun;
+
+            // Castle Run 3
+            btnLoadRun3.Visible = !isSpeedRun;
+            btnShiftLeftRun3.Visible = !isSpeedRun;
+            btnShiftRightRun3.Visible = !isSpeedRun;
+            btnMenuRun3.Visible = !isSpeedRun;
+
+            topButtonPanel?.PerformLayout();
+            topButtonPanel?.Refresh();
+        }
+
+        private void UpdateRunTypeLockState()
+        {
+            // keep current lock behaviour; just call Sync to reflect enable/tooltip
+            SyncRunTypeUI();
+        }
+
+        // Click anywhere on the pill toggles mode (unless locked)
+        private void RunTypeSwitch_Click(object sender, EventArgs e)
+        {
+            if (IsAnyRunLoaded())
+            {
+                UpdateRunTypeLockState();
+                return;
+            }
+
+            _isSpeedRunMode = !_isSpeedRunMode; // flip
+            SyncRunTypeUI();
+        }
+
+        #endregion
+
 
     }
 }
