@@ -1,11 +1,11 @@
 ; -----------------------------------------------
-; DragOverlay Inno Setup Script (Build 1.11)
+; DragOverlay Inno Setup Script (Build 1.13)
 ; -----------------------------------------------
 
 #define MyAppName     "DragOverlay"
-#define MyCompany     "GJames / Stew-Mac"
+#define MyCompany     "Stew-Mac"
 #define MyAppExeName  "CastleOverlayV2.exe"
-#define MyAppVersion  "1.11"
+#define MyAppVersion  "1.13"
 
 #define MyPublishDir  "C:\Users\Stewart McMillan\DragOverlay\Publish"
 #define MyOutputDir   "C:\Users\Stewart McMillan\DragOverlay\Publish\InstallerOutput"
