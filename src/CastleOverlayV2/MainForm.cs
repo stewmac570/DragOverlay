@@ -297,7 +297,7 @@ namespace CastleOverlayV2
             try
             {
                 var loader = new CsvLoader(_configService);
-                run1 = await Task.Run(() => loader.Load(filePath));
+                run1 = await Task.Run(() => loader.Load(filePath, trimForDrag: (_isSpeedRunMode == false)));
 
                 if (run1 != null && run1.DataPoints.Count > 0)
                 {
@@ -353,7 +353,7 @@ namespace CastleOverlayV2
             try
             {
                 var loader = new CsvLoader(_configService);
-                run2 = await Task.Run(() => loader.Load(filePath));
+                run2 = await Task.Run(() => loader.Load(filePath, trimForDrag: (_isSpeedRunMode == false)));
 
                 if (run2 != null && run2.DataPoints.Count > 0)
                 {
@@ -412,7 +412,7 @@ namespace CastleOverlayV2
             try
             {
                 var loader = new CsvLoader(_configService);
-                run3 = await Task.Run(() => loader.Load(filePath));
+                run3 = await Task.Run(() => loader.Load(filePath, trimForDrag: (_isSpeedRunMode == false)));
 
                 if (run3 != null && run3.DataPoints.Count > 0)
                 {

@@ -37,3 +37,33 @@ Result
 Cleaner, minimal UI with clear visual feedback.
 
 Mode switching is obvious, compact, and resilient against layout issues on small screens.
+
+---
+
+Summary — Commit 2 (Run Type: Trim behavior)
+
+CsvLoader
+
+Signature changed to Load(string filePath, bool trimForDrag = true).
+
+Drag mode (trimForDrag == true): preserves Castle Link-style auto-trim (detect launch, crop −0.5s→+2.5s, re-zero at launch).
+
+Speed Run mode (trimForDrag == false): loads the full log (no trimming) and re-zeros to the first sample.
+
+All existing logging, headers parsing, throttle % derivation, and safety checks retained.
+
+MainForm
+
+LoadRun1/2/3Button_Click now call loader.Load(filePath, trimForDrag: (_isSpeedRunMode == false)).
+
+Drag mode → trimming ON.
+
+Speed Run mode → trimming OFF.
+
+No other UI/plot logic changed.
+
+Result
+
+Drag behaves exactly as before.
+
+Speed Run shows full-length logs (expected heavier plots; next commit will address performance/axes).
