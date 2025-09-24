@@ -15,3 +15,6 @@
 # Other
 *.log
 *.tmp
+
+# Publish output
+publish/

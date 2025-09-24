@@ -14,7 +14,7 @@ namespace CastleOverlayV2.Services
             _configService = configService;
         }
 
-        public RunData Load(string filePath)
+        public RunData Load(string filePath, bool trimForDrag = true)
         {
             Logger.Log("CsvLoader.Load() entered.");
 
@@ -76,10 +76,6 @@ namespace CastleOverlayV2.Services
                         skipCount++;
                         log?.WriteLine($"[DEBUG] Meta: {meta}");
 
-                        // Optional header lines we can capture (if present)
-                        //   # Full Reverse: 1.048 ms
-                        //   # Neutral: 1.500 ms
-                        //   # Full Forward: 1.910 ms
                         if (meta.Contains("Full Reverse:", StringComparison.OrdinalIgnoreCase))
                         {
                             if (double.TryParse(
@@ -131,7 +127,6 @@ namespace CastleOverlayV2.Services
                             break;
                         }
 
-                        // Power-Out (cleaned)
                         string rawPowerOut = csv.GetField<string>("Power-Out");
                         double powerOut = 0.0;
                         if (!string.IsNullOrWhiteSpace(rawPowerOut))
@@ -140,22 +135,22 @@ namespace CastleOverlayV2.Services
                             double.TryParse(rawPowerOut, out powerOut);
                         }
 
-                        // Launch gate (same behavior as before)
-                        if (!launchPointFound && powerOut >= 5.0)
+                        if (trimForDrag)
                         {
-                            launchPointFound = true;
-                            log?.WriteLine($"Launch found at row {rowIndex}");
-                        }
-                        if (!launchPointFound)
-                        {
-                            rowIndex++;
-                            continue;
+                            if (!launchPointFound && powerOut >= 5.0)
+                            {
+                                launchPointFound = true;
+                                log?.WriteLine($"Launch found at row {rowIndex}");
+                            }
+                            if (!launchPointFound)
+                            {
+                                rowIndex++;
+                                continue;
+                            }
                         }
 
-                        // RPM fallback
                         string rpmField = csv.HeaderRecord.Contains("RPM") ? "RPM" : "Speed";
 
-                        // Safe column reader
                         double GetDouble(string col)
                         {
                             string raw = csv.GetField<string>(col);
@@ -164,15 +159,14 @@ namespace CastleOverlayV2.Services
                             return double.TryParse(raw, out double result) ? result : 0.0;
                         }
 
-                        // Throttle ms + derived %
                         double throttleMs = GetDouble("Throttle");
                         double throttlePct = MsToPercent(throttleMs, cal);
 
                         var point = new DataPoint
                         {
                             Time = rowIndex * 0.05,
-                            Throttle = throttleMs,              // keep original behavior (ms)
-                            ThrottlePercent = throttlePct,      // new derived value [-100..+100]
+                            Throttle = throttleMs,
+                            ThrottlePercent = throttlePct,
                             PowerOut = powerOut,
                             Voltage = GetDouble("Voltage"),
                             Ripple = GetDouble("Ripple"),
@@ -185,10 +179,7 @@ namespace CastleOverlayV2.Services
                         };
 
                         log?.WriteLine($"Row {rowIndex}: Throttle(ms)={throttleMs:F4}  Throttle(%)={throttlePct:F1}");
-
                         runData.DataPoints.Add(point);
-                        log?.WriteLine($"Row {rowIndex}: ADDED — Time={point.Time:F2} Speed={point.Speed}");
-                        log?.WriteLine($"Row {rowIndex}: ADDED — Time={point.Time:F2} MotorTemp={point.MotorTemp}");
                         Logger.Log($"Row {rowIndex}: ADDED — Time={point.Time:F2} Acceleration={point.Acceleration}");
 
                         rowIndex++;
@@ -198,46 +189,52 @@ namespace CastleOverlayV2.Services
                 }
             }
 
-            // --- AutoTrim around launch (unchanged) ---------------------------
-            if (runData.DataPoints.Count > 100 &&
-                runData.DataPoints[^1].Time - runData.DataPoints[0].Time > 3.0)
+            if (trimForDrag)
             {
-                int launchIndex = DetectDragStartIndex(runData.DataPoints);
-                Logger.Log($"CsvLoader: LaunchIndex = {launchIndex}");
-
-                if (launchIndex == -1)
+                if (runData.DataPoints.Count > 100 &&
+                    runData.DataPoints[^1].Time - runData.DataPoints[0].Time > 3.0)
                 {
-                    MessageBox.Show(
-                        "No drag pass detected in this log.\nAuto-trim was skipped.",
-                        "DragOverlay",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Warning
-                    );
+                    int launchIndex = DetectDragStartIndex(runData.DataPoints);
+                    Logger.Log($"CsvLoader: LaunchIndex = {launchIndex}");
+
+                    if (launchIndex == -1)
+                    {
+                        MessageBox.Show(
+                            "No drag pass detected in this log.\nAuto-trim was skipped.",
+                            "DragOverlay",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Warning
+                        );
+                    }
+                    else
+                    {
+                        runData.DataPoints = AutoTrim(runData.DataPoints, launchIndex);
+                        Logger.Log($"CsvLoader: Trimmed count = {runData.DataPoints.Count}");
+                        Logger.Log($"CsvLoader: First Point Time = {runData.DataPoints[0].Time:F2}");
+                        Logger.Log($"CsvLoader: Last Point Time = {runData.DataPoints[^1].Time:F2}");
+                    }
                 }
                 else
                 {
-                    runData.DataPoints = AutoTrim(runData.DataPoints, launchIndex);
-                    Logger.Log($"CsvLoader: Trimmed count = {runData.DataPoints.Count}");
-                    Logger.Log($"CsvLoader: First Point Time = {runData.DataPoints[0].Time:F2}");
-                    Logger.Log($"CsvLoader: Last Point Time = {runData.DataPoints[^1].Time:F2}");
+                    Logger.Log("CsvLoader: Skipping AutoTrim — log too short or too brief.");
                 }
             }
             else
             {
-                Logger.Log("CsvLoader: Skipping AutoTrim — log too short or too brief.");
+                // Always re-zero to first sample
+                if (runData.DataPoints.Count > 0)
+                {
+                    double t0 = runData.DataPoints[0].Time;
+                    foreach (var p in runData.DataPoints)
+                        p.Time -= t0;
+                    Logger.Log("CsvLoader: Re-zeroed full log to first sample.");
+                }
             }
-            // ------------------------------------------------------------------
 
-            // Debug previews
-            if (runData.DataPoints.Count > 0)
-            {
-                var accelBeforeTrim = runData.DataPoints.Select(dp => dp.Acceleration).Take(20).ToArray();
-                Logger.Log($"🧪 Raw Acceleration (pre-trim): {string.Join(", ", accelBeforeTrim)}");
-            }
             if (runData.DataPoints.Count > 0)
             {
                 var accelVals = runData.DataPoints.Select(dp => dp.Acceleration).Take(10).ToArray();
-                Logger.Log($"🧪 Trimmed Acceleration values: {string.Join(", ", accelVals)}");
+                Logger.Log($"🧪 Sample Acceleration values: {string.Join(", ", accelVals)}");
             }
 
             log?.WriteLine($"=== CsvLoader.Load() EXIT — Rows: {runData.DataPoints.Count} ===");
@@ -247,18 +244,13 @@ namespace CastleOverlayV2.Services
             return runData;
         }
 
-        // ---------------------------------------------------------------------
-        // Helpers
-        // ---------------------------------------------------------------------
-
         private sealed class ThrottleCal
         {
-            public double MinMs;     // full reverse
-            public double NeutralMs; // neutral
-            public double MaxMs;     // full forward
+            public double MinMs;
+            public double NeutralMs;
+            public double MaxMs;
         }
 
-        // ms -> % using piecewise linear mapping around Neutral
         private static double MsToPercent(double ms, ThrottleCal cal)
         {
             double min = Math.Min(cal.MinMs, cal.MaxMs);
@@ -284,18 +276,15 @@ namespace CastleOverlayV2.Services
 
         private static int DetectDragStartIndex(List<DataPoint> data)
         {
-            int sustainWindow = 5; // ≈250 ms at 50 ms/sample
-
+            int sustainWindow = 5;
             for (int i = 1; i < data.Count - sustainWindow; i++)
             {
-                double prevThrottle = data[i - 1].Throttle; // ms
-                double currThrottle = data[i].Throttle;      // ms
-
+                double prevThrottle = data[i - 1].Throttle;
+                double currThrottle = data[i].Throttle;
                 double currPower = data[i].PowerOut;
                 double currAccel = data[i].Acceleration;
                 double currCurrent = data[i].Current;
 
-                // Rule 1: throttle spike must sustain (thresholds in ms)
                 if (prevThrottle <= 1.65 && currThrottle > 1.65)
                 {
                     bool sustained = true;
@@ -314,12 +303,11 @@ namespace CastleOverlayV2.Services
                     }
                 }
 
-                // Rule 2: fallback multi-signal score, also sustained
                 int triggerScore = 0;
                 if (currPower > 65.0) triggerScore++;
                 if (data[i].Speed > 5000) triggerScore++;
                 if (currAccel > 1.0) triggerScore++;
-                if (currThrottle > 1.7) triggerScore++; // ms, not %
+                if (currThrottle > 1.7) triggerScore++;
                 if (currCurrent > 5.0) triggerScore++;
 
                 if (triggerScore >= 3)
@@ -340,7 +328,6 @@ namespace CastleOverlayV2.Services
                     }
                 }
             }
-
             Logger.Log("DetectDragStartIndex: No drag pass detected.");
             return -1;
         }
@@ -355,8 +342,6 @@ namespace CastleOverlayV2.Services
             double tMax = t0 + 2.5;
 
             var trimmed = data.Where(p => p.Time >= tMin && p.Time <= tMax).ToList();
-
-            // Shift so launch becomes t=0
             foreach (var p in trimmed)
                 p.Time -= t0;
 
