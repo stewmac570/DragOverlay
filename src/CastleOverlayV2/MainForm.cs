@@ -6,6 +6,7 @@ using CastleOverlayV2.Services;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -57,20 +58,23 @@ namespace CastleOverlayV2
 
         public MainForm(ConfigService configService)
         {
-            _configService = configService;
+            // 0) Store config service (fallback just in case)
+            _configService = configService ?? new ConfigService();
 
+            // 1) Create all WinForms controls first
             InitializeComponent();
 
+            // 2) Apply UI state that does not depend on PlotManager yet
             ApplyRunTypeUI();
             UpdateRunTypeLockState();
 
+            // 3) App icon & title
             var iconStream = Assembly.GetExecutingAssembly()
                 .GetManifestResourceStream("CastleOverlayV2.Resources.DragOverlay.ico");
-
             if (iconStream != null)
                 this.Icon = new Icon(iconStream);
 
-            string buildNumber = _configService.GetBuildNumber();  // already implemented
+            string buildNumber = _configService.GetBuildNumber();
             this.Text = $"DragOverlay — Build {buildNumber}";
 
             Logger.Log("MainForm initialized");
@@ -78,7 +82,7 @@ namespace CastleOverlayV2
             Logger.Log($"🟢 New Session Started — {DateTime.Now}");
             Logger.Log("=======================================");
 
-            // ✅ Disable all toggle/delete buttons at startup
+            // 4) Disable toggles/deletes at startup (Castle + RaceBox)
             btnToggleRun1.Enabled = false;
             btnDeleteRun1.Enabled = false;
             btnToggleRun2.Enabled = false;
@@ -86,7 +90,6 @@ namespace CastleOverlayV2
             btnToggleRun3.Enabled = false;
             btnDeleteRun3.Enabled = false;
 
-            // ✅ Disable RaceBox toggle/delete buttons at startup
             btnToggleRaceBox1.Enabled = false;
             btnDeleteRaceBox1.Enabled = false;
             btnToggleRaceBox2.Enabled = false;
@@ -94,7 +97,7 @@ namespace CastleOverlayV2
             btnToggleRaceBox3.Enabled = false;
             btnDeleteRaceBox3.Enabled = false;
 
-            // 🆕 Disable all shift buttons at startup
+            // 5) Disable all shift buttons at startup
             SetShiftButtonsEnabled(1, false, isRaceBox: false);
             SetShiftButtonsEnabled(2, false, isRaceBox: false);
             SetShiftButtonsEnabled(3, false, isRaceBox: false);
@@ -102,12 +105,11 @@ namespace CastleOverlayV2
             SetShiftButtonsEnabled(2, false, isRaceBox: true);
             SetShiftButtonsEnabled(3, false, isRaceBox: true);
 
-            // Maximize the window on startup
+            // 6) Maximize on startup
             this.WindowState = FormWindowState.Maximized;
 
-            // ✅ Init ConfigService + load config (preserved)
+            // 7) Pull config once
             var config = _configService.Config;
-
 
             Logger.Log("Config loaded at startup:");
             if (config.ChannelVisibility != null)
@@ -116,61 +118,65 @@ namespace CastleOverlayV2
                     Logger.Log($"  Channel: {kvp.Key}, Visible: {kvp.Value}");
             }
 
-
-            // Wire up the PlotManager with your FormsPlot control (must match your Designer)
-            _plotManager = new PlotManager(formsPlot1);
-            _plotManager.ResetEmptyPlot();
-            _plotManager.CursorMoved += OnCursorMoved;
+            // 8) Create PlotManager AFTER formsPlot1 exists
+            _plotManager = new Plot.PlotManager(formsPlot1);
             formsPlot1.Dock = DockStyle.Fill;
 
+            // 9) Start in DRAG profile (Speed-Run OFF) unless your UI flips it later
+            _isSpeedRunMode = false;                       // <— removed Config.RunType usage
+            _plotManager.SetSpeedMode(_isSpeedRunMode);    // sets the scale profile
+
+            // 10) Build all axes and lock Castle Y ranges
+            _plotManager.SetupAllAxes();
+
+            // 11) Channel list (canonical names)
             var channelNames = new List<string>
-            {
-                "RPM",
-                "Throttle %",
-                "Voltage",
-                "Current",
-                "Ripple",
-                "PowerOut",
-                "MotorTemp",
-                "ESC Temp",
-                "MotorTiming",
-                "Acceleration"
-            };
+    {
+        "RPM",
+        "Throttle %",
+        "Voltage",
+        "Current",
+        "Ripple",
+        "PowerOut",
+        "MotorTemp",
+        "ESC Temp",
+        "MotorTiming",
+        "Acceleration"
+    };
 
-            // ✅ Normalize config states (map legacy keys and typos to the new one)
-            var rawStates = _configService.Config.ChannelVisibility ?? new Dictionary<string, bool>();
+            // 12) Normalize saved visibility keys (map legacy/typos → canonical)
+            var rawStates = config.ChannelVisibility ?? new Dictionary<string, bool>();
             var initialStates = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
-
             foreach (var kv in rawStates)
             {
                 string key = kv.Key;
 
-                // map legacy/typo to the single canonical key
                 if (key.Equals("Throttle", StringComparison.OrdinalIgnoreCase) ||
                     key.Equals("Throttle %.", StringComparison.OrdinalIgnoreCase))
                     key = "Throttle %";
 
-                // last-one-wins merge
-                initialStates[key] = kv.Value;
+                initialStates[key] = kv.Value; // last-one-wins
             }
 
-            // (optional) persist the normalized keys so they don't come back next launch
+            // (optional) persist normalized map
             _configService.Config.ChannelVisibility = initialStates;
-            // _configService.Save(); // if you have a save method, call it here
+            // _configService.Save();
 
-            // ✅ Create ChannelToggleBar using ONLY canonical channel names
+            // 13) Give PlotManager the initial visibility map BEFORE any runs are plotted
+            _plotManager.SetInitialChannelVisibility(initialStates);
+
+            // 14) Build the toggle bar with canonical channels and states
             _channelToggleBar = new ChannelToggleBar(channelNames, initialStates);
             _channelToggleBar.ChannelVisibilityChanged += OnChannelVisibilityChanged;
             _channelToggleBar.RpmModeChanged += OnRpmModeChanged;
             Controls.Add(_channelToggleBar);
 
-            // ✅ Inject any missing channels from *normalized* config that are also in our allowed list
+            // 15) Inject any valid channels that exist in config but weren’t in the default list
             var allowed = new HashSet<string>(channelNames, StringComparer.OrdinalIgnoreCase);
             foreach (var kv in initialStates)
             {
                 if (!allowed.Contains(kv.Key))
-                    continue; // ignore unknown/legacy names
-
+                    continue;
                 if (!_channelToggleBar.GetChannelStates().ContainsKey(kv.Key))
                 {
                     Logger.Log($"🧩 Adding extra config channel to toggle bar: {kv.Key} → {kv.Value}");
@@ -178,14 +184,16 @@ namespace CastleOverlayV2
                 }
             }
 
-
-            // ✅ Apply saved RPM mode from config.json
+            // 16) Apply RPM 4-pole/2-pole mode last (affects RPM axis lock max)
             _isFourPoleMode = config.IsFourPoleMode;
             _plotManager.SetFourPoleMode(_isFourPoleMode);
 
-            InitializeEllipsisMenus();
-
+            // 17) Start with an empty plot message and wire cursor callback
+            _plotManager.ResetEmptyPlot();
+            _plotManager.CursorMoved += OnCursorMoved;
         }
+
+
         private void InitializeEllipsisMenus()
         {
             // Build RUN menus → wire to existing handlers
@@ -303,23 +311,21 @@ namespace CastleOverlayV2
                 {
                     Logger.Log($"Loaded log: Run 1 - {Path.GetFileName(filePath)} - {run1.DataPoints.Count} rows");
 
-                    // Assign the loaded run to slot 1 in the plot manager
                     _plotManager.SetRun(1, run1);
-
-                    // Ensure run visibility is true on load for slot 1 (not 0)
                     _plotManager.SetRunVisibility(1, true);
 
-                    // ✅ Show filename on the (now-wider) button
-                    btnLoadRun1.Text = $"Run 1: {TruncateFileName(filePath)}";
+                    btnLoadRun1.Text = $"Run 1: {Path.GetFileName(filePath)}";
 
                     PlotAllRuns();
+                    _plotManager.SetSpeedMode(_isSpeedRunMode);
+                    _plotManager.SetupAllAxes();
 
-                    // Sync toggle button text with visibility state
+                    _plotManager.RefreshPlot();
+
                     btnToggleRun1.Text = _plotManager.GetRunVisibility(1) ? "Hide" : "Show";
                     btnToggleRun1.Enabled = true;
                     btnDeleteRun1.Enabled = true;
 
-                    // 🆕 Enable shift controls for this slot
                     SetShiftButtonsEnabled(1, true, isRaceBox: false);
                 }
                 else
@@ -335,9 +341,10 @@ namespace CastleOverlayV2
                 MessageBox.Show("An error occurred while loading the file.\n\n" + ex.Message,
                     "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
-            UpdateRunTypeLockState();
 
+            UpdateRunTypeLockState();
         }
+
 
         /// <summary>
         /// ✅ New: Load Run 2 slot
@@ -362,23 +369,18 @@ namespace CastleOverlayV2
                     _plotManager.SetRun(2, run2);
                     _plotManager.SetRunVisibility(2, true);
 
-                    // ✅ Show filename on the button
-                    btnLoadRun2.Text = $"Run 2: {TruncateFileName(filePath)}";
+                    btnLoadRun2.Text = $"Run 2: {Path.GetFileName(filePath)}";
 
                     PlotAllRuns();
+                    _plotManager.SetSpeedMode(_isSpeedRunMode);
+                    _plotManager.SetupAllAxes();
 
-                    // ✅ Update button state
-                    btnToggleRun2.Text = "Hide";
+                    _plotManager.RefreshPlot();
+
+                    btnToggleRun2.Text = _plotManager.GetRunVisibility(2) ? "Hide" : "Show";
                     btnToggleRun2.Enabled = true;
                     btnDeleteRun2.Enabled = true;
 
-                    // ✅ Refresh layout to ensure visual state updates
-                    btnToggleRun2.Parent?.PerformLayout();
-                    btnDeleteRun2.Parent?.PerformLayout();
-                    btnToggleRun2.Refresh();
-                    btnDeleteRun2.Refresh();
-
-                    // 🆕 Enable shift controls for this slot
                     SetShiftButtonsEnabled(2, true, isRaceBox: false);
                 }
                 else
@@ -394,9 +396,10 @@ namespace CastleOverlayV2
                 MessageBox.Show("An error occurred while loading the file.\n\n" + ex.Message,
                     "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
-            UpdateRunTypeLockState();
 
+            UpdateRunTypeLockState();
         }
+
 
         /// <summary>
         /// ✅ New: Load Run 3 slot
@@ -418,23 +421,21 @@ namespace CastleOverlayV2
                 {
                     Logger.Log($"Loaded log: Run 3 - {Path.GetFileName(filePath)} - {run3.DataPoints.Count} rows");
 
-                    // Assign the loaded run to slot 3 in the plot manager
                     _plotManager.SetRun(3, run3);
-
-                    // Ensure run visibility is true on load for slot 3
                     _plotManager.SetRunVisibility(3, true);
 
-                    // ✅ Show filename on the button
-                    btnLoadRun3.Text = $"Run 3: {TruncateFileName(filePath)}";
+                    btnLoadRun3.Text = $"Run 3: {Path.GetFileName(filePath)}";
 
                     PlotAllRuns();
+                    _plotManager.SetSpeedMode(_isSpeedRunMode);
+                    _plotManager.SetupAllAxes();
 
-                    // Sync toggle button text with visibility state
+                    _plotManager.RefreshPlot();
+
                     btnToggleRun3.Text = _plotManager.GetRunVisibility(3) ? "Hide" : "Show";
                     btnToggleRun3.Enabled = true;
                     btnDeleteRun3.Enabled = true;
 
-                    // 🆕 Enable shift controls for this slot
                     SetShiftButtonsEnabled(3, true, isRaceBox: false);
                 }
                 else
@@ -450,8 +451,10 @@ namespace CastleOverlayV2
                 MessageBox.Show("An error occurred while loading the file.\n\n" + ex.Message,
                     "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
+
             UpdateRunTypeLockState();
         }
+
 
         /// <summary>
         /// ✅ Load RaceBox CSV for Run 1 slot
@@ -1295,15 +1298,19 @@ namespace CastleOverlayV2
         // Click anywhere on the pill toggles mode (unless locked)
         private void RunTypeSwitch_Click(object sender, EventArgs e)
         {
-            if (IsAnyRunLoaded())
-            {
-                UpdateRunTypeLockState();
-                return;
-            }
+            _isSpeedRunMode = !_isSpeedRunMode;
 
-            _isSpeedRunMode = !_isSpeedRunMode; // flip
-            SyncRunTypeUI();
+            ApplyRunTypeUI();
+            UpdateRunTypeLockState();
+
+            PlotAllRuns();
+            _plotManager.SetSpeedMode(_isSpeedRunMode);
+            _plotManager.SetupAllAxes();
+
+            _plotManager.RefreshPlot();
         }
+
+
 
         #endregion
 
