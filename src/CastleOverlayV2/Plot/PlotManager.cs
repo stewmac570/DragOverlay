@@ -63,12 +63,67 @@ namespace CastleOverlayV2.Plot
 
         private bool _isFourPoleMode = false;
 
+        // ---- Scale Profiles (Drag vs Speed-Run) ----
+        private enum ScaleProfile { Drag, SpeedRun }
+        private ScaleProfile _activeProfile = ScaleProfile.Drag;
+
+        // Per-profile per-channel scales for CASTLE channels ONLY.
+        private readonly Dictionary<string, (double Min, double Max)> _dragScales = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Throttle %"] = (-100, 120),
+            ["Voltage"] = (6.0, 9.0),
+            ["Current"] = (0.0, 800.0),
+            ["Ripple"] = (0.0, 5.0),
+            ["PowerOut"] = (0.0, 120.0),
+            ["ESC Temp"] = (20.0, 120.0),
+            ["MotorTemp"] = (20.0, 120.0),
+            ["MotorTiming"] = (0.0, 120.0),
+            ["Acceleration"] = (-5.0, 7.0),
+        };
+
+        private readonly Dictionary<string, (double Min, double Max)> _speedScales = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Throttle %"] = (-10, 110),
+            ["Voltage"] = (6.0, 9.0),
+            ["Current"] = (0.0, 800.0),
+            ["Ripple"] = (0.0, 5.0),
+            ["PowerOut"] = (0.0, 120.0),
+            ["ESC Temp"] = (20.0, 120.0),
+            ["MotorTemp"] = (20.0, 120.0),
+            ["MotorTiming"] = (0.0, 120.0),
+            ["Acceleration"] = (-5.0, 7.0),
+        };
+
         // Extra Castle offset (seconds) added to each Castle run
         private double _castleTimeShift = 0.0;
         public void SetCastleTimeShift(double shiftSeconds)
         {
             _castleTimeShift = shiftSeconds;
             Logger.Log($"⏱️ Castle Time Shift set to {shiftSeconds:F3} seconds");
+        }
+
+        // Public API to flip profiles
+        public void SetSpeedMode(bool isSpeedRun)
+        {
+            _activeProfile = isSpeedRun ? ScaleProfile.SpeedRun : ScaleProfile.Drag;
+            Logger.Log($"📐 Scale Profile → {(_activeProfile == ScaleProfile.SpeedRun ? "Speed-Run" : "Drag")}");
+            //ReapplyAxisLocks();
+            //_plot.Refresh();
+        }
+
+        /// <summary>Set per-channel Y-scale for current profile (or explicitly for Drag/Speed-Run).</summary>
+        public void SetChannelScale(string channel, double min, double max, bool? forSpeedRun = null)
+        {
+            if (string.IsNullOrWhiteSpace(channel)) return;
+
+            var dict = (forSpeedRun ?? (_activeProfile == ScaleProfile.SpeedRun))
+                ? _speedScales
+                : _dragScales;
+
+            dict[channel] = (min, max);
+            Logger.Log($"📏 SetChannelScale[{(dict == _speedScales ? "Speed-Run" : "Drag")}]: {channel} = ({min}, {max})");
+            ReapplyAxisLocks();
+            _plot.Refresh();
         }
 
         public PlotManager(FormsPlot plotControl)
@@ -80,7 +135,13 @@ namespace CastleOverlayV2.Plot
             _plot.Plot.Title(null);
             _plot.Plot.Legend.IsVisible = false;
 
-            // X axis label (ticks are configured on each plot so grid matches range)
+            // 🔒 make Y-locks stick straight away
+            ReapplyAxisLocks();
+
+            _plot.Refresh();
+
+
+            // X axis label
             var x = _plot.Plot.Axes.Bottom;
             x.Label.Text = "Time (s)";
             x.Label.FontSize = 12;
@@ -99,7 +160,13 @@ namespace CastleOverlayV2.Plot
 
         // ---------------- Public API ----------------
 
-        public void SetFourPoleMode(bool isFourPole) => _isFourPoleMode = isFourPole;
+        public void SetFourPoleMode(bool isFourPole)
+        {
+            _isFourPoleMode = isFourPole;
+            Logger.Log($"⚙️ Four-Pole Mode: {(_isFourPoleMode ? "ON" : "OFF")}");
+            ReapplyAxisLocks();
+            _plot.Refresh();
+        }
 
         public bool GetRunVisibility(int slot) =>
             _runVisibility.TryGetValue(slot, out bool vis) ? vis : true;
@@ -272,7 +339,7 @@ namespace CastleOverlayV2.Plot
                     s.Axes.YAxis = channelLabel switch
                     {
                         "RPM" => rpmAxis,
-                        "Throttle %" => throttleAxis,   // <— NEW
+                        "Throttle %" => throttleAxis,
                         "Voltage" => voltageAxis,
                         "Current" => currentAxis,
                         "Ripple" => rippleAxis,
@@ -281,9 +348,7 @@ namespace CastleOverlayV2.Plot
                         "MotorTemp" => motorTempAxis,
                         "MotorTiming" => motorTimingAxis,
                         "Acceleration" => accelAxis,
-                        //_ => throttleAxis
                     };
-
 
                     bool chOn = _channelVisibility.TryGetValue(channelLabel, out var v) ? v : true;
                     bool runOn = _runVisibility.TryGetValue(slot, out var rv) ? rv : true;
@@ -329,79 +394,243 @@ namespace CastleOverlayV2.Plot
             _plot.Plot.Layout.Fixed(padding);
 
             _plot.Plot.Legend.IsVisible = false;
+
+            // --- Set initial X range from the data without touching Y ---
+            (double minX, double maxX) = GetTimeRange(runsBySlot);
+            minX -= 0.10;
+            maxX += 0.10;
+
+            // preserve current Y limits exactly as-is
+            var lim = _plot.Plot.Axes.GetLimits();
+            _plot.Plot.Axes.SetLimits(minX, maxX, lim.Bottom, lim.Top);
+
+            // Now (and only now) apply the Y locks to the real axes
+            ReapplyAxisLocks();
+
             _plot.Refresh();
+
+
         }
 
         // ---------------- Axes ----------------
 
-        private void SetupAllAxes()
+        // Made public because MainForm calls this
+        // Made public because MainForm calls this
+        public void SetupAllAxes()
         {
-            _plot.Plot.Axes.Rules.Clear();
+            // 1) Create axes ONCE and reuse thereafter
+            if (throttleAxis is null)
+            {
+                throttleAxis = _plot.Plot.Axes.Left;
+                throttleAxis.Label.Text = "Throttle (%)";
+                HideAxis(throttleAxis);
+            }
 
-            // Throttle as PERCENT
-            throttleAxis = _plot.Plot.Axes.Left;
-            throttleAxis.Label.Text = "Throttle (%)";
-            // show the whole range; keep hidden by default like before
-            _plot.Plot.Axes.Rules.Add(new LockedVertical(throttleAxis, -100, 120));
-            HideAxis(throttleAxis);
+            if (rpmAxis is null)
+            {
+                rpmAxis = _plot.Plot.Axes.AddRightAxis();
+                rpmAxis.Label.Text = "RPM";
+                HideAxis(rpmAxis);
+            }
 
+            if (voltageAxis is null)
+            {
+                voltageAxis = _plot.Plot.Axes.AddLeftAxis();
+                voltageAxis.Label.Text = "Voltage (V)";
+                HideAxis(voltageAxis);
+            }
 
-            rpmAxis = _plot.Plot.Axes.AddRightAxis();
-            rpmAxis.Label.Text = "RPM";
-            double rpmMax = _isFourPoleMode ? 100000.0 : 200000.0;
-            _plot.Plot.Axes.Rules.Add(new LockedVertical(rpmAxis, 0, rpmMax));
-            HideAxis(rpmAxis);
+            if (currentAxis is null)
+            {
+                currentAxis = _plot.Plot.Axes.AddRightAxis();
+                currentAxis.Label.Text = "Current (A)";
+                HideAxis(currentAxis);
+            }
 
-            voltageAxis = _plot.Plot.Axes.AddLeftAxis();
-            voltageAxis.Label.Text = "Voltage (V)";
-            _plot.Plot.Axes.Rules.Add(new LockedVertical(voltageAxis, 6.0, 9.0));
-            HideAxis(voltageAxis);
+            if (rippleAxis is null)
+            {
+                rippleAxis = _plot.Plot.Axes.AddRightAxis();
+                rippleAxis.Label.Text = "Ripple (V)";
+                HideAxis(rippleAxis);
+            }
 
-            currentAxis = _plot.Plot.Axes.AddRightAxis();
-            currentAxis.Label.Text = "Current (A)";
-            _plot.Plot.Axes.Rules.Add(new LockedVertical(currentAxis, 0, 800));
-            HideAxis(currentAxis);
+            if (powerAxis is null)
+            {
+                powerAxis = _plot.Plot.Axes.AddLeftAxis();
+                powerAxis.Label.Text = "Power Out (W)";
+                HideAxis(powerAxis);
+            }
 
-            rippleAxis = _plot.Plot.Axes.AddRightAxis();
-            rippleAxis.Label.Text = "Ripple (V)";
-            _plot.Plot.Axes.Rules.Add(new LockedVertical(rippleAxis, 0, 5.0));
-            HideAxis(rippleAxis);
+            if (escTempAxis is null)
+            {
+                escTempAxis = _plot.Plot.Axes.AddRightAxis();
+                escTempAxis.Label.Text = "ESC Temp (°C)";
+                HideAxis(escTempAxis);
+            }
 
-            powerAxis = _plot.Plot.Axes.AddLeftAxis();
-            powerAxis.Label.Text = "Power Out (W)";
-            _plot.Plot.Axes.Rules.Add(new LockedVertical(powerAxis, 0, 120));
-            HideAxis(powerAxis);
+            if (motorTempAxis is null)
+            {
+                motorTempAxis = _plot.Plot.Axes.AddRightAxis();
+                motorTempAxis.Label.Text = "Motor Temp (°C)";
+                HideAxis(motorTempAxis);
+            }
 
-            escTempAxis = _plot.Plot.Axes.AddRightAxis();
-            escTempAxis.Label.Text = "ESC Temp (°C)";
-            _plot.Plot.Axes.Rules.Add(new LockedVertical(escTempAxis, 20, 120));
-            HideAxis(escTempAxis);
+            if (motorTimingAxis is null)
+            {
+                motorTimingAxis = _plot.Plot.Axes.AddRightAxis();
+                motorTimingAxis.Label.Text = "Motor Timing (deg)";
+                HideAxis(motorTimingAxis);
+            }
 
-            motorTempAxis = _plot.Plot.Axes.AddRightAxis();
-            motorTempAxis.Label.Text = "Motor Temp (°C)";
-            _plot.Plot.Axes.Rules.Add(new LockedVertical(motorTempAxis, 20, 120));
-            HideAxis(motorTempAxis);
+            if (accelAxis is null)
+            {
+                accelAxis = _plot.Plot.Axes.AddRightAxis();
+                accelAxis.Label.Text = "Acceleration (g)";
+                HideAxis(accelAxis);
+            }
 
-            motorTimingAxis = _plot.Plot.Axes.AddRightAxis();
-            motorTimingAxis.Label.Text = "Motor Timing (deg)";
-            _plot.Plot.Axes.Rules.Add(new LockedVertical(motorTimingAxis, 0, 120));
-            HideAxis(motorTimingAxis);
+            // RaceBox axes (also create once)
+            if (raceBoxSpeedAxis is null)
+            {
+                raceBoxSpeedAxis = _plot.Plot.Axes.AddRightAxis();
+                raceBoxSpeedAxis.Label.Text = "Speed (mph)";
+                HideAxis(raceBoxSpeedAxis);
+            }
 
-            accelAxis = _plot.Plot.Axes.AddRightAxis();
-            accelAxis.Label.Text = "Acceleration (g)";
-            _plot.Plot.Axes.Rules.Add(new LockedVertical(accelAxis, -5, 7));
-            HideAxis(accelAxis);
+            if (raceBoxGxAxis is null)
+            {
+                raceBoxGxAxis = _plot.Plot.Axes.AddRightAxis();
+                raceBoxGxAxis.Label.Text = "G-Force X (g)";
+                HideAxis(raceBoxGxAxis);
+            }
 
-            raceBoxSpeedAxis = _plot.Plot.Axes.AddRightAxis();
-            raceBoxSpeedAxis.Label.Text = "Speed (mph)";
+            // 2) Wipe existing LockedVertical rules that target our known axes
+            var knownAxes = new HashSet<IAxis>(new[]
+            {
+        throttleAxis, rpmAxis, voltageAxis, currentAxis, rippleAxis, powerAxis,
+        escTempAxis, motorTempAxis, motorTimingAxis, accelAxis,
+        raceBoxSpeedAxis, raceBoxGxAxis
+    }.Where(a => a is not null)!);
+
+            var rulesToRemove = new List<IAxisRule>();
+            foreach (var rule in _plot.Plot.Axes.Rules)
+                if (rule is LockedVertical lv && knownAxes.Contains(lv.YAxis))
+                    rulesToRemove.Add(rule);
+            foreach (var r in rulesToRemove)
+                _plot.Plot.Axes.Rules.Remove(r);
+
+            // 3) Re-apply fresh locks (RaceBox fixed, Castle via active profile)
             _plot.Plot.Axes.Rules.Add(new LockedVertical(raceBoxSpeedAxis, 0, 110));
-            HideAxis(raceBoxSpeedAxis);
-
-            raceBoxGxAxis = _plot.Plot.Axes.AddRightAxis();
-            raceBoxGxAxis.Label.Text = "G-Force X (g)";
             _plot.Plot.Axes.Rules.Add(new LockedVertical(raceBoxGxAxis, -5, 7));
-            HideAxis(raceBoxGxAxis);
+
+            ApplyAxisLocksForActiveProfile(); // this applies locks for throttle/rpm/etc (Castle)
+
+            // NOTE: Do NOT call AddLeftAxis/AddRightAxis again after this point.
         }
+
+
+        private void ReapplyAxisLocks()
+        {
+            // Keep RaceBox and split-label locks; rebuild Castle axis locks
+            var keepAxes = new HashSet<IAxis>(new[] { raceBoxSpeedAxis, raceBoxGxAxis, _splitLabelAxis }.Where(a => a is not null)!);
+
+            var toRemove = new List<IAxisRule>();
+
+            foreach (var rule in _plot.Plot.Axes.Rules)
+            {
+                if (rule is LockedVertical lv)
+                {
+                    // If this lock is NOT one of the preserved axes, mark for removal
+                    if (!keepAxes.Contains(lv.YAxis))
+                        toRemove.Add(rule);
+                }
+            }
+
+            foreach (var r in toRemove)
+                _plot.Plot.Axes.Rules.Remove(r);
+
+            ApplyAxisLocksForActiveProfile();
+        }
+
+        private void ApplyAxisLocksForActiveProfile()
+        {
+            // Select the active scale profile
+            var dict = _activeProfile == ScaleProfile.SpeedRun ? _speedScales : _dragScales;
+
+            bool TryGetScale(string key, out (double Min, double Max) range)
+            {
+                if (dict.TryGetValue(key, out range))
+                    return true;
+                range = default;
+                return false;
+            }
+
+            // --- 1) Remove any existing LockedVertical rules for CASTLE axes ---
+            var castleAxes = new HashSet<IAxis>(new[]
+            {
+        throttleAxis, rpmAxis, voltageAxis, currentAxis, rippleAxis, powerAxis,
+        escTempAxis, motorTempAxis, motorTimingAxis, accelAxis
+    }.Where(a => a is not null)!);
+
+            var toRemove = new List<IAxisRule>();
+            foreach (var rule in _plot.Plot.Axes.Rules)
+            {
+                if (rule is LockedVertical lv && castleAxes.Contains(lv.YAxis))
+                    toRemove.Add(rule);
+            }
+            foreach (var r in toRemove)
+                _plot.Plot.Axes.Rules.Remove(r);
+
+            // --- 2) Reapply fresh Y-locks for all CASTLE axes (X-only zoom) ---
+
+            // Throttle
+            if (!TryGetScale("Throttle %", out var thr)) thr = (-100, 120);
+            _plot.Plot.Axes.Rules.Add(new LockedVertical(throttleAxis, thr.Min, thr.Max));
+
+            // RPM (allow override; else pole-mode default)
+            if (TryGetScale("RPM", out var rpm))
+            {
+                _plot.Plot.Axes.Rules.Add(new LockedVertical(rpmAxis, rpm.Min, rpm.Max));
+            }
+            else
+            {
+                double rpmMax = _isFourPoleMode ? 100_000.0 : 200_000.0;
+                _plot.Plot.Axes.Rules.Add(new LockedVertical(rpmAxis, 0.0, rpmMax));
+            }
+
+            // Voltage
+            if (!TryGetScale("Voltage", out var vlt)) vlt = (6.0, 9.0);
+            _plot.Plot.Axes.Rules.Add(new LockedVertical(voltageAxis, vlt.Min, vlt.Max));
+
+            // Current
+            if (!TryGetScale("Current", out var cur)) cur = (0.0, 800.0);
+            _plot.Plot.Axes.Rules.Add(new LockedVertical(currentAxis, cur.Min, cur.Max));
+
+            // Ripple
+            if (!TryGetScale("Ripple", out var rip)) rip = (0.0, 5.0);
+            _plot.Plot.Axes.Rules.Add(new LockedVertical(rippleAxis, rip.Min, rip.Max));
+
+            // PowerOut
+            if (!TryGetScale("PowerOut", out var pow)) pow = (0.0, 120.0);
+            _plot.Plot.Axes.Rules.Add(new LockedVertical(powerAxis, pow.Min, pow.Max));
+
+            // ESC Temp
+            if (!TryGetScale("ESC Temp", out var et)) et = (20.0, 120.0);
+            _plot.Plot.Axes.Rules.Add(new LockedVertical(escTempAxis, et.Min, et.Max));
+
+            // Motor Temp
+            if (!TryGetScale("MotorTemp", out var mt)) mt = (20.0, 120.0);
+            _plot.Plot.Axes.Rules.Add(new LockedVertical(motorTempAxis, mt.Min, mt.Max));
+
+            // Motor Timing
+            if (!TryGetScale("MotorTiming", out var mtg)) mtg = (0.0, 120.0);
+            _plot.Plot.Axes.Rules.Add(new LockedVertical(motorTimingAxis, mtg.Min, mtg.Max));
+
+            // Acceleration
+            if (!TryGetScale("Acceleration", out var acc)) acc = (-5.0, 7.0);
+            _plot.Plot.Axes.Rules.Add(new LockedVertical(accelAxis, acc.Min, acc.Max));
+        }
+
 
         private static void HideAxis(IAxis axis)
         {
@@ -647,7 +876,12 @@ namespace CastleOverlayV2.Plot
             _plot.Plot.Layout.Fixed(padding);
 
             _plot.Plot.Legend.IsVisible = false;
+
+            // 🔒 make Y-locks stick straight away
+            ReapplyAxisLocks();
+
             _plot.Refresh();
+
         }
 
         public void LogVisibilityStates()
