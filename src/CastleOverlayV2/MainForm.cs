@@ -466,127 +466,136 @@ namespace CastleOverlayV2
             var path = GetCsvFilePath();
             if (path == null) return;
 
-            Logger.Log("Opening file picker...");
-            Logger.Log($"Selected file: {path}");
-
-            var rbData = RaceBoxLoader.LoadHeaderOnly(path);
-
-            if (rbData == null)
+            try
             {
-                Logger.Log("[MainForm] RaceBox header loading failed — rbData is null");
-                return;
+                Logger.Log("Opening file picker...");
+                Logger.Log($"Selected file: {path}");
+
+                var rbData = RaceBoxLoader.LoadHeaderOnly(path);
+
+                if (rbData == null)
+                {
+                    Logger.Log("[MainForm] RaceBox header loading failed — rbData is null");
+                    return;
+                }
+
+                if (rbData.FirstCompleteRunIndex == null)
+                {
+                    MessageBox.Show("No complete run found in this RaceBox file.", "Incomplete Run", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
+                Logger.Log($"Header loaded: {rbData.RunCount} runs found, FirstCompleteRun = {rbData.FirstCompleteRunIndex + 1}");
+                Logger.Log("Parsing RaceBox telemetry for Slot 1...");
+
+                var loader = new RaceBoxLoader();
+
+                Logger.Log("[MainForm] Calling RaceBoxLoader.LoadTelemetry(...) now...");
+                var points = await Task.Run(() =>
+                    loader.LoadTelemetry(path, rbData.FirstCompleteRunIndex.Value)
+                );
+                Logger.Log("[MainForm] LoadTelemetry() returned successfully");
+
+                Logger.Log($"📈 RaceBox telemetry parsed: {points.Count} rows for Slot 1");
+
+                // ✅ Record number range logging
+                int firstRecord = points.First().Record;
+                int lastRecord = points.Last().Record;
+                Logger.Log($"📌 RaceBox Record range used for Slot 1: {firstRecord} → {lastRecord}");
+
+                raceBox1 = rbData;
+                Logger.Log($"✅ RaceBox 1 loaded. RunCount = {rbData.RunCount}, FirstCompleteRun = {rbData.FirstCompleteRunIndex + 1}");
+
+                // === ✅ Convert RaceBox points into RunData for plotting ===
+                var run = new RunData();
+                run.IsRaceBox = true;
+                run.SplitTimes = rbData.SplitTimes;
+                run.SplitLabels = rbData.SplitLabels;
+                run.FileName = Path.GetFileName(path);
+
+                // ✅ Store Castle-style DataPoints into per-channel dictionary
+                run.Data["RaceBox Speed"] = points.Select(p => new DataPoint
+                {
+                    Time = p.Time.TotalSeconds,
+                    Y = p.SpeedMph
+                }).ToList();
+
+                run.Data["RaceBox G-Force X"] = points.Select(p => new DataPoint
+                {
+                    Time = p.Time.TotalSeconds,
+                    Y = p.GForceX
+                }).ToList();
+
+                // ✅ REQUIRED: Populate dummy DataPoints list so plot manager doesn't skip it
+                run.DataPoints = points.Select(p => new DataPoint
+                {
+                    Time = p.Time.TotalSeconds
+                }).ToList();
+
+                Logger.Log($"✅ Run4 channels: {string.Join(", ", run.Data.Keys)}");
+
+                // === ✅ Assign RaceBox 1 into slot 4 (paired with Castle Run1) ===
+                run4 = run;
+                _plotManager.SetRun(4, run); // ❗ Critical for visibility logic
+                _plotManager.SetRunVisibility(4, true);
+
+                // ✅ Show filename on the (now-wider) button
+                btnLoadRaceBox1.Text = $"RaceBox 1: {TruncateFileName(path)}";
+
+                btnToggleRaceBox1.Enabled = true;
+                btnDeleteRaceBox1.Enabled = true;
+
+                Logger.Log($"✅ Run1 channels: {string.Join(", ", run.Data.Keys)}");
+
+                // === 🆕 Add RaceBox channels to toggle bar if missing ===
+                var addedChannels = false;
+
+                if (!_channelToggleBar.GetChannelStates().ContainsKey("RaceBox Speed"))
+                {
+                    Logger.Log("🆕 Adding RaceBox Speed to toggle bar");
+                    _channelToggleBar.AddChannel("RaceBox Speed", true);
+                    addedChannels = true;
+                }
+                else
+                {
+                    Logger.Log("ℹ️ RaceBox Speed already exists in toggle bar");
+                }
+
+                if (!_channelToggleBar.GetChannelStates().ContainsKey("RaceBox G-Force X"))
+                {
+                    Logger.Log("🆕 Adding RaceBox G-Force X to toggle bar");
+                    _channelToggleBar.AddChannel("RaceBox G-Force X", true);
+                    addedChannels = true;
+                }
+                else
+                {
+                    Logger.Log("ℹ️ RaceBox G-Force X already exists in toggle bar");
+                }
+
+                if (addedChannels)
+                {
+                    Logger.Log("🔄 Forcing layout refresh after adding RaceBox toggles");
+                    _channelToggleBar.PerformLayout();
+                    _channelToggleBar.Refresh();
+                }
+
+                if (run.Data.TryGetValue("RaceBox Speed", out var speedPoints))
+                    Logger.Log($"✅ Run1 point count (Speed): {speedPoints.Count}");
+
+                if (run.Data.TryGetValue("RaceBox G-Force X", out var gxPoints))
+                    Logger.Log($"✅ Run1 point count (G-Force X): {gxPoints.Count}");
+
+                // 🆕 Enable shift controls for RaceBox slot 1 (slot 4)
+                SetShiftButtonsEnabled(1, true, isRaceBox: true);
+
+                PlotAllRuns();
             }
-
-            if (rbData.FirstCompleteRunIndex == null)
+            catch (Exception ex)
             {
-                MessageBox.Show("No complete run found in this RaceBox file.", "Incomplete Run", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
+                Logger.Log($"ERROR in RaceBox1: {ex.Message}");
+                MessageBox.Show("An error occurred while loading the file.\n\n" + ex.Message,
+                    "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
-
-            Logger.Log($"Header loaded: {rbData.RunCount} runs found, FirstCompleteRun = {rbData.FirstCompleteRunIndex + 1}");
-            Logger.Log("Parsing RaceBox telemetry for Slot 1...");
-
-            var loader = new RaceBoxLoader();
-
-            Logger.Log("[MainForm] Calling RaceBoxLoader.LoadTelemetry(...) now...");
-            var points = await Task.Run(() =>
-                loader.LoadTelemetry(path, rbData.FirstCompleteRunIndex.Value)
-            );
-            Logger.Log("[MainForm] LoadTelemetry() returned successfully");
-
-            Logger.Log($"📈 RaceBox telemetry parsed: {points.Count} rows for Slot 1");
-
-            // ✅ Record number range logging
-            int firstRecord = points.First().Record;
-            int lastRecord = points.Last().Record;
-            Logger.Log($"📌 RaceBox Record range used for Slot 1: {firstRecord} → {lastRecord}");
-
-            raceBox1 = rbData;
-            Logger.Log($"✅ RaceBox 1 loaded. RunCount = {rbData.RunCount}, FirstCompleteRun = {rbData.FirstCompleteRunIndex + 1}");
-
-            // === ✅ Convert RaceBox points into RunData for plotting ===
-            var run = new RunData();
-            run.IsRaceBox = true;
-            run.SplitTimes = rbData.SplitTimes;
-            run.SplitLabels = rbData.SplitLabels;
-            run.FileName = Path.GetFileName(path);
-
-            // ✅ Store Castle-style DataPoints into per-channel dictionary
-            run.Data["RaceBox Speed"] = points.Select(p => new DataPoint
-            {
-                Time = p.Time.TotalSeconds,
-                Y = p.SpeedMph
-            }).ToList();
-
-            run.Data["RaceBox G-Force X"] = points.Select(p => new DataPoint
-            {
-                Time = p.Time.TotalSeconds,
-                Y = p.GForceX
-            }).ToList();
-
-            // ✅ REQUIRED: Populate dummy DataPoints list so plot manager doesn't skip it
-            run.DataPoints = points.Select(p => new DataPoint
-            {
-                Time = p.Time.TotalSeconds
-            }).ToList();
-
-            Logger.Log($"✅ Run4 channels: {string.Join(", ", run.Data.Keys)}");
-
-            // === ✅ Assign RaceBox 1 into slot 4 (paired with Castle Run1) ===
-            run4 = run;
-            _plotManager.SetRun(4, run); // ❗ Critical for visibility logic
-            _plotManager.SetRunVisibility(4, true);
-
-            // ✅ Show filename on the (now-wider) button
-            btnLoadRaceBox1.Text = $"RaceBox 1: {TruncateFileName(path)}";
-
-            btnToggleRaceBox1.Enabled = true;
-            btnDeleteRaceBox1.Enabled = true;
-
-            Logger.Log($"✅ Run1 channels: {string.Join(", ", run.Data.Keys)}");
-
-            // === 🆕 Add RaceBox channels to toggle bar if missing ===
-            var addedChannels = false;
-
-            if (!_channelToggleBar.GetChannelStates().ContainsKey("RaceBox Speed"))
-            {
-                Logger.Log("🆕 Adding RaceBox Speed to toggle bar");
-                _channelToggleBar.AddChannel("RaceBox Speed", true);
-                addedChannels = true;
-            }
-            else
-            {
-                Logger.Log("ℹ️ RaceBox Speed already exists in toggle bar");
-            }
-
-            if (!_channelToggleBar.GetChannelStates().ContainsKey("RaceBox G-Force X"))
-            {
-                Logger.Log("🆕 Adding RaceBox G-Force X to toggle bar");
-                _channelToggleBar.AddChannel("RaceBox G-Force X", true);
-                addedChannels = true;
-            }
-            else
-            {
-                Logger.Log("ℹ️ RaceBox G-Force X already exists in toggle bar");
-            }
-
-            if (addedChannels)
-            {
-                Logger.Log("🔄 Forcing layout refresh after adding RaceBox toggles");
-                _channelToggleBar.PerformLayout();
-                _channelToggleBar.Refresh();
-            }
-
-            if (run.Data.TryGetValue("RaceBox Speed", out var speedPoints))
-                Logger.Log($"✅ Run1 point count (Speed): {speedPoints.Count}");
-
-            if (run.Data.TryGetValue("RaceBox G-Force X", out var gxPoints))
-                Logger.Log($"✅ Run1 point count (G-Force X): {gxPoints.Count}");
-
-            // 🆕 Enable shift controls for RaceBox slot 1 (slot 4)
-            SetShiftButtonsEnabled(1, true, isRaceBox: true);
-
-            PlotAllRuns();
 
             UpdateRunTypeLockState();
         }
@@ -688,77 +697,86 @@ namespace CastleOverlayV2
             var path = GetCsvFilePath();
             if (path == null) return;
 
-            var rbData = RaceBoxLoader.LoadHeaderOnly(path);
-            if (rbData == null)
+            try
             {
-                Logger.Log("[MainForm] RaceBox header load failed — rbData was null");
-                return;
-            }
+                var rbData = RaceBoxLoader.LoadHeaderOnly(path);
+                if (rbData == null)
+                {
+                    Logger.Log("[MainForm] RaceBox header load failed — rbData was null");
+                    return;
+                }
 
-            if (rbData.FirstCompleteRunIndex == null)
+                if (rbData.FirstCompleteRunIndex == null)
+                {
+                    MessageBox.Show("No complete run found in this RaceBox file.", "Incomplete Run", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
+                Logger.Log($"Header loaded: {rbData.RunCount} runs found, FirstCompleteRun = {rbData.FirstCompleteRunIndex + 1}");
+                Logger.Log("Parsing RaceBox telemetry for Slot 3...");
+
+                var loader = new RaceBoxLoader();
+                var points = await Task.Run(() => loader.LoadTelemetry(path, rbData.FirstCompleteRunIndex.Value));
+
+                Logger.Log($"📈 RaceBox telemetry parsed: {points.Count} rows for RaceBox3 → run6");
+
+                raceBox3 = rbData;
+
+                var run = new RunData();
+                run.IsRaceBox = true;
+                run.FileName = Path.GetFileName(path);
+                run.SplitTimes = rbData.SplitTimes;
+                run.SplitLabels = rbData.SplitLabels;
+
+                run.Data["RaceBox Speed"] = points.Select(p => new DataPoint { Time = p.Time.TotalSeconds, Y = p.SpeedMph }).ToList();
+                run.Data["RaceBox G-Force X"] = points.Select(p => new DataPoint { Time = p.Time.TotalSeconds, Y = p.GForceX }).ToList();
+                run.DataPoints = points.Select(p => new DataPoint { Time = p.Time.TotalSeconds }).ToList();
+
+                run6 = run;
+
+                // ✅ Register run + enable buttons
+                _plotManager.SetRun(6, run);
+                _plotManager.SetRunVisibility(6, true);
+
+                // ✅ Show filename on the button
+                btnLoadRaceBox3.Text = $"RaceBox 3: {TruncateFileName(path)}";
+
+                btnToggleRaceBox3.Enabled = true;
+                btnDeleteRaceBox3.Enabled = true;
+
+                var addedChannels = false;
+
+                if (!_channelToggleBar.GetChannelStates().ContainsKey("RaceBox Speed"))
+                {
+                    Logger.Log("🆕 Adding RaceBox Speed to toggle bar");
+                    _channelToggleBar.AddChannel("RaceBox Speed", true);
+                    addedChannels = true;
+                }
+
+                if (!_channelToggleBar.GetChannelStates().ContainsKey("RaceBox G-Force X"))
+                {
+                    Logger.Log("🆕 Adding RaceBox G-Force X to toggle bar");
+                    _channelToggleBar.AddChannel("RaceBox G-Force X", true);
+                    addedChannels = true;
+                }
+
+                if (addedChannels)
+                {
+                    _channelToggleBar.PerformLayout();
+                    _channelToggleBar.Refresh();
+                }
+
+                // 🆕 Enable shift controls for RaceBox slot 3 (slot 6)
+                SetShiftButtonsEnabled(3, true, isRaceBox: true);
+
+                PlotAllRuns();
+            }
+            catch (Exception ex)
             {
-                MessageBox.Show("No complete run found in this RaceBox file.", "Incomplete Run", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
+                Logger.Log($"ERROR in RaceBox3: {ex.Message}");
+                MessageBox.Show("An error occurred while loading the file.\n\n" + ex.Message,
+                    "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
-
-            Logger.Log($"Header loaded: {rbData.RunCount} runs found, FirstCompleteRun = {rbData.FirstCompleteRunIndex + 1}");
-            Logger.Log("Parsing RaceBox telemetry for Slot 3...");
-
-            var loader = new RaceBoxLoader();
-            var points = await Task.Run(() => loader.LoadTelemetry(path, rbData.FirstCompleteRunIndex.Value));
-
-            Logger.Log($"📈 RaceBox telemetry parsed: {points.Count} rows for RaceBox3 → run6");
-
-            raceBox3 = rbData;
-
-            var run = new RunData();
-            run.IsRaceBox = true;
-            run.FileName = Path.GetFileName(path);
-            run.SplitTimes = rbData.SplitTimes;
-            run.SplitLabels = rbData.SplitLabels;
-
-            run.Data["RaceBox Speed"] = points.Select(p => new DataPoint { Time = p.Time.TotalSeconds, Y = p.SpeedMph }).ToList();
-            run.Data["RaceBox G-Force X"] = points.Select(p => new DataPoint { Time = p.Time.TotalSeconds, Y = p.GForceX }).ToList();
-            run.DataPoints = points.Select(p => new DataPoint { Time = p.Time.TotalSeconds }).ToList();
-
-            run6 = run;
-
-            // ✅ Register run + enable buttons
-            _plotManager.SetRun(6, run);
-            _plotManager.SetRunVisibility(6, true);
-
-            // ✅ Show filename on the button
-            btnLoadRaceBox3.Text = $"RaceBox 3: {TruncateFileName(path)}";
-
-            btnToggleRaceBox3.Enabled = true;
-            btnDeleteRaceBox3.Enabled = true;
-
-            var addedChannels = false;
-
-            if (!_channelToggleBar.GetChannelStates().ContainsKey("RaceBox Speed"))
-            {
-                Logger.Log("🆕 Adding RaceBox Speed to toggle bar");
-                _channelToggleBar.AddChannel("RaceBox Speed", true);
-                addedChannels = true;
-            }
-
-            if (!_channelToggleBar.GetChannelStates().ContainsKey("RaceBox G-Force X"))
-            {
-                Logger.Log("🆕 Adding RaceBox G-Force X to toggle bar");
-                _channelToggleBar.AddChannel("RaceBox G-Force X", true);
-                addedChannels = true;
-            }
-
-            if (addedChannels)
-            {
-                _channelToggleBar.PerformLayout();
-                _channelToggleBar.Refresh();
-            }
-
-            // 🆕 Enable shift controls for RaceBox slot 3 (slot 6)
-            SetShiftButtonsEnabled(3, true, isRaceBox: true);
-
-            PlotAllRuns();
 
             UpdateRunTypeLockState();
         }
