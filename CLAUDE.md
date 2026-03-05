@@ -279,4 +279,18 @@ This is the permanent record of what happened each session. Claude appends an en
 
 ---
 
+### 2026-03-05 (entry 7)
+**Focus:** Consolidated fix plan — all 55 findings across 5 audits distilled into 30 actionable items
+**Decisions:** Plan saved to `Docs/audit/06-fix-plan-2026-03-05.md`; organised into 6 priority tiers with effort estimates and recommended session order
+**Completed:** Full synthesis of all audit findings; session plan written
+**Discovered:** Nothing new — synthesis pass only
+**Key reference — fix order:**
+- Session A (~75 min): Items 1–11 (P1+P2) — eliminates every known crash path
+- Session B (~2 hr): Items 12–17 (P3) — silent failures become visible errors
+- Session C (~2 hr): Items 18–22 (P4) — hover performance
+- Session D (multi-day): Items 29–30 (P6) — structural cleanup
+**Next:** Execute Session A — start with item #3 (2-minute switch default arm), then #4 (Program.Main wrap), then #5 (ConfigService.Save wrap), then CultureInfo batch (#6–#9), then RaceBox try/catch wrappers (#1, #2).
+
+---
+
 > Claude: Add a new dated entry here at the end of every session. Never skip this step.
