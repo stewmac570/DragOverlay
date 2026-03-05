@@ -223,4 +223,21 @@ This is the permanent record of what happened each session. Claude appends an en
 
 ---
 
+### 2026-03-05 (entry 4)
+**Focus:** Unhandled exception audit — all throw sites traced across full codebase
+**Decisions:** Audit saved to `Docs/audit/04-error-handling-2026-03-05.md` (note: 03 skipped, user's intent)
+**Completed:** 11 unhandled exception sites identified and ranked; 5 quickest fixes documented
+**Discovered:**
+- `LoadRaceBox1Button_Click` and `LoadRaceBox3Button_Click` have NO try/catch at all — any exception from `LoadHeaderOnly`, `LoadTelemetry`, `points.First()`, or `points.Last()` crashes the app with no user message
+- `LoadRaceBox2Button_Click` has a null/count guard on `points` but still no try/catch — `LoadHeaderOnly` and the `await Task.Run(LoadTelemetry)` block are unprotected
+- The Castle load handlers (`LoadRun1/2/3Button_Click`) DO have try/catch — this asymmetry is the root cause; RaceBox handlers were added later without carrying the pattern forward
+- `Program.Main` has no try/catch — if `ConfigService` constructor throws (e.g., `%AppData%` not writable), the app crashes before any window opens
+- `ConfigService.Save()` → `File.WriteAllText` uncaught — every channel toggle and RPM mode change can crash if the disk is full or config file is locked
+- PlotManager switch expression (no default arm, audit C3) propagates `SwitchExpressionException` through ALL callers: channel toggle, delete, RPM mode change, shift buttons — none are protected
+- `RaceBoxLoader.LoadTelemetry`: `DateTime.Parse` at lines 119+125 without `CultureInfo.InvariantCulture` — `FormatException` for any non-EN locale user
+- `RaceBoxLoader.LoadTelemetry`: `points[launchIndex]` with no guard — `ArgumentOutOfRangeException` on idle/non-drag logs
+**Next:** Fix the 5 quick fixes documented in audit 04 — collectively under 1 hour; eliminates all CRITICAL and HIGH crash paths.
+
+---
+
 > Claude: Add a new dated entry here at the end of every session. Never skip this step.
