@@ -798,14 +798,15 @@ namespace CastleOverlayV2.Plot
                     var pts = s.Data.GetScatterPoints();
                     if (pts == null || pts.Count == 0) continue;
 
-                    var nearest = pts.OrderBy(p => Math.Abs(p.X - mouseCoord.X)).First();
                     int index = -1;
+                    double minDist = double.MaxValue;
                     for (int j = 0; j < pts.Count; j++)
                     {
-                        if (Math.Abs(pts[j].X - nearest.X) < 1e-12)
+                        double dist = Math.Abs(pts[j].X - mouseCoord.X);
+                        if (dist < minDist)
                         {
+                            minDist = dist;
                             index = j;
-                            break;
                         }
                     }
 
