@@ -112,6 +112,20 @@ namespace CastleOverlayV2.Services
                     Logger.Log("[DEBUG] Available CSV Headers: " + string.Join(", ", csv.HeaderRecord));
                     log?.WriteLine($"Header: {string.Join(", ", csv.HeaderRecord)}");
 
+                    // CL2: Required column guard — Power-Out must be present for launch detection
+                    if (!csv.HeaderRecord.Contains("Power-Out", StringComparer.OrdinalIgnoreCase))
+                    {
+                        Logger.Log("[CsvLoader] Required column 'Power-Out' not found — aborting load.");
+                        log?.WriteLine("[CsvLoader] Required column 'Power-Out' not found.");
+                        log?.Close();
+                        MessageBox.Show(
+                            "This file is missing a required column: 'Power-Out'.\n\nIt may not be a valid Castle ESC log.",
+                            "Import Failed",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Warning);
+                        return null;
+                    }
+
                     csv.Read(); // skip flags row
                     log?.WriteLine("Skipped flags row.");
 
