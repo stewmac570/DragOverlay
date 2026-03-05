@@ -240,4 +240,25 @@ This is the permanent record of what happened each session. Claude appends an en
 
 ---
 
+### 2026-03-05 (entry 5)
+**Focus:** Deep PlotManager audit — risks, inefficiencies, ScottPlot v5 anti-patterns
+**Decisions:** Audit saved to `Docs/audit/03-plot-code-2026-03-05.md`; 17 findings catalogued
+**Completed:** Full line-by-line analysis of all ~999 lines of PlotManager.cs
+**Discovered:**
+- `FitToData()` calls `_plot.Refresh()` BEFORE `AutoScale()` — display never updates; order must be swapped (PM1)
+- Mouse hover does O(n log n) sort on every scatter on every pixel — ~81,000 comparisons per pixel with 6 runs loaded; should be a single linear or binary search (PM2, PM3)
+- `_plot.Refresh()` called on every `MouseMove` pixel — full re-render at mouse speed with no throttle; 60fps cap via `DateTime` guard would fix it (PM4)
+- G-Force points where `|Y| <= 0.01` are silently filtered — creates artificial gaps in the G-Force trace at every zero-crossing, which is valid data (PM5)
+- Y-axis switch expression has no default arm — `SwitchExpressionException` on any unknown channel (PM6, also audit C3)
+- Constructor calls `ReapplyAxisLocks()` before any axis exists — passes `null` to `LockedVertical` 10 times; only safe because `PlotRuns()` clears and rebuilds all rules before any render (PM7)
+- Axis locks applied twice per `PlotRuns()` call — `SetupAllAxes()` applies them, then `ReapplyAxisLocks()` removes and re-adds them moments later (PM8)
+- `GetChannelsWithRaw` allocates `ScaledYs` array identical to `RawYs` on every channel, always discarded at call site (`_`) — ~48 KB wasted per Castle run per replot (PM9)
+- `GetTimeRange` only checks `"RaceBox Speed"` channel — if speed has no valid points, the G-Force time range is also missed (PM10)
+- `GetTimeRange` called twice per `PlotRuns()` — once in `ApplyManualTimeTicks`, once explicitly (PM11)
+- `SetSpeedMode` only flips an enum, has no visible effect without subsequent `PlotAllRuns()` — already in pitfalls but root-cause confirmed (PM12)
+- Tick generation uses `pos += 0.05` float accumulation — correct approach is `minX + i * 0.05`; also generates 660 objects per replot (PM13)
+**Next:** Fix in order: PM6 (2 min), PM1 (1 min), PM5 (5 min), then PM2+PM3+PM4 (hover performance pass).
+
+---
+
 > Claude: Add a new dated entry here at the end of every session. Never skip this step.
