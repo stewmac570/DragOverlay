@@ -116,17 +116,17 @@ namespace CastleOverlayV2.Services
                 }
 
                 Logger.Log("[RaceBoxLoader] Parsing telemetry timestamps...");
-                DateTime baseTime = DateTime.Parse(telemetryRows[0][timeIndex]);
+                DateTime baseTime = DateTime.Parse(telemetryRows[0][timeIndex], CultureInfo.InvariantCulture);
 
                 for (int i = 0; i < telemetryRows.Count; i++)
                 {
                     var row = telemetryRows[i];
 
-                    DateTime currentTime = DateTime.Parse(row[timeIndex]);
+                    DateTime currentTime = DateTime.Parse(row[timeIndex], CultureInfo.InvariantCulture);
                     TimeSpan offset = currentTime - baseTime;
 
-                    double speedMps = double.TryParse(row[speedIndex], out var s) ? s : 0.0;
-                    double gForceX = double.TryParse(row[gForceXIndex], out var g) ? g : 0.0;
+                    double speedMps = double.TryParse(row[speedIndex], NumberStyles.Any, CultureInfo.InvariantCulture, out var s) ? s : 0.0;
+                    double gForceX = double.TryParse(row[gForceXIndex], NumberStyles.Any, CultureInfo.InvariantCulture, out var g) ? g : 0.0;
                     int runIndex = int.TryParse(row[runColIndex], out var r) ? r : -1;
                     int record = int.TryParse(row[0], out var rec) ? rec : -1;
 
@@ -275,7 +275,7 @@ namespace CastleOverlayV2.Services
                 {
                     var times = timesRaw.Split(';');
                     var parsed = times
-                        .Select(t => double.TryParse(t, out var val) ? val : 0)
+                        .Select(t => double.TryParse(t, NumberStyles.Any, CultureInfo.InvariantCulture, out var val) ? val : 0)
                         .ToList();
 
                     bool allNonZero = parsed.All(val => val > 0);

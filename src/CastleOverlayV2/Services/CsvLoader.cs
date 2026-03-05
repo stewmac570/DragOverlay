@@ -80,19 +80,19 @@ namespace CastleOverlayV2.Services
                         {
                             if (double.TryParse(
                                 meta.Split(':').Last().Replace("ms", "", StringComparison.OrdinalIgnoreCase).Trim(),
-                                out double v)) cal.MinMs = v;
+                                NumberStyles.Any, CultureInfo.InvariantCulture, out double v)) cal.MinMs = v;
                         }
                         else if (meta.Contains("Neutral:", StringComparison.OrdinalIgnoreCase))
                         {
                             if (double.TryParse(
                                 meta.Split(':').Last().Replace("ms", "", StringComparison.OrdinalIgnoreCase).Trim(),
-                                out double v)) cal.NeutralMs = v;
+                                NumberStyles.Any, CultureInfo.InvariantCulture, out double v)) cal.NeutralMs = v;
                         }
                         else if (meta.Contains("Full Forward:", StringComparison.OrdinalIgnoreCase))
                         {
                             if (double.TryParse(
                                 meta.Split(':').Last().Replace("ms", "", StringComparison.OrdinalIgnoreCase).Trim(),
-                                out double v)) cal.MaxMs = v;
+                                NumberStyles.Any, CultureInfo.InvariantCulture, out double v)) cal.MaxMs = v;
                         }
                     }
                     else
@@ -132,7 +132,7 @@ namespace CastleOverlayV2.Services
                         if (!string.IsNullOrWhiteSpace(rawPowerOut))
                         {
                             rawPowerOut = rawPowerOut.Replace("b", "").Replace("%", "").Trim();
-                            double.TryParse(rawPowerOut, out powerOut);
+                            double.TryParse(rawPowerOut, NumberStyles.Any, CultureInfo.InvariantCulture, out powerOut);
                         }
 
                         if (trimForDrag)
@@ -156,7 +156,7 @@ namespace CastleOverlayV2.Services
                             string raw = csv.GetField<string>(col);
                             if (string.IsNullOrWhiteSpace(raw)) return 0.0;
                             raw = raw.Replace("b", "").Replace("%", "").Trim();
-                            return double.TryParse(raw, out double result) ? result : 0.0;
+                            return double.TryParse(raw, NumberStyles.Any, CultureInfo.InvariantCulture, out double result) ? result : 0.0;
                         }
 
                         double throttleMs = GetDouble("Throttle");
