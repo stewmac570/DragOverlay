@@ -261,4 +261,22 @@ This is the permanent record of what happened each session. Claude appends an en
 
 ---
 
+### 2026-03-05 (entry 6)
+**Focus:** CSV loading failure map — every malformed/missing/empty input traced through CsvLoader and RaceBoxLoader
+**Decisions:** Audit saved to `Docs/audit/05-csv-loading-2026-03-05.md`; 20 findings, input scenario matrix included
+**Completed:** Full failure-path mapping for both loaders; cross-cutting issues documented
+**Discovered:**
+- Empty Castle CSV: `csv.Read()` returns false → `csv.ReadHeader()` throws CsvHelperException — handled by Castle callers (they have try/catch); NOT handled by RaceBox callers
+- Missing "Power-Out" column: entire Castle file loads as empty DataPoints with NO user notification (silent empty result — one of the worst UX outcomes in the codebase)
+- `CsvConfiguration(CultureInfo.InvariantCulture)` is misleading — it has NO effect on `GetField<string>` calls; all `double.TryParse` in `GetDouble()` still use ambient locale → all numeric channels = 0 on European machines
+- `int.Parse(allRows[7][1])` in `LoadHeaderOnly` L231 — uses `int.Parse` not `TryParse`, even though `LoadTelemetry` does the safe check with `TryParse` at L50 — inconsistency
+- `LoadTelemetry` `return null` for invalid file → LoadRaceBox1/3 crash; `return points` (empty list) for missing telemetry → LoadRaceBox1/3 also crash; LoadRaceBox2 handles both correctly
+- `row[timeIndex]` access has no length guard — `IndexOutOfRangeException` if row shorter than timeIndex (unlikely in practice but unguarded)
+- Debug log `StreamWriter` not in `using` — file handle leaked if exception throws inside CSV loop
+- RaceBox file is read TWICE per load (LoadHeaderOnly + LoadTelemetry) — full file each time; only first ~10+runCount rows are needed for the header parse
+- `double.TryParse` for split times in `LoadHeaderOnly` also missing CultureInfo — silently fails to find complete run on non-EN locale
+**Next:** CultureInfo fixes are the highest-value lowest-effort change — 5 sites, ~20 min total; eliminates all locale-related silent failures. Then add user notification for empty-DataPoints result (CL2).
+
+---
+
 > Claude: Add a new dated entry here at the end of every session. Never skip this step.
