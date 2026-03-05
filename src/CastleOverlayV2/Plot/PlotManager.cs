@@ -348,6 +348,7 @@ namespace CastleOverlayV2.Plot
                         "MotorTemp" => motorTempAxis,
                         "MotorTiming" => motorTimingAxis,
                         "Acceleration" => accelAxis,
+                        _ => throttleAxis,
                     };
 
                     bool chOn = _channelVisibility.TryGetValue(channelLabel, out var v) ? v : true;
