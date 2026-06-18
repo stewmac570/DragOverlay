@@ -174,7 +174,8 @@ namespace CastleOverlayV2.Services
                         }
 
                         double throttleMs = GetDouble("Throttle");
-                        double throttlePct = MsToPercent(throttleMs, cal);
+                        double throttlePct = ThrottlePercent.FromMilliseconds(
+                            throttleMs, cal.MinMs, cal.NeutralMs, cal.MaxMs);
 
                         var point = new DataPoint
                         {
@@ -263,29 +264,6 @@ namespace CastleOverlayV2.Services
             public double MinMs;
             public double NeutralMs;
             public double MaxMs;
-        }
-
-        private static double MsToPercent(double ms, ThrottleCal cal)
-        {
-            double min = Math.Min(cal.MinMs, cal.MaxMs);
-            double max = Math.Max(cal.MinMs, cal.MaxMs);
-            double neu = cal.NeutralMs;
-
-            if (!(min < neu && neu < max))
-                return 0.0;
-
-            if (ms >= neu)
-            {
-                double span = Math.Max(1e-9, max - neu);
-                double pct = (ms - neu) / span * 100.0;
-                return Math.Min(100.0, Math.Max(0.0, pct));
-            }
-            else
-            {
-                double span = Math.Max(1e-9, neu - min);
-                double pct = -(neu - ms) / span * 100.0;
-                return Math.Max(-100.0, Math.Min(0.0, pct));
-            }
         }
 
         private static int DetectDragStartIndex(List<DataPoint> data)
