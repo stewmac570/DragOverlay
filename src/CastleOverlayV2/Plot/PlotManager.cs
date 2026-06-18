@@ -665,14 +665,12 @@ namespace CastleOverlayV2.Plot
                     continue;
 
                 var rbTyped = pts.OfType<ModelPoint>().ToList();
-                if (rbTyped.Count == 0) continue;
+                if (rbTyped.Count < 2) continue;
 
-                var good = rbTyped.Where(p => Math.Abs(p.Y) > 0.01).ToList();
-                if (good.Count < 2) continue;
-
+                // Fix #47: plot all samples, including legitimate near-zero G-Force values.
                 double shiftSec = run.TimeShiftMs / 1000.0;
-                double[] xs = good.Select(p => p.Time + shiftSec).ToArray();
-                double[] ys = good.Select(p => p.Y).ToArray();
+                double[] xs = rbTyped.Select(p => p.Time + shiftSec).ToArray();
+                double[] ys = rbTyped.Select(p => p.Y).ToArray();
 
                 var s = _plot.Plot.Add.Scatter(xs, ys);
                 s.Label = ch;
