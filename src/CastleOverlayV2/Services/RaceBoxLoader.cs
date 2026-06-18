@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Windows.Forms;
 
 namespace CastleOverlayV2.Services
 {
@@ -15,7 +14,7 @@ namespace CastleOverlayV2.Services
         /// <summary>
         /// Parses the telemetry section from a RaceBox CSV file and extracts all points for the selected run.
         /// </summary>
-        public List<RaceBoxPoint> LoadTelemetry(string filePath, int selectedRunIndex)
+        public LoadResult<List<RaceBoxPoint>> LoadTelemetry(string filePath, int selectedRunIndex)
         {
             var points = new List<RaceBoxPoint>();
 
@@ -53,9 +52,9 @@ namespace CastleOverlayV2.Services
                 if (!hasRunCount || !hasDisciplines)
                 {
                     Logger.Log("❌ File rejected: not a RaceBox CSV — missing run count or disciplines format.");
-                    MessageBox.Show("This file is not a valid RaceBox export.\n\nExpected at least 9 header rows and discipline labels.",
-                        "Invalid File", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    return null;
+                    return LoadResult<List<RaceBoxPoint>>.Error(
+                        "Invalid File",
+                        "This file is not a valid RaceBox export.\n\nExpected at least 9 header rows and discipline labels.");
                 }
 
               
@@ -75,8 +74,9 @@ namespace CastleOverlayV2.Services
                 if (telemetryHeaderRow >= allRows.Count)
                 {
                     Logger.Log("[RaceBoxLoader] Telemetry header row is out of bounds!");
-                    MessageBox.Show("Telemetry section missing or incomplete.", "RaceBox Import Failed");
-                    return points;
+                    return LoadResult<List<RaceBoxPoint>>.Error(
+                        "RaceBox Import Failed",
+                        "Telemetry section missing or incomplete.");
                 }
 
                 string[] headers = allRows[telemetryHeaderRow];
@@ -168,15 +168,14 @@ namespace CastleOverlayV2.Services
 
             Logger.Log($"[RaceBoxLoader] Trimmed points: {points.Count}");
 
-            return points;
-
+            return LoadResult<List<RaceBoxPoint>>.Success(points);
         }
 
 
         /// <summary>
         /// Loads only the header info: discipline, run count, and first complete run index.
         /// </summary>
-        public static RaceBoxData LoadHeaderOnly(string filePath)
+        public static LoadResult<RaceBoxData> LoadHeaderOnly(string filePath)
         {
             Logger.Log("[RaceBoxLoader] LoadHeaderOnly started...");
 
@@ -213,9 +212,9 @@ namespace CastleOverlayV2.Services
             {
                 Logger.Log("❌ File rejected: not a RaceBox CSV. First row = " +
                     (allRows.Count > 0 ? string.Join(",", allRows[0]) : "[empty]"));
-                MessageBox.Show("This file is not a valid RaceBox export.\n\nPlease select a real RaceBox CSV file.",
-                    "Invalid File", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return null;
+                return LoadResult<RaceBoxData>.Error(
+                    "Invalid File",
+                    "This file is not a valid RaceBox export.\n\nPlease select a real RaceBox CSV file.");
             }
 
 
@@ -301,17 +300,14 @@ namespace CastleOverlayV2.Services
 
             Logger.Log($"[RaceBox] Header loaded: {runCount} runs, Discipline: {discipline}, FirstComplete: {(firstCompleteRunIndex >= 0 ? firstCompleteRunIndex + 1 : "None")}");
 
-            return new RaceBoxData
+            return LoadResult<RaceBoxData>.Success(new RaceBoxData
             {
                 RunCount = runCount,
                 Discipline = discipline,
                 FirstCompleteRunIndex = firstCompleteRunIndex >= 0 ? firstCompleteRunIndex : null,
                 SplitTimes = splitTimes,
                 SplitLabels = splitLabels
-            };
-
-
-
+            });
         }
         private static int GetHeaderIndex(string[] headers, string name)
         {

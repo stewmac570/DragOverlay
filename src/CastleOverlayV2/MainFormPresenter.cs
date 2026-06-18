@@ -68,30 +68,41 @@ namespace CastleOverlayV2
             try
             {
                 var loader = new CsvLoader(_config);
-                var loaded = await Task.Run(() => loader.Load(path, trimForDrag: !_isSpeedRunMode));
+                var result = await Task.Run(() => loader.Load(path, trimForDrag: !_isSpeedRunMode));
 
-                if (loaded != null && loaded.DataPoints.Count > 0)
-                {
-                    _runs[slot] = loaded;
-                    Logger.Log($"Loaded Run {slot} - {Path.GetFileName(path)} - {loaded.DataPoints.Count} rows");
-
-                    _plot.SetRun(slot, loaded);
-                    _plot.SetRunVisibility(slot, true);
-
-                    PlotAllRuns();
-                    _plot.SetSpeedMode(_isSpeedRunMode);
-                    _plot.SetupAllAxes();
-                    _plot.RefreshPlot();
-
-                    _view.SetSlotLoadedUI(slot, $"Run {slot}: {Path.GetFileName(path)}", _plot.GetRunVisibility(slot));
-                }
-                else
+                if (!result.Ok)
                 {
                     _runs.Remove(slot);
-                    Logger.Log($"Run {slot} load failed or empty data.");
+                    Logger.Log($"Run {slot} load failed: {result.Message}");
+                    ShowResultMessage(result);
+                    return;
+                }
+
+                var loaded = result.Value!;
+                if (loaded.DataPoints.Count == 0)
+                {
+                    _runs.Remove(slot);
+                    Logger.Log($"Run {slot} load returned empty data.");
                     _view.ShowError("Import Failed",
                         "This file could not be loaded.\n\nIt may not be a valid Castle log or it contains no data.");
+                    return;
                 }
+
+                _runs[slot] = loaded;
+                Logger.Log($"Loaded Run {slot} - {Path.GetFileName(path)} - {loaded.DataPoints.Count} rows");
+
+                _plot.SetRun(slot, loaded);
+                _plot.SetRunVisibility(slot, true);
+
+                PlotAllRuns();
+                _plot.SetSpeedMode(_isSpeedRunMode);
+                _plot.SetupAllAxes();
+                _plot.RefreshPlot();
+
+                _view.SetSlotLoadedUI(slot, $"Run {slot}: {Path.GetFileName(path)}", _plot.GetRunVisibility(slot));
+
+                // Surface any non-fatal warning (e.g. "no drag pass detected").
+                if (result.HasMessage) ShowResultMessage(result);
             }
             catch (Exception ex)
             {
@@ -115,12 +126,15 @@ namespace CastleOverlayV2
 
             try
             {
-                var rbData = RaceBoxLoader.LoadHeaderOnly(path);
-                if (rbData == null)
+                var headerResult = RaceBoxLoader.LoadHeaderOnly(path);
+                if (!headerResult.Ok)
                 {
-                    Logger.Log($"[Presenter] RaceBox header load failed for slot {uiSlot}.");
+                    Logger.Log($"[Presenter] RaceBox header load failed for slot {uiSlot}: {headerResult.Message}");
+                    ShowResultMessage(headerResult);
                     return;
                 }
+
+                var rbData = headerResult.Value!;
 
                 if (rbData.FirstCompleteRunIndex == null)
                 {
@@ -129,9 +143,17 @@ namespace CastleOverlayV2
                 }
 
                 var loader = new RaceBoxLoader();
-                var points = await Task.Run(() => loader.LoadTelemetry(path, rbData.FirstCompleteRunIndex.Value));
+                var telemetryResult = await Task.Run(() => loader.LoadTelemetry(path, rbData.FirstCompleteRunIndex.Value));
 
-                if (points == null || points.Count == 0)
+                if (!telemetryResult.Ok)
+                {
+                    Logger.Log($"[Presenter] RaceBox telemetry load failed for slot {uiSlot}: {telemetryResult.Message}");
+                    ShowResultMessage(telemetryResult);
+                    return;
+                }
+
+                var points = telemetryResult.Value!;
+                if (points.Count == 0)
                 {
                     Logger.Log($"[Presenter] RaceBox telemetry empty for slot {uiSlot}.");
                     _view.ShowError("Telemetry Error",
@@ -322,6 +344,15 @@ namespace CastleOverlayV2
         // ============================================================
         // Helpers
         // ============================================================
+        private void ShowResultMessage<T>(LoadResult<T> result)
+        {
+            if (!result.HasMessage) return;
+            if (result.Severity == ResultSeverity.Info)
+                _view.ShowInfo(result.Title!, result.Message!);
+            else
+                _view.ShowError(result.Title!, result.Message!);
+        }
+
         private static string TruncateFileName(string filePath, int maxChars = 28)
         {
             string fileName = Path.GetFileName(filePath) ?? string.Empty;

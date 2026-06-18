@@ -14,7 +14,7 @@ namespace CastleOverlayV2.Services
             _configService = configService;
         }
 
-        public RunData Load(string filePath, bool trimForDrag = true)
+        public LoadResult<RunData> Load(string filePath, bool trimForDrag = true)
         {
             Logger.Log("CsvLoader.Load() entered.");
 
@@ -118,12 +118,9 @@ namespace CastleOverlayV2.Services
                         Logger.Log("[CsvLoader] Required column 'Power-Out' not found — aborting load.");
                         log?.WriteLine("[CsvLoader] Required column 'Power-Out' not found.");
                         log?.Close();
-                        MessageBox.Show(
-                            "This file is missing a required column: 'Power-Out'.\n\nIt may not be a valid Castle ESC log.",
+                        return LoadResult<RunData>.Error(
                             "Import Failed",
-                            MessageBoxButtons.OK,
-                            MessageBoxIcon.Warning);
-                        return null;
+                            "This file is missing a required column: 'Power-Out'.\n\nIt may not be a valid Castle ESC log.");
                     }
 
                     csv.Read(); // skip flags row
@@ -205,6 +202,8 @@ namespace CastleOverlayV2.Services
                 }
             }
 
+            bool noDragPass = false;
+
             if (trimForDrag)
             {
                 if (runData.DataPoints.Count > 100 &&
@@ -215,12 +214,7 @@ namespace CastleOverlayV2.Services
 
                     if (launchIndex == -1)
                     {
-                        MessageBox.Show(
-                            "No drag pass detected in this log.\nAuto-trim was skipped.",
-                            "DragOverlay",
-                            MessageBoxButtons.OK,
-                            MessageBoxIcon.Warning
-                        );
+                        noDragPass = true;
                     }
                     else
                     {
@@ -257,7 +251,10 @@ namespace CastleOverlayV2.Services
             log?.Close();
 
             Logger.Log($"CsvLoader.Load() exit — Rows: {runData.DataPoints.Count}");
-            return runData;
+
+            return noDragPass
+                ? LoadResult<RunData>.SuccessWithWarning(runData, "DragOverlay", "No drag pass detected in this log.\nAuto-trim was skipped.")
+                : LoadResult<RunData>.Success(runData);
         }
 
         private sealed class ThrottleCal
