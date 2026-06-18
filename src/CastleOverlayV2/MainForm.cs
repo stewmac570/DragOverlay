@@ -44,18 +44,6 @@ namespace CastleOverlayV2
         private const double SHIFT_NORMAL_MS = 100; // No modifier (only when you explicitly want ms mode)
         private const double SHIFT_COARSE_MS = 1000; // Shift
 
-        // Menus for the "..." buttons (Run 1–3)
-        private ContextMenuStrip _menuRun1;
-        private ContextMenuStrip _menuRun2;
-        private ContextMenuStrip _menuRun3;
-
-        // Menus for the "..." buttons (RaceBox 1–3)
-        private ContextMenuStrip _menuRB1;
-        private ContextMenuStrip _menuRB2;
-        private ContextMenuStrip _menuRB3;
-
-
-
         public MainForm(ConfigService configService)
         {
             // 0) Store config service (fallback just in case)
@@ -194,63 +182,6 @@ namespace CastleOverlayV2
         }
 
 
-        private void InitializeEllipsisMenus()
-        {
-            // Build RUN menus → wire to existing handlers
-            _menuRun1 = BuildMenu(miRun1Toggle_Click, miRun1Remove_Click, miRun1Reset_Click);
-            _menuRun2 = BuildMenu(miRun2Toggle_Click, miRun2Remove_Click, miRun2Reset_Click);
-            _menuRun3 = BuildMenu(miRun3Toggle_Click, miRun3Remove_Click, miRun3Reset_Click);
-
-            // Build RACEBOX menus → wire to existing handlers
-            _menuRB1 = BuildMenu(miRB1Toggle_Click, miRB1Remove_Click, miRB1Reset_Click);
-            _menuRB2 = BuildMenu(miRB2Toggle_Click, miRB2Remove_Click, miRB2Reset_Click);
-            _menuRB3 = BuildMenu(miRB3Toggle_Click, miRB3Remove_Click, miRB3Reset_Click);
-
-            // Wire the “…” buttons (adjust names here if your Designer uses different ones)
-            //WireMenuButton(btnMoreRun1, _menuRun1);
-            //WireMenuButton(btnMoreRun2, _menuRun2);
-           // WireMenuButton(btnMoreRun3, _menuRun3);
-
-            //WireMenuButton(btnMoreRB1, _menuRB1);
-            //WireMenuButton(btnMoreRB2, _menuRB2);
-            //WireMenuButton(btnMoreRB3, _menuRB3);
-        }
-
-        private static ContextMenuStrip BuildMenu(EventHandler onToggle, EventHandler onDelete, EventHandler onResetShift)
-        {
-            var cms = new ContextMenuStrip
-            {
-                ShowImageMargin = false,
-                AutoClose = true
-            };
-
-            // Texts match your existing intent: toggle visibility, delete run, reset SHIFT (not “view”)
-            cms.Items.Add(new ToolStripMenuItem("Hide/Show", null, onToggle));
-            cms.Items.Add(new ToolStripMenuItem("Delete", null, onDelete));
-            cms.Items.Add(new ToolStripSeparator());
-            cms.Items.Add(new ToolStripMenuItem("Reset Shift", null, onResetShift));
-
-            return cms;
-        }
-
-        private static void WireMenuButton(Button btn, ContextMenuStrip menu)
-        {
-            if (btn == null || btn.IsDisposed || menu == null) return;
-
-            // Rewire cleanly
-            btn.Click -= (s, e) => { };
-            btn.Click += (s, e) => ShowMenu(menu, btn);
-
-            // Nice-to-have: keyboard menu (Shift+F10) if user focuses the button
-            btn.ContextMenuStrip = menu;
-        }
-
-        private static void ShowMenu(ContextMenuStrip menu, Control anchor)
-        {
-            if (menu == null || anchor == null || anchor.IsDisposed) return;
-            menu.Show(anchor, new System.Drawing.Point(0, anchor.Height));
-        }
-
         /// <summary>
         /// ✅ Helper: Shorten a file name for button text
         /// </summary>
@@ -260,35 +191,6 @@ namespace CastleOverlayV2
             if (fileName.Length <= maxChars) return fileName;
             if (maxChars <= 3) return fileName.Substring(0, maxChars);
             return fileName.Substring(0, maxChars - 3) + "...";
-        }
-
-        /// <summary>
-        /// ✅ Original single-load for fallback testing
-        /// </summary>
-        private async void LoadCsvButton_Click(object sender, EventArgs e)
-        {
-            Logger.Log("LoadCsvButton_Click started");
-
-            using (var openFileDialog = new OpenFileDialog())
-            {
-                openFileDialog.Filter = "CSV files (*.csv)|*.csv";
-
-                if (openFileDialog.ShowDialog() == DialogResult.OK)
-                {
-                    Logger.Log("CSV file selected from dialog.");
-                    string filePath = openFileDialog.FileName;
-
-                    try
-                    {
-                        var loader = new CsvLoader(_configService);
-                        run1 = await Task.Run(() => loader.Load(filePath));
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.Log($"LoadCsvButton_Click ERROR: {ex.Message}");
-                    }
-                }
-            }
         }
 
         /// <summary>
