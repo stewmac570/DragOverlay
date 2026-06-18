@@ -219,9 +219,12 @@ namespace CastleOverlayV2.Plot
 
         public void SetInitialChannelVisibility(Dictionary<string, bool> visibilityMap)
         {
-            Logger.Log("🟢 SetInitialChannelVisibility():");
-            foreach (var kvp in visibilityMap)
-                Logger.Log($"   • {kvp.Key} = {(kvp.Value ? "Visible" : "Hidden")}");
+            if (Logger.IsEnabled)
+            {
+                Logger.Log("🟢 SetInitialChannelVisibility():");
+                foreach (var kvp in visibilityMap)
+                    Logger.Log($"   • {kvp.Key} = {(kvp.Value ? "Visible" : "Hidden")}");
+            }
             _channelVisibility = visibilityMap ?? new();
         }
 
@@ -879,6 +882,8 @@ namespace CastleOverlayV2.Plot
 
         public void LogVisibilityStates()
         {
+            if (!Logger.IsEnabled) return;
+
             Logger.Log("🔍 Current Run Visibility States:");
             foreach (var kvp in _runVisibility)
                 Logger.Log($"   Run Slot {kvp.Key}: {(kvp.Value ? "Visible" : "Hidden")}");

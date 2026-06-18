@@ -81,9 +81,12 @@ namespace CastleOverlayV2.Services
 
                 string[] headers = allRows[telemetryHeaderRow];
 
-                Logger.Log("[RaceBoxLoader] Columns detected:");
-                foreach (var h in headers)
-                    Logger.Log($"  Header: '{h}'");
+                if (Logger.IsEnabled)
+                {
+                    Logger.Log("[RaceBoxLoader] Columns detected:");
+                    foreach (var h in headers)
+                        Logger.Log($"  Header: '{h}'");
+                }
 
                 Logger.Log($"[RaceBoxLoader] Header row columns: {headers.Length}");
 

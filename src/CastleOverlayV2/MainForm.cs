@@ -713,13 +713,16 @@ namespace CastleOverlayV2
         /// </summary>
         private void PlotAllRuns()
         {
-            Logger.Log("PlotAllRuns called with runs:");
-            if (run1 != null) Logger.Log($"  Run 1: {run1.DataPoints.Count} points, shift={run1.TimeShiftMs} ms");
-            if (run2 != null) Logger.Log($"  Run 2: {run2.DataPoints.Count} points, shift={run2.TimeShiftMs} ms");
-            if (run3 != null) Logger.Log($"  Run 3: {run3.DataPoints.Count} points, shift={run3.TimeShiftMs} ms");
-            if (run4 != null) Logger.Log($"  Run 4: {run4.DataPoints.Count} points, shift={run4.TimeShiftMs} ms");
-            if (run5 != null) Logger.Log($"  Run 5: {run5.DataPoints.Count} points, shift={run5.TimeShiftMs} ms");
-            if (run6 != null) Logger.Log($"  Run 6: {run6.DataPoints.Count} points, shift={run6.TimeShiftMs} ms");
+            if (Logger.IsEnabled)
+            {
+                Logger.Log("PlotAllRuns called with runs:");
+                if (run1 != null) Logger.Log($"  Run 1: {run1.DataPoints.Count} points, shift={run1.TimeShiftMs} ms");
+                if (run2 != null) Logger.Log($"  Run 2: {run2.DataPoints.Count} points, shift={run2.TimeShiftMs} ms");
+                if (run3 != null) Logger.Log($"  Run 3: {run3.DataPoints.Count} points, shift={run3.TimeShiftMs} ms");
+                if (run4 != null) Logger.Log($"  Run 4: {run4.DataPoints.Count} points, shift={run4.TimeShiftMs} ms");
+                if (run5 != null) Logger.Log($"  Run 5: {run5.DataPoints.Count} points, shift={run5.TimeShiftMs} ms");
+                if (run6 != null) Logger.Log($"  Run 6: {run6.DataPoints.Count} points, shift={run6.TimeShiftMs} ms");
+            }
 
             var runsToPlot = new Dictionary<int, RunData>();
             if (run1 != null) runsToPlot[1] = run1;
@@ -732,9 +735,12 @@ namespace CastleOverlayV2
 
             var visibilityMap = _channelToggleBar.GetChannelStates();
 
-            Logger.Log("PlotAllRuns — Channel visibility map before applying:");
-            foreach (var kvp in visibilityMap)
-                Logger.Log($"  Channel: {kvp.Key}, Visible: {kvp.Value}");
+            if (Logger.IsEnabled)
+            {
+                Logger.Log("PlotAllRuns — Channel visibility map before applying:");
+                foreach (var kvp in visibilityMap)
+                    Logger.Log($"  Channel: {kvp.Key}, Visible: {kvp.Value}");
+            }
 
             _plotManager.SetInitialChannelVisibility(visibilityMap);
             _plotManager.PlotRuns(runsToPlot);

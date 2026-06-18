@@ -8,6 +8,10 @@ namespace CastleOverlayV2.Services
         private static bool _enabled = false;
         private static string _logPath = "";
 
+        // Gate hot-path interpolated calls with `if (Logger.IsEnabled) Logger.Log(...)`
+        // so the message string isn't built when logging is disabled.
+        public static bool IsEnabled => _enabled;
+
         public static void Init(bool enableLogging)
         {
             _enabled = enableLogging;

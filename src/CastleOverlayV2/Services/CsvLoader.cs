@@ -195,7 +195,8 @@ namespace CastleOverlayV2.Services
 
                         log?.WriteLine($"Row {rowIndex}: Throttle(ms)={throttleMs:F4}  Throttle(%)={throttlePct:F1}");
                         runData.DataPoints.Add(point);
-                        Logger.Log($"Row {rowIndex}: ADDED — Time={point.Time:F2} Acceleration={point.Acceleration}");
+                        if (Logger.IsEnabled)
+                            Logger.Log($"Row {rowIndex}: ADDED — Time={point.Time:F2} Acceleration={point.Acceleration}");
 
                         rowIndex++;
                     }
