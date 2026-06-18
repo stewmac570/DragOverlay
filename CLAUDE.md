@@ -93,9 +93,25 @@ publish/       output of `dotnet publish` (ignored by IDE, used by installer)
 Tests/         WorkingMWE (rollback reference only — no test project)
 ```
 
-## Workflow norms (from project docs)
+## Development workflow — MANDATORY
 
-- One feature per branch (`feature/<name>`), merge back to `main`.
+Claude Code must follow this process for every code or doc change in this repo. No exceptions.
+
+1. **Never commit directly to `main`.** `main` is the merge target, not a working branch.
+2. **Branch per change.** Create a new branch off `main` for every task. Naming:
+   - `feature/<short-name>` for new functionality
+   - `fix/<short-name>` for bug fixes
+   - `docs/<short-name>` for documentation-only changes
+   - `chore/<short-name>` for cleanup, deps, build, etc.
+3. **Push the branch and open a PR.** Use `gh pr create` against `main`. Include a summary and a test/verify plan in the body.
+4. **Do not merge.** Only the user (Stewart) merges. Wait for explicit approval — phrasing like "merge it", "go ahead and merge", or "ship it". A thumbs-up on the diff is not authority to merge.
+5. **Never force-push to `main`.** Never push directly to `main`. Never `git reset --hard` on `main` without explicit instruction.
+6. **One logical change per PR.** Don't bundle unrelated work. If scope grows mid-task, stop and ask before expanding.
+
+If a change has already been committed to `main` locally by mistake, stop and tell the user — do not push. Offer to move the commit onto a branch and reset `main` to `origin/main`.
+
+## Project conventions
+
 - Deliver full files, not partial snippets. Commit only stable, testable chunks.
-- Verify ScottPlot v5 / CsvHelper API against official docs — don't guess.
+- Verify ScottPlot v5 / CsvHelper API against official docs — don't guess; v4 and v5 are not compatible.
 - `Docs/audit/` contains a recent multi-pass audit (sessions 2026-03-05 / 06). When touching `PlotManager`, `CsvLoader`, or the RaceBox handlers, skim those files first — most known landmines are catalogued there.
