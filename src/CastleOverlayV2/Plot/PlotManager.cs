@@ -33,6 +33,9 @@ namespace CastleOverlayV2.Plot
         private readonly Dictionary<Scatter, double[]> _rawYMap = new();
         private readonly Dictionary<Scatter, int> _scatterSlotMap = new();
 
+        // Lazy cache of channel → scatters, rebuilt on demand after _scatters mutates.
+        private Dictionary<string, List<Scatter>>? _channelToScattersCache;
+
         // Visibility & storage
         private readonly Dictionary<int, bool> _runVisibility = new();
         private Dictionary<string, bool> _channelVisibility = new();
@@ -250,6 +253,8 @@ namespace CastleOverlayV2.Plot
                     _scatterSlotMap.Remove(s);
                     _rawYMap.Remove(s);
                 }
+                if (toRemove.Count > 0)
+                    _channelToScattersCache = null;
 
                 if (_splitLinesBySlot.TryGetValue(slot, out var lines))
                 {
@@ -286,6 +291,7 @@ namespace CastleOverlayV2.Plot
             _scatters.Clear();
             _rawYMap.Clear();
             _scatterSlotMap.Clear();
+            _channelToScattersCache = null;
             _plot.Plot.Axes.Rules.Clear();
             _splitLabelAxis = null;
 
@@ -736,6 +742,27 @@ namespace CastleOverlayV2.Plot
 
         // ---------------- Hover ----------------
 
+        // Channel-name → scatters lookup used by MouseMove. Rebuilt lazily after any
+        // mutation of _scatters (PlotRuns reset, SetRun slot-removal).
+        private Dictionary<string, List<Scatter>> GetChannelToScatters()
+        {
+            if (_channelToScattersCache is not null)
+                return _channelToScattersCache;
+
+            var cache = new Dictionary<string, List<Scatter>>();
+            foreach (var s in _scatters)
+            {
+                if (!cache.TryGetValue(s.Label, out var list))
+                {
+                    list = new List<Scatter>();
+                    cache[s.Label] = list;
+                }
+                list.Add(s);
+            }
+            _channelToScattersCache = cache;
+            return cache;
+        }
+
         private void FormsPlot_MouseMove(object sender, MouseEventArgs e)
         {
             if (_cursor == null) return;
@@ -745,9 +772,7 @@ namespace CastleOverlayV2.Plot
 
             var valuesAtCursor = new Dictionary<string, double?[]>();
 
-            var channels = _scatters
-                .GroupBy(s => s.Label)
-                .ToDictionary(g => g.Key, g => g.ToList());
+            var channels = GetChannelToScatters();
 
             foreach (var kvp in channels)
             {
