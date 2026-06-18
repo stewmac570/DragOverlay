@@ -95,6 +95,12 @@ It overlays up to 3 Castle logs, optionally syncs RaceBox GPS data, and plots ev
 4. Build in **Release mode**
 5. Run the generated `.exe` from `bin\Release\net8.0-windows\`
 
+### Run tests
+
+```powershell
+dotnet test Tests/CastleOverlayV2.Tests/CastleOverlayV2.Tests.csproj
+```
+
 ---
 
 ## 💾 Config System
