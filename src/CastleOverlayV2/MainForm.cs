@@ -839,21 +839,17 @@ namespace CastleOverlayV2
         }
 
         /// <summary>
-        /// ✅ Toggle changed — update plot and persist to config
+        /// Toggle changed — update plot visibility surgically and persist to config.
         /// </summary>
         private void OnChannelVisibilityChanged(string channelName, bool isVisible)
         {
             Logger.Log($"📎 Channel toggle clicked: {channelName} → {(isVisible ? "Show" : "Hide")}");
 
+            // Fix #48: SetChannelVisibility already updates per-scatter IsVisible and refreshes.
+            // The previous full PlotAllRuns() call here was redundant double work.
             _plotManager.SetChannelVisibility(channelName, isVisible);
-            _plotManager.RefreshPlot();
 
-            // ✅ Save updated state immediately
             _configService.SetChannelVisibility(channelName, isVisible);
-
-            // 🔄 Force full replot to ensure sync
-            Logger.Log("🔄 Forcing full replot after channel toggle");
-            PlotAllRuns();
         }
 
         /// <summary>
@@ -989,15 +985,10 @@ namespace CastleOverlayV2
             _isFourPoleMode = isFourPole;
             _plotManager.SetFourPoleMode(_isFourPoleMode);
 
-            var runsToPlot = new Dictionary<int, RunData>();
-            if (run1 != null) runsToPlot[1] = run1;
-            if (run2 != null) run2.TimeShiftMs += 0; // keep compiler happy if stripped warnings; no-op
-            if (run2 != null) runsToPlot[2] = run2;
-            if (run3 != null) runsToPlot[3] = run3;
+            // Fix #46: replot ALL runs (Castle + RaceBox), not just slots 1–3.
+            PlotAllRuns();
 
-            _plotManager.PlotRuns(runsToPlot);
-
-            _configService.SetRpmMode(isFourPole); // ✅ persist to config.json
+            _configService.SetRpmMode(isFourPole);
         }
 
         private void LogClick(string buttonName)
