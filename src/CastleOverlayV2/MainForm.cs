@@ -22,13 +22,9 @@ namespace CastleOverlayV2
         // ✅ Config (preserved as-is)
         private readonly ConfigService _configService;
 
-        // ✅ Multi-run slots
-        private RunData run1;
-        private RunData run2;
-        private RunData run3;
-        private RunData run4;
-        private RunData run5;
-        private RunData run6;
+        // Active runs by slot (Castle = slots 1–3, RaceBox = slots 4–6).
+        // Presence in the dict == has a loaded run; absence == empty slot.
+        private readonly Dictionary<int, RunData> _runs = new();
 
         // ✅ RaceBox slots (Stage 1 only uses header metadata)
         private RaceBoxData raceBox1;
@@ -207,13 +203,14 @@ namespace CastleOverlayV2
             try
             {
                 var loader = new CsvLoader(_configService);
-                run1 = await Task.Run(() => loader.Load(filePath, trimForDrag: (_isSpeedRunMode == false)));
+                var loaded = await Task.Run(() => loader.Load(filePath, trimForDrag: (_isSpeedRunMode == false)));
 
-                if (run1 != null && run1.DataPoints.Count > 0)
+                if (loaded != null && loaded.DataPoints.Count > 0)
                 {
-                    Logger.Log($"Loaded log: Run 1 - {Path.GetFileName(filePath)} - {run1.DataPoints.Count} rows");
+                    _runs[1] = loaded;
+                    Logger.Log($"Loaded log: Run 1 - {Path.GetFileName(filePath)} - {loaded.DataPoints.Count} rows");
 
-                    _plotManager.SetRun(1, run1);
+                    _plotManager.SetRun(1, loaded);
                     _plotManager.SetRunVisibility(1, true);
 
                     btnLoadRun1.Text = $"Run 1: {Path.GetFileName(filePath)}";
@@ -232,6 +229,7 @@ namespace CastleOverlayV2
                 }
                 else
                 {
+                    _runs.Remove(1);
                     Logger.Log("Run 1 load failed or empty data.");
                     MessageBox.Show("This file could not be loaded.\n\nIt may not be a valid Castle log or it contains no data.",
                         "Import Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
@@ -262,13 +260,14 @@ namespace CastleOverlayV2
             try
             {
                 var loader = new CsvLoader(_configService);
-                run2 = await Task.Run(() => loader.Load(filePath, trimForDrag: (_isSpeedRunMode == false)));
+                var loaded = await Task.Run(() => loader.Load(filePath, trimForDrag: (_isSpeedRunMode == false)));
 
-                if (run2 != null && run2.DataPoints.Count > 0)
+                if (loaded != null && loaded.DataPoints.Count > 0)
                 {
-                    Logger.Log($"Loaded log: Run 2 - {Path.GetFileName(filePath)} - {run2.DataPoints.Count} rows");
+                    _runs[2] = loaded;
+                    Logger.Log($"Loaded log: Run 2 - {Path.GetFileName(filePath)} - {loaded.DataPoints.Count} rows");
 
-                    _plotManager.SetRun(2, run2);
+                    _plotManager.SetRun(2, loaded);
                     _plotManager.SetRunVisibility(2, true);
 
                     btnLoadRun2.Text = $"Run 2: {Path.GetFileName(filePath)}";
@@ -287,6 +286,7 @@ namespace CastleOverlayV2
                 }
                 else
                 {
+                    _runs.Remove(2);
                     Logger.Log("Run 2 load failed or empty data.");
                     MessageBox.Show("This file could not be loaded.\n\nIt may not be a valid Castle log or it contains no data.",
                         "Import Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
@@ -317,13 +317,14 @@ namespace CastleOverlayV2
             try
             {
                 var loader = new CsvLoader(_configService);
-                run3 = await Task.Run(() => loader.Load(filePath, trimForDrag: (_isSpeedRunMode == false)));
+                var loaded = await Task.Run(() => loader.Load(filePath, trimForDrag: (_isSpeedRunMode == false)));
 
-                if (run3 != null && run3.DataPoints.Count > 0)
+                if (loaded != null && loaded.DataPoints.Count > 0)
                 {
-                    Logger.Log($"Loaded log: Run 3 - {Path.GetFileName(filePath)} - {run3.DataPoints.Count} rows");
+                    _runs[3] = loaded;
+                    Logger.Log($"Loaded log: Run 3 - {Path.GetFileName(filePath)} - {loaded.DataPoints.Count} rows");
 
-                    _plotManager.SetRun(3, run3);
+                    _plotManager.SetRun(3, loaded);
                     _plotManager.SetRunVisibility(3, true);
 
                     btnLoadRun3.Text = $"Run 3: {Path.GetFileName(filePath)}";
@@ -342,6 +343,7 @@ namespace CastleOverlayV2
                 }
                 else
                 {
+                    _runs.Remove(3);
                     Logger.Log("Run 3 load failed or empty data.");
                     MessageBox.Show("This file could not be loaded.\n\nIt may not be a valid Castle log or it contains no data.",
                         "Import Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
@@ -437,7 +439,7 @@ namespace CastleOverlayV2
                 Logger.Log($"✅ Run4 channels: {string.Join(", ", run.Data.Keys)}");
 
                 // === ✅ Assign RaceBox 1 into slot 4 (paired with Castle Run1) ===
-                run4 = run;
+                _runs[4] = run;
                 _plotManager.SetRun(4, run); // ❗ Critical for visibility logic
                 _plotManager.SetRunVisibility(4, true);
 
@@ -550,7 +552,7 @@ namespace CastleOverlayV2
             run.Data["RaceBox G-Force X"] = points.Select(p => new DataPoint { Time = p.Time.TotalSeconds, Y = p.GForceX }).ToList();
             run.DataPoints = points.Select(p => new DataPoint { Time = p.Time.TotalSeconds }).ToList();
 
-            run5 = run;
+            _runs[5] = run;
 
             // ✅ Register run + enable buttons
             _plotManager.SetRun(5, run);
@@ -634,7 +636,7 @@ namespace CastleOverlayV2
                 run.Data["RaceBox G-Force X"] = points.Select(p => new DataPoint { Time = p.Time.TotalSeconds, Y = p.GForceX }).ToList();
                 run.DataPoints = points.Select(p => new DataPoint { Time = p.Time.TotalSeconds }).ToList();
 
-                run6 = run;
+                _runs[6] = run;
 
                 // ✅ Register run + enable buttons
                 _plotManager.SetRun(6, run);
@@ -716,22 +718,9 @@ namespace CastleOverlayV2
             if (Logger.IsEnabled)
             {
                 Logger.Log("PlotAllRuns called with runs:");
-                if (run1 != null) Logger.Log($"  Run 1: {run1.DataPoints.Count} points, shift={run1.TimeShiftMs} ms");
-                if (run2 != null) Logger.Log($"  Run 2: {run2.DataPoints.Count} points, shift={run2.TimeShiftMs} ms");
-                if (run3 != null) Logger.Log($"  Run 3: {run3.DataPoints.Count} points, shift={run3.TimeShiftMs} ms");
-                if (run4 != null) Logger.Log($"  Run 4: {run4.DataPoints.Count} points, shift={run4.TimeShiftMs} ms");
-                if (run5 != null) Logger.Log($"  Run 5: {run5.DataPoints.Count} points, shift={run5.TimeShiftMs} ms");
-                if (run6 != null) Logger.Log($"  Run 6: {run6.DataPoints.Count} points, shift={run6.TimeShiftMs} ms");
+                foreach (var (slot, run) in _runs)
+                    Logger.Log($"  Run {slot}: {run.DataPoints.Count} points, shift={run.TimeShiftMs} ms");
             }
-
-            var runsToPlot = new Dictionary<int, RunData>();
-            if (run1 != null) runsToPlot[1] = run1;
-            if (run2 != null) runsToPlot[2] = run2;
-            if (run3 != null) runsToPlot[3] = run3;
-            if (run4 != null) runsToPlot[4] = run4;
-            if (run5 != null) runsToPlot[5] = run5;
-            if (run6 != null) run6.IsRaceBox = true; // keep flag; slot 6 belongs to racebox
-            if (run6 != null) runsToPlot[6] = run6;
 
             var visibilityMap = _channelToggleBar.GetChannelStates();
 
@@ -743,7 +732,7 @@ namespace CastleOverlayV2
             }
 
             _plotManager.SetInitialChannelVisibility(visibilityMap);
-            _plotManager.PlotRuns(runsToPlot);
+            _plotManager.PlotRuns(new Dictionary<int, RunData>(_runs));
         }
 
         /// <summary>
@@ -810,82 +799,66 @@ namespace CastleOverlayV2
 
         private void DeleteRun(int slot)
         {
-            // Reset buttons and clear local run reference
+            _runs.Remove(slot);
+
+            // Per-slot button cleanup. Buttons are Designer-named so the switch stays.
             switch (slot)
             {
                 case 1:
-                    run1 = null;
                     btnLoadRun1.Enabled = true;
                     btnToggleRun1.Enabled = false;
                     btnDeleteRun1.Enabled = false;
                     btnToggleRun1.Text = "Hide";
-                    btnLoadRun1.Text = "Load Run 1"; // 🔄 reset label
+                    btnLoadRun1.Text = "Load Run 1";
                     SetShiftButtonsEnabled(1, false, isRaceBox: false);
                     break;
                 case 2:
-                    run2 = null;
                     btnLoadRun2.Enabled = true;
                     btnToggleRun2.Enabled = false;
                     btnDeleteRun2.Enabled = false;
                     btnToggleRun2.Text = "Hide";
-                    btnLoadRun2.Text = "Load Run 2"; // 🔄 reset label
+                    btnLoadRun2.Text = "Load Run 2";
                     SetShiftButtonsEnabled(2, false, isRaceBox: false);
                     break;
                 case 3:
-                    run3 = null;
                     btnLoadRun3.Enabled = true;
                     btnToggleRun3.Enabled = false;
                     btnDeleteRun3.Enabled = false;
                     btnToggleRun3.Text = "Hide";
-                    btnLoadRun3.Text = "Load Run 3"; // 🔄 reset label
+                    btnLoadRun3.Text = "Load Run 3";
                     SetShiftButtonsEnabled(3, false, isRaceBox: false);
                     break;
                 case 4:
-                    run4 = null;
                     btnLoadRaceBox1.Enabled = true;
                     btnToggleRaceBox1.Enabled = false;
                     btnDeleteRaceBox1.Enabled = false;
                     btnToggleRaceBox1.Text = "Hide";
-                    btnLoadRaceBox1.Text = "Load RaceBox 1"; // 🔄 reset label
+                    btnLoadRaceBox1.Text = "Load RaceBox 1";
                     SetShiftButtonsEnabled(1, false, isRaceBox: true);
                     break;
                 case 5:
-                    run5 = null;
                     btnLoadRaceBox2.Enabled = true;
                     btnToggleRaceBox2.Enabled = false;
                     btnDeleteRaceBox2.Enabled = false;
                     btnToggleRaceBox2.Text = "Hide";
-                    btnLoadRaceBox2.Text = "Load RaceBox 2"; // 🔄 reset label
+                    btnLoadRaceBox2.Text = "Load RaceBox 2";
                     SetShiftButtonsEnabled(2, false, isRaceBox: true);
                     break;
                 case 6:
-                    run6 = null;
                     btnLoadRaceBox3.Enabled = true;
                     btnToggleRaceBox3.Enabled = false;
                     btnDeleteRaceBox3.Enabled = false;
                     btnToggleRaceBox3.Text = "Hide";
-                    btnLoadRaceBox3.Text = "Load RaceBox 3"; // 🔄 reset label
+                    btnLoadRaceBox3.Text = "Load RaceBox 3";
                     SetShiftButtonsEnabled(3, false, isRaceBox: true);
                     break;
             }
 
-            // Force hide this run if it's still considered visible
-            bool isVisibleNow = _plotManager.GetRunVisibility(slot);
-            if (isVisibleNow)
+            // Force hide the run on the plot if PlotManager still has it visible.
+            if (_plotManager.GetRunVisibility(slot))
                 _plotManager.ToggleRunVisibility(slot);
 
-            // Rebuild run dictionary (1–6)
-            var activeRuns = new Dictionary<int, RunData>();
-            if (run1 != null) activeRuns[1] = run1;
-            if (run2 != null) activeRuns[2] = run2;
-            if (run3 != null) activeRuns[3] = run3;
-            if (run4 != null) activeRuns[4] = run4;
-            if (run5 != null) activeRuns[5] = run5;
-            if (run6 != null) activeRuns[6] = run6;
-
-            _plotManager.PlotRuns(activeRuns);
-
-
+            _plotManager.PlotRuns(new Dictionary<int, RunData>(_runs));
         }
 
         private void OnRpmModeChanged(bool isFourPole)
@@ -953,17 +926,17 @@ namespace CastleOverlayV2
             return stepSec * 1000.0;
         }
 
-        private void ApplyShift(ref RunData run, int slot, double deltaMs)
+        private void ApplyShift(int slot, double deltaMs)
         {
-            if (run == null) return;
+            if (!_runs.TryGetValue(slot, out var run)) return;
             run.TimeShiftMs += deltaMs;
             Logger.Log($"⏱️ Run {slot} shift {(deltaMs >= 0 ? "+" : "")}{deltaMs} ms → total {run.TimeShiftMs} ms");
             PlotAllRuns();
         }
 
-        private void ResetShift(ref RunData run, int slot)
+        private void ResetShift(int slot)
         {
-            if (run == null) return;
+            if (!_runs.TryGetValue(slot, out var run)) return;
             run.TimeShiftMs = 0;
             Logger.Log($"⏱️ Run {slot} shift reset → 0 ms");
             PlotAllRuns();
@@ -1016,34 +989,34 @@ namespace CastleOverlayV2
         }
 
         // --- Run 1 (Castle slot 1)
-        private void ShiftLeftRun1_Click(object sender, EventArgs e) => ApplyShift(ref run1, 1, -GetClickDeltaMs(1));
-        private void ShiftRightRun1_Click(object sender, EventArgs e) => ApplyShift(ref run1, 1, +GetClickDeltaMs(1));
-        private void ShiftResetRun1_Click(object sender, EventArgs e) => ResetShift(ref run1, 1);
+        private void ShiftLeftRun1_Click(object sender, EventArgs e) => ApplyShift(1, -GetClickDeltaMs(1));
+        private void ShiftRightRun1_Click(object sender, EventArgs e) => ApplyShift(1, +GetClickDeltaMs(1));
+        private void ShiftResetRun1_Click(object sender, EventArgs e) => ResetShift(1);
 
         // --- Run 2 (Castle slot 2)
-        private void ShiftLeftRun2_Click(object sender, EventArgs e) => ApplyShift(ref run2, 2, -GetClickDeltaMs(2));
-        private void ShiftRightRun2_Click(object sender, EventArgs e) => ApplyShift(ref run2, 2, +GetClickDeltaMs(2));
-        private void ShiftResetRun2_Click(object sender, EventArgs e) => ResetShift(ref run2, 2);
+        private void ShiftLeftRun2_Click(object sender, EventArgs e) => ApplyShift(2, -GetClickDeltaMs(2));
+        private void ShiftRightRun2_Click(object sender, EventArgs e) => ApplyShift(2, +GetClickDeltaMs(2));
+        private void ShiftResetRun2_Click(object sender, EventArgs e) => ResetShift(2);
 
         // --- Run 3 (Castle slot 3)
-        private void ShiftLeftRun3_Click(object sender, EventArgs e) => ApplyShift(ref run3, 3, -GetClickDeltaMs(3));
-        private void ShiftRightRun3_Click(object sender, EventArgs e) => ApplyShift(ref run3, 3, +GetClickDeltaMs(3));
-        private void ShiftResetRun3_Click(object sender, EventArgs e) => ResetShift(ref run3, 3);
+        private void ShiftLeftRun3_Click(object sender, EventArgs e) => ApplyShift(3, -GetClickDeltaMs(3));
+        private void ShiftRightRun3_Click(object sender, EventArgs e) => ApplyShift(3, +GetClickDeltaMs(3));
+        private void ShiftResetRun3_Click(object sender, EventArgs e) => ResetShift(3);
 
         // --- RaceBox 1 (slot 4, UI group 1)
-        private void ShiftLeftRB1_Click(object sender, EventArgs e) => ApplyShift(ref run4, 4, -GetClickDeltaMs(4));
-        private void ShiftRightRB1_Click(object sender, EventArgs e) => ApplyShift(ref run4, 4, +GetClickDeltaMs(4));
-        private void ShiftResetRB1_Click(object sender, EventArgs e) => ResetShift(ref run4, 4);
+        private void ShiftLeftRB1_Click(object sender, EventArgs e) => ApplyShift(4, -GetClickDeltaMs(4));
+        private void ShiftRightRB1_Click(object sender, EventArgs e) => ApplyShift(4, +GetClickDeltaMs(4));
+        private void ShiftResetRB1_Click(object sender, EventArgs e) => ResetShift(4);
 
         // --- RaceBox 2 (slot 5, UI group 2)
-        private void ShiftLeftRB2_Click(object sender, EventArgs e) => ApplyShift(ref run5, 5, -GetClickDeltaMs(5));
-        private void ShiftRightRB2_Click(object sender, EventArgs e) => ApplyShift(ref run5, 5, +GetClickDeltaMs(5));
-        private void ShiftResetRB2_Click(object sender, EventArgs e) => ResetShift(ref run5, 5);
+        private void ShiftLeftRB2_Click(object sender, EventArgs e) => ApplyShift(5, -GetClickDeltaMs(5));
+        private void ShiftRightRB2_Click(object sender, EventArgs e) => ApplyShift(5, +GetClickDeltaMs(5));
+        private void ShiftResetRB2_Click(object sender, EventArgs e) => ResetShift(5);
 
         // --- RaceBox 3 (slot 6, UI group 3)
-        private void ShiftLeftRB3_Click(object sender, EventArgs e) => ApplyShift(ref run6, 6, -GetClickDeltaMs(6));
-        private void ShiftRightRB3_Click(object sender, EventArgs e) => ApplyShift(ref run6, 6, +GetClickDeltaMs(6));
-        private void ShiftResetRB3_Click(object sender, EventArgs e) => ResetShift(ref run6, 6);
+        private void ShiftLeftRB3_Click(object sender, EventArgs e) => ApplyShift(6, -GetClickDeltaMs(6));
+        private void ShiftRightRB3_Click(object sender, EventArgs e) => ApplyShift(6, +GetClickDeltaMs(6));
+        private void ShiftResetRB3_Click(object sender, EventArgs e) => ResetShift(6);
 
         // Optional helper if you want to call “move one sample” directly somewhere else:
         private void ShiftRunOneSample(int slot, int direction) // direction: -1 left, +1 right
@@ -1113,11 +1086,7 @@ namespace CastleOverlayV2
         private readonly Color _rtActiveBg = Color.FromArgb(225, 235, 255);   // light tint behind active
         private readonly Color _rtBaseBg = Color.FromArgb(235, 235, 235);   // pill base background
 
-        private bool IsAnyRunLoaded()
-        {
-            return run1 != null || run2 != null || run3 != null ||
-                   run4 != null || run5 != null || run6 != null;
-        }
+        private bool IsAnyRunLoaded() => _runs.Count > 0;
 
         /// <summary>Position/paint the pill and (re)apply layout.</summary>
         private void SyncRunTypeUI()
