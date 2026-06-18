@@ -505,57 +505,43 @@ namespace CastleOverlayV2.Plot
                 HideAxis(raceBoxGxAxis);
             }
 
-            // 2) Wipe existing LockedVertical rules that target our known axes
-            var knownAxes = new HashSet<IAxis>(new[]
-            {
-        throttleAxis, rpmAxis, voltageAxis, currentAxis, rippleAxis, powerAxis,
-        escTempAxis, motorTempAxis, motorTimingAxis, accelAxis,
-        raceBoxSpeedAxis, raceBoxGxAxis
-    }.Where(a => a is not null)!);
-
-            var rulesToRemove = new List<IAxisRule>();
-            foreach (var rule in _plot.Plot.Axes.Rules)
-                if (rule is LockedVertical lv && knownAxes.Contains(lv.YAxis))
-                    rulesToRemove.Add(rule);
-            foreach (var r in rulesToRemove)
-                _plot.Plot.Axes.Rules.Remove(r);
-
-            // 3) Re-apply fresh locks (RaceBox fixed, Castle via active profile)
-            _plot.Plot.Axes.Rules.Add(new LockedVertical(raceBoxSpeedAxis, 0, 110));
-            _plot.Plot.Axes.Rules.Add(new LockedVertical(raceBoxGxAxis, -5, 7));
-
-            ApplyAxisLocksForActiveProfile(); // this applies locks for throttle/rpm/etc (Castle)
-
             // NOTE: Do NOT call AddLeftAxis/AddRightAxis again after this point.
+            // Lock add/remove lives in ReapplyAxisLocks (single source of truth).
         }
 
 
         private void ReapplyAxisLocks()
         {
-            // Keep RaceBox and split-label locks; rebuild Castle axis locks
-            var keepAxes = new HashSet<IAxis>(new[] { raceBoxSpeedAxis, raceBoxGxAxis, _splitLabelAxis }.Where(a => a is not null)!);
+            // Single source of truth for LockedVertical rules. Wipes locks for every
+            // known axis, then re-adds RaceBox (fixed), split-label (fixed), and
+            // Castle (via active profile).
+            var knownAxes = new HashSet<IAxis>(new[]
+            {
+                throttleAxis, rpmAxis, voltageAxis, currentAxis, rippleAxis, powerAxis,
+                escTempAxis, motorTempAxis, motorTimingAxis, accelAxis,
+                raceBoxSpeedAxis, raceBoxGxAxis, _splitLabelAxis
+            }.Where(a => a is not null)!);
 
             var toRemove = new List<IAxisRule>();
-
             foreach (var rule in _plot.Plot.Axes.Rules)
-            {
-                if (rule is LockedVertical lv)
-                {
-                    // If this lock is NOT one of the preserved axes, mark for removal
-                    if (!keepAxes.Contains(lv.YAxis))
-                        toRemove.Add(rule);
-                }
-            }
-
+                if (rule is LockedVertical lv && knownAxes.Contains(lv.YAxis))
+                    toRemove.Add(rule);
             foreach (var r in toRemove)
                 _plot.Plot.Axes.Rules.Remove(r);
+
+            if (raceBoxSpeedAxis is not null)
+                _plot.Plot.Axes.Rules.Add(new LockedVertical(raceBoxSpeedAxis, 0, 110));
+            if (raceBoxGxAxis is not null)
+                _plot.Plot.Axes.Rules.Add(new LockedVertical(raceBoxGxAxis, -5, 7));
+            if (_splitLabelAxis is not null)
+                _plot.Plot.Axes.Rules.Add(new LockedVertical(_splitLabelAxis, 0.0, 1.0));
 
             ApplyAxisLocksForActiveProfile();
         }
 
         private void ApplyAxisLocksForActiveProfile()
         {
-            // Select the active scale profile
+            // Caller (ReapplyAxisLocks) has already cleared Castle locks. Just add.
             var dict = _activeProfile == ScaleProfile.SpeedRun ? _speedScales : _dragScales;
 
             bool TryGetScale(string key, out (double Min, double Max) range)
@@ -565,24 +551,6 @@ namespace CastleOverlayV2.Plot
                 range = default;
                 return false;
             }
-
-            // --- 1) Remove any existing LockedVertical rules for CASTLE axes ---
-            var castleAxes = new HashSet<IAxis>(new[]
-            {
-        throttleAxis, rpmAxis, voltageAxis, currentAxis, rippleAxis, powerAxis,
-        escTempAxis, motorTempAxis, motorTimingAxis, accelAxis
-    }.Where(a => a is not null)!);
-
-            var toRemove = new List<IAxisRule>();
-            foreach (var rule in _plot.Plot.Axes.Rules)
-            {
-                if (rule is LockedVertical lv && castleAxes.Contains(lv.YAxis))
-                    toRemove.Add(rule);
-            }
-            foreach (var r in toRemove)
-                _plot.Plot.Axes.Rules.Remove(r);
-
-            // --- 2) Reapply fresh Y-locks for all CASTLE axes (X-only zoom) ---
 
             // Throttle
             if (!TryGetScale("Throttle %", out var thr)) thr = (-100, 120);
@@ -648,8 +616,8 @@ namespace CastleOverlayV2.Plot
                 return;
 
             _splitLabelAxis = _plot.Plot.Axes.Right; // always exists
-            _plot.Plot.Axes.Rules.Add(new LockedVertical(_splitLabelAxis, 0.0, 1.0));
             HideAxis(_splitLabelAxis);
+            // Lock (0..1) is added by ReapplyAxisLocks now (single source of truth).
         }
 
         // ---------------- RaceBox ----------------
