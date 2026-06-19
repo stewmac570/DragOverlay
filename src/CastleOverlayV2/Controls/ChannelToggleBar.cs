@@ -24,6 +24,10 @@ namespace CastleOverlayV2.Controls
             AutoSize = true;
             AutoSizeMode = AutoSizeMode.GrowAndShrink;
 
+            // Phase 1 dark theme — surface.panel + text.primary.
+            BackColor = Color.FromArgb(0x16, 0x1B, 0x23);
+            ForeColor = Color.FromArgb(0xE6, 0xE9, 0xEF);
+
             BuildLayout(channelNames, initialStates);
         }
 

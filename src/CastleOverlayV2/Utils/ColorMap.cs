@@ -2,30 +2,29 @@
 
 namespace CastleOverlayV2.Utils
 {
+    /// <summary>
+    /// Channel → trace color, dark-theme palette from <c>Docs/DragOverlay_UI_Spec.md</c> §5.
+    /// Channel hue is stable; focus state (handled in <see cref="Plot.PlotManager"/>) changes only opacity.
+    /// </summary>
     public static class ChannelColorMap
     {
         private static readonly Dictionary<string, ScottPlot.Color> ChannelColors = new()
         {
-            { "Voltage", new ScottPlot.Color(255, 0, 0) },         // #FF0000
-            { "Ripple", new ScottPlot.Color(128, 0, 128) },        // #800080
-            { "Current", new ScottPlot.Color(0, 128, 0) },         // #008000
-            { "PowerOut", new ScottPlot.Color(70, 130, 180) },     // #4682B4
-            { "MotorTemp", new ScottPlot.Color(147, 112, 219) },
-            { "RPM", new ScottPlot.Color(165, 42, 42) },           // #A52A2A
+            // Castle ESC channels
+            { "RPM", new ScottPlot.Color(0x4C, 0x9A, 0xED) },          // #4C9AED  blue
+            { "Throttle %", new ScottPlot.Color(0xEF, 0x9F, 0x27) },   // #EF9F27  amber
+            { "Current", new ScottPlot.Color(0x2B, 0xB4, 0x8A) },      // #2BB48A  teal
+            { "Voltage", new ScottPlot.Color(0xE0, 0x74, 0x4B) },      // #E0744B  coral
+            { "PowerOut", new ScottPlot.Color(0x7F, 0xB6, 0xF2) },     // #7FB6F2  light blue
+            { "Ripple", new ScottPlot.Color(0x97, 0xC4, 0x59) },       // #97C459  green
+            { "ESC Temp", new ScottPlot.Color(0xE2, 0x4B, 0x4A) },     // #E24B4A  red
+            { "MotorTemp", new ScottPlot.Color(0xBA, 0x75, 0x17) },    // #BA7517  deep amber
+            { "MotorTiming", new ScottPlot.Color(0xB4, 0xB2, 0xA9) },  // #B4B2A9  warm grey
+            { "Acceleration", new ScottPlot.Color(0xD8, 0x5A, 0x30) }, // #D85A30  dark coral
 
-            // Legacy Castle format (ms)
-            //{ "Throttle", new ScottPlot.Color(0, 0, 0) },          // #000000
-
-            // New percent-based channel
-            { "Throttle %", new ScottPlot.Color(0, 0, 0) },        // #000000
-
-            { "Acceleration", new ScottPlot.Color(65, 105, 225) }, // #4169E1
-            { "MotorTiming", new ScottPlot.Color(0, 0, 128) },     // #000080
-            { "ESC Temp", new ScottPlot.Color(255, 0, 250) },      // #FF00FA
-
-            // ✅ RaceBox channels
-            { "RaceBox Speed", new ScottPlot.Color(255, 140, 0) },   // #FF8C00
-            { "RaceBox G-Force X", new ScottPlot.Color(0, 206, 209) } // #00CED1
+            // RaceBox GPS channels
+            { "RaceBox Speed", new ScottPlot.Color(0xD4, 0x53, 0x7E) },     // #D4537E  pink
+            { "RaceBox G-Force X", new ScottPlot.Color(0x9F, 0x8F, 0xE0) }, // #9F8FE0  light purple
         };
 
         public static ScottPlot.Color GetColor(string channelName)
@@ -33,8 +32,8 @@ namespace CastleOverlayV2.Utils
             if (ChannelColors.TryGetValue(channelName, out var color))
                 return color;
 
-            // Fallback: neutral gray instead of exception
-            return new ScottPlot.Color(128, 128, 128);
+            // Fallback for any unmapped channel: text.secondary grey.
+            return new ScottPlot.Color(0x9A, 0xA3, 0xB2);
         }
     }
 }

@@ -36,6 +36,20 @@ namespace CastleOverlayV2.Plot
         // Lazy cache of channel → scatters, rebuilt on demand after _scatters mutates.
         private Dictionary<string, List<Scatter>>? _channelToScattersCache;
 
+        // Phase 1 focus model: one channel is "focused" (full opacity, owns the visible left Y axis);
+        // all other visible channels render as dim context traces. Focus is hardcoded to RPM
+        // for now — Phase 3 (#74) makes it interactive.
+        private string _focusedChannel = "RPM";
+
+        // Dark theme tokens (from Docs/DragOverlay_UI_Spec.md §5).
+        private static readonly ScottPlot.Color ThemePlotBg = new(0x0E, 0x12, 0x18);   // surface.plot
+        private static readonly ScottPlot.Color ThemeWindow = new(0x13, 0x17, 0x1E);   // surface.window
+        private static readonly ScottPlot.Color ThemeText = new(0xE6, 0xE9, 0xEF);     // text.primary
+        private static readonly ScottPlot.Color ThemeTextDim = new(0x9A, 0xA3, 0xB2);  // text.secondary
+        private static readonly ScottPlot.Color ThemeGrid = new(0xFF, 0xFF, 0xFF, 13); // border.grid (~0.05 alpha)
+        private static readonly ScottPlot.Color ThemeSplit = new(0x7C, 0x5A, 0x2E);    // split markers (66 / 132 ft)
+        private const byte ContextAlpha = 71; // 0.28 × 255
+
         // Visibility & storage
         private readonly Dictionary<int, bool> _runVisibility = new();
         private Dictionary<string, bool> _channelVisibility = new();
@@ -134,6 +148,10 @@ namespace CastleOverlayV2.Plot
             _plot = plotControl ?? throw new ArgumentNullException(nameof(plotControl));
             _plot.Plot.Clear();
 
+            // Dark theme — figure + data backgrounds
+            _plot.Plot.FigureBackground.Color = ThemeWindow;
+            _plot.Plot.DataBackground.Color = ThemePlotBg;
+
             // Title & legend
             _plot.Plot.Title(null);
             _plot.Plot.Legend.IsVisible = false;
@@ -143,22 +161,45 @@ namespace CastleOverlayV2.Plot
 
             _plot.Refresh();
 
-
-            // X axis label
+            // X axis label (dark theme: secondary text colour)
             var x = _plot.Plot.Axes.Bottom;
             x.Label.Text = "Time (s)";
             x.Label.FontSize = 12;
+            ApplyDarkAxisStyle(x, ThemeTextDim);
 
-            // Grid style (vertical only)
+            // Grid style (vertical only, low-alpha for dark theme)
             _plot.Plot.Grid.XAxisStyle.IsVisible = true;
             _plot.Plot.Grid.YAxisStyle.IsVisible = false;
-            _plot.Plot.Grid.MajorLineColor = ScottPlot.Colors.Grey.WithAlpha(75);
-            _plot.Plot.Grid.MinorLineColor = ScottPlot.Colors.Grey.WithAlpha(25);
-            _plot.Plot.Grid.MajorLineWidth = 2;
+            _plot.Plot.Grid.MajorLineColor = ThemeGrid;
+            _plot.Plot.Grid.MinorLineColor = ThemeGrid;
+            _plot.Plot.Grid.MajorLineWidth = 1;
             _plot.Plot.Grid.MinorLineWidth = 1;
 
             _plot.MouseMove += FormsPlot_MouseMove;
             _plot.Refresh();
+        }
+
+        /// <summary>
+        /// Set tick + label + frame colours on an axis to a single dark-theme tint.
+        /// </summary>
+        private static void ApplyDarkAxisStyle(IAxis axis, ScottPlot.Color color)
+        {
+            axis.Label.ForeColor = color;
+            axis.TickLabelStyle.ForeColor = color;
+            axis.MajorTickStyle.Color = color;
+            axis.MinorTickStyle.Color = color;
+            axis.FrameLineStyle.Color = color;
+        }
+
+        /// <summary>
+        /// Channel hue, dimmed to <see cref="ContextAlpha"/> when this channel is not the focused one.
+        /// </summary>
+        private ScottPlot.Color GetTraceColor(string channelLabel)
+        {
+            var baseColor = ChannelColorMap.GetColor(channelLabel);
+            return channelLabel == _focusedChannel
+                ? baseColor
+                : baseColor.WithAlpha(ContextAlpha);
         }
 
         // ---------------- Public API ----------------
@@ -341,9 +382,10 @@ namespace CastleOverlayV2.Plot
 
                     var s = _plot.Plot.Add.Scatter(xs, ysToPlot);
                     s.Label = channelLabel;
-                    s.Color = ChannelColorMap.GetColor(channelLabel);
+                    s.Color = GetTraceColor(channelLabel);
                     s.LinePattern = LineStyleHelper.GetLinePattern(slot - 1);
                     s.LineWidth = (float)LineStyleHelper.GetLineWidth(slot - 1);
+                    s.MarkerSize = 0; // line-only — markers are noise (spec §6.3)
                     s.Axes.XAxis = xAxis;
                     s.Axes.YAxis = channelLabel switch
                     {
@@ -514,9 +556,58 @@ namespace CastleOverlayV2.Plot
                 HideAxis(raceBoxGxAxis);
             }
 
+            // Show the focused channel's axis with its hue; keep the rest hidden.
+            ApplyFocusToAxes();
+
             // NOTE: Do NOT call AddLeftAxis/AddRightAxis again after this point.
             // Lock add/remove lives in ReapplyAxisLocks (single source of truth).
         }
+
+        /// <summary>
+        /// Make the focused channel's Y axis visible in its hue; every other Castle/RaceBox
+        /// Y axis stays hidden. Called after axis creation and on every replot.
+        /// </summary>
+        private void ApplyFocusToAxes()
+        {
+            // Hide all known axes first.
+            foreach (var axis in new IAxis?[] {
+                throttleAxis, rpmAxis, voltageAxis, currentAxis, rippleAxis, powerAxis,
+                escTempAxis, motorTempAxis, motorTimingAxis, accelAxis,
+                raceBoxSpeedAxis, raceBoxGxAxis })
+            {
+                if (axis is not null) HideAxis(axis);
+            }
+
+            // Show the focused channel's axis with its hue.
+            var focusAxis = AxisFor(_focusedChannel);
+            if (focusAxis is not null)
+            {
+                var hue = ChannelColorMap.GetColor(_focusedChannel);
+                focusAxis.Label.IsVisible = true;
+                focusAxis.TickLabelStyle.IsVisible = true;
+                focusAxis.MajorTickStyle.Length = 5;
+                focusAxis.MinorTickStyle.Length = 3;
+                focusAxis.FrameLineStyle.Width = 1;
+                ApplyDarkAxisStyle(focusAxis, hue);
+            }
+        }
+
+        private IAxis? AxisFor(string channelLabel) => channelLabel switch
+        {
+            "RPM" => rpmAxis,
+            "Throttle %" => throttleAxis,
+            "Voltage" => voltageAxis,
+            "Current" => currentAxis,
+            "Ripple" => rippleAxis,
+            "PowerOut" => powerAxis,
+            "ESC Temp" => escTempAxis,
+            "MotorTemp" => motorTempAxis,
+            "MotorTiming" => motorTimingAxis,
+            "Acceleration" => accelAxis,
+            "RaceBox Speed" => raceBoxSpeedAxis,
+            "RaceBox G-Force X" => raceBoxGxAxis,
+            _ => null
+        };
 
 
         private void ReapplyAxisLocks()
@@ -651,9 +742,10 @@ namespace CastleOverlayV2.Plot
 
                 var s = _plot.Plot.Add.Scatter(xs, ys);
                 s.Label = ch;
-                s.Color = ChannelColorMap.GetColor(ch);
+                s.Color = GetTraceColor(ch);
                 s.LinePattern = LineStyleHelper.GetLinePattern(slot - 1);
                 s.LineWidth = (float)LineStyleHelper.GetLineWidth(slot - 1);
+                s.MarkerSize = 0; // line-only — markers are noise (spec §6.3)
                 s.Axes.XAxis = _plot.Plot.Axes.Bottom;
                 s.Axes.YAxis = ch == "RaceBox Speed" ? raceBoxSpeedAxis : raceBoxGxAxis;
 
@@ -685,13 +777,20 @@ namespace CastleOverlayV2.Plot
                 labels.Insert(0, "Start");
             }
 
+            // Dark-theme split markers (spec §5: 66/132 ft = #7C5A2E, finish = #9A3D2E).
+            // For Phase 1 use the 66/132 colour for all splits; the dedicated finish hue can
+            // come back once the label data flags which split is the finish.
+            var splitColor = ThemeSplit;
+            var labelBg = new ScottPlot.Color(0x1B, 0x21, 0x2B);   // surface.bar
+            var labelFg = ThemeText;
+
             var lines = new List<VerticalLine>();
             foreach (double t in times)
             {
                 var v = _plot.Plot.Add.VerticalLine(t);
                 v.LinePattern = LineStyleHelper.GetLinePattern(99);
-                v.LineWidth = 2;
-                v.Color = ScottPlot.Colors.DarkBlue.WithAlpha(200);
+                v.LineWidth = 1.5f;
+                v.Color = splitColor;
                 lines.Add(v);
             }
             _splitLinesBySlot[slot] = lines;
@@ -703,10 +802,10 @@ namespace CastleOverlayV2.Plot
                 var lbl = _plot.Plot.Add.Text(txt, times[i], 0.95);
                 lbl.Axes.YAxis = _splitLabelAxis!;
                 lbl.Alignment = Alignment.UpperCenter;
-                lbl.FontSize = 12;
-                lbl.FontColor = ScottPlot.Colors.DarkBlue;
-                lbl.BackgroundColor = ScottPlot.Colors.White.WithAlpha(180);
-                lbl.BorderColor = ScottPlot.Colors.DarkBlue;
+                lbl.FontSize = 11;
+                lbl.FontColor = labelFg;
+                lbl.BackgroundColor = labelBg;
+                lbl.BorderColor = splitColor;
                 lbl.BorderWidth = 1;
                 lbl.OffsetY = -2;
                 lbls.Add(lbl);
@@ -866,7 +965,7 @@ namespace CastleOverlayV2.Plot
             var msg = _plot.Plot.Add.Text("Waiting for log...", 0, 0);
             msg.Alignment = Alignment.MiddleCenter;
             msg.FontSize = 18;
-            msg.Color = ScottPlot.Colors.Gray;
+            msg.Color = ThemeTextDim;
 
             PixelPadding padding = new(left: 40, right: 40, top: 10, bottom: 50);
             _plot.Plot.Layout.Fixed(padding);
