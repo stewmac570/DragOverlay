@@ -20,20 +20,25 @@ namespace CastleOverlayV2.Controls
     public class ChannelDrawer : UserControl
     {
         // ---- Theme tokens (Spec §5) -----------------------------------------
-        private static readonly Color SurfacePanel = Color.FromArgb(0x16, 0x1B, 0x23);
-        private static readonly Color SurfaceBar   = Color.FromArgb(0x1B, 0x21, 0x2B);
-        private static readonly Color SurfaceCard  = Color.FromArgb(0x1A, 0x1F, 0x27);
-        private static readonly Color TextPrimary  = Color.FromArgb(0xE6, 0xE9, 0xEF);
-        private static readonly Color TextSecond   = Color.FromArgb(0x9A, 0xA3, 0xB2);
-        private static readonly Color TextDim      = Color.FromArgb(0x5C, 0x65, 0x73);
-        private static readonly Color BorderDef    = Color.FromArgb(0x29, 0x2F, 0x39);
+        private static readonly Color SurfacePanel    = Color.FromArgb(0x16, 0x1B, 0x23);
+        private static readonly Color SurfaceBar      = Color.FromArgb(0x1B, 0x21, 0x2B);
+        private static readonly Color SurfaceCard     = Color.FromArgb(0x1A, 0x1F, 0x27);
+        private static readonly Color SurfaceCardFocus= Color.FromArgb(0x17, 0x22, 0x30);
+        private static readonly Color TextPrimary     = Color.FromArgb(0xE6, 0xE9, 0xEF);
+        private static readonly Color TextAccent      = Color.FromArgb(0x9A, 0xC7, 0xF2);
+        private static readonly Color TextSecond      = Color.FromArgb(0x9A, 0xA3, 0xB2);
+        private static readonly Color TextDim         = Color.FromArgb(0x5C, 0x65, 0x73);
+        private static readonly Color BorderDef       = Color.FromArgb(0x29, 0x2F, 0x39);
+        private static readonly Color BorderFocus     = Color.FromArgb(0x2C, 0x5A, 0x86);
 
         // ---- Public surface (matches old ChannelToggleBar) ------------------
         public event Action<string, bool>? ChannelVisibilityChanged;
         public event Action<bool>? RpmModeChanged;
+        public event Action<string>? ChannelFocused;
 
         // ---- State ----------------------------------------------------------
         private bool _expanded = true;
+        private string _focusedChannel = "RPM"; // matches PlotManager's initial focus
         private readonly Dictionary<string, ChannelCard> _cards = new();
         private readonly Dictionary<string, ChannelDot> _dots = new();
 
@@ -129,8 +134,11 @@ namespace CastleOverlayV2.Controls
                 ChannelVisibilityChanged?.Invoke(n, v);
             };
             card.RpmModeToggled += isFourPole => RpmModeChanged?.Invoke(isFourPole);
+            card.Focused += n => ChannelFocused?.Invoke(n);
             _cards[channelName] = card;
             _cardFlow.Controls.Add(card);
+            if (channelName == _focusedChannel)
+                card.SetFocused(true);
 
             var dot = new ChannelDot(channelName, initialVisible);
             dot.Toggled += (n, v) =>
@@ -140,6 +148,21 @@ namespace CastleOverlayV2.Controls
             };
             _dots[channelName] = dot;
             _dotFlow.Controls.Add(dot);
+        }
+
+        /// <summary>
+        /// Mark <paramref name="channelName"/> as the focused card. Idempotent.
+        /// </summary>
+        public void SetFocusedChannel(string channelName)
+        {
+            if (_focusedChannel == channelName) return;
+            string previous = _focusedChannel;
+            _focusedChannel = channelName;
+
+            if (_cards.TryGetValue(previous, out var prev))
+                prev.SetFocused(false);
+            if (_cards.TryGetValue(channelName, out var next))
+                next.SetFocused(true);
         }
 
         public Dictionary<string, bool> GetChannelStates() =>
@@ -239,11 +262,14 @@ namespace CastleOverlayV2.Controls
         {
             public string ChannelName { get; }
             public bool IsChannelVisible { get; private set; }
+            public bool IsFocused { get; private set; }
 
             public event Action<string, bool>? VisibilityChanged;
             public event Action<bool>? RpmModeToggled;
+            public event Action<string>? Focused;
 
             private readonly TableLayoutPanel _layout;
+            private readonly Label _nameLbl;
             private readonly Button _eyeBtn;
             private readonly Button? _rpmModeBtn;
             private bool _isFourPole;
@@ -301,7 +327,7 @@ namespace CastleOverlayV2.Controls
                 };
                 header.Controls.Add(dot, 0, 0);
 
-                var nameLbl = new Label
+                _nameLbl = new Label
                 {
                     Text = channelName,
                     AutoSize = true,
@@ -309,7 +335,7 @@ namespace CastleOverlayV2.Controls
                     Font = new Font(SystemFonts.DefaultFont.FontFamily, 9.5f, FontStyle.Bold),
                     Margin = new Padding(2, 4, 0, 0)
                 };
-                header.Controls.Add(nameLbl, 1, 0);
+                header.Controls.Add(_nameLbl, 1, 0);
 
                 _eyeBtn = new Button
                 {
@@ -353,6 +379,21 @@ namespace CastleOverlayV2.Controls
 
                 Controls.Add(_layout);
                 UpdateEyeAppearance();
+
+                // Card body (and the name label) → click focuses this channel.
+                // The eye button and RPM-mode button keep their own click handlers
+                // (they do NOT propagate to the body click).
+                this.Click += (_, _) => Focused?.Invoke(ChannelName);
+                _nameLbl.Click += (_, _) => Focused?.Invoke(ChannelName);
+                _layout.Click += (_, _) => Focused?.Invoke(ChannelName);
+            }
+
+            public void SetFocused(bool focused)
+            {
+                if (IsFocused == focused) return;
+                IsFocused = focused;
+                BackColor = focused ? SurfaceCardFocus : SurfaceCard;
+                _nameLbl.ForeColor = focused ? TextAccent : TextPrimary;
             }
 
             public void SetVisible(bool visible)

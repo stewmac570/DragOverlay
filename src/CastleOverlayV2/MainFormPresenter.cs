@@ -52,6 +52,7 @@ namespace CastleOverlayV2
 
             _drawer.ChannelVisibilityChanged += OnChannelVisibilityChanged;
             _drawer.RpmModeChanged += OnRpmModeChanged;
+            _drawer.ChannelFocused += OnChannelFocused;
             _plot.CursorMoved += OnCursorMoved;
         }
 
@@ -310,6 +311,14 @@ namespace CastleOverlayV2
             PlotAllRuns();
 
             _config.SetRpmMode(isFourPole);
+        }
+
+        private void OnChannelFocused(string channelName)
+        {
+            // Mirror the focus state to the plot (which re-tints + re-binds the visible Y axis)
+            // and back to the drawer (which highlights the focused card).
+            _plot.SetFocusedChannel(channelName);
+            _drawer.SetFocusedChannel(channelName);
         }
 
         private void OnCursorMoved(Dictionary<string, double?[]> valuesAtCursor)
