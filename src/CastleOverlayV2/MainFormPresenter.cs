@@ -182,6 +182,7 @@ namespace CastleOverlayV2
                 run.Data["RaceBox G-Force X"] = points
                     .Select(p => new DataPoint { Time = p.Time.TotalSeconds, Y = p.GForceX })
                     .ToList();
+                run.Data["RaceBox Distance"] = IntegrateDistanceFeet(points);
                 // PlotManager skips runs with empty DataPoints — populate with time-only dummies.
                 run.DataPoints = points
                     .Select(p => new DataPoint { Time = p.Time.TotalSeconds })
@@ -214,6 +215,11 @@ namespace CastleOverlayV2
                 _drawer.AddChannel("RaceBox Speed", true);
                 added = true;
             }
+            if (!states.ContainsKey("RaceBox Distance"))
+            {
+                _drawer.AddChannel("RaceBox Distance", true);
+                added = true;
+            }
             if (!states.ContainsKey("RaceBox G-Force X"))
             {
                 _drawer.AddChannel("RaceBox G-Force X", true);
@@ -224,6 +230,34 @@ namespace CastleOverlayV2
                 _drawer.PerformLayout();
                 _drawer.Refresh();
             }
+        }
+
+        /// <summary>
+        /// Cumulative distance (feet) along the run, integrated from RaceBox speed at each sample.
+        /// Rectangular integration is good enough for ~25 Hz data.
+        /// </summary>
+        private static List<DataPoint> IntegrateDistanceFeet(List<Models.RaceBoxPoint> points)
+        {
+            const double FeetPerMile = 5280.0;
+            const double SecondsPerHour = 3600.0;
+            const double MphToFeetPerSec = FeetPerMile / SecondsPerHour; // = 1.46667
+
+            var result = new List<DataPoint>(points.Count);
+            double distFt = 0;
+            double prevSec = points.Count > 0 ? points[0].Time.TotalSeconds : 0;
+            for (int i = 0; i < points.Count; i++)
+            {
+                double sec = points[i].Time.TotalSeconds;
+                if (i > 0)
+                {
+                    double dt = sec - prevSec;
+                    if (dt > 0)
+                        distFt += Math.Max(0, points[i].SpeedMph) * MphToFeetPerSec * dt;
+                }
+                result.Add(new DataPoint { Time = sec, Y = distFt });
+                prevSec = sec;
+            }
+            return result;
         }
 
         // ============================================================
@@ -357,7 +391,7 @@ namespace CastleOverlayV2
         {
             "RPM", "Throttle %", "Voltage", "Current", "Ripple", "PowerOut",
             "ESC Temp", "MotorTemp", "MotorTiming", "Acceleration",
-            "RaceBox Speed", "RaceBox G-Force X",
+            "RaceBox Speed", "RaceBox Distance", "RaceBox G-Force X",
         };
 
         private void PushAllStatsToDrawer()

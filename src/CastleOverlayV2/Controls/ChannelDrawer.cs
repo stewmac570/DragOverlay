@@ -41,6 +41,7 @@ namespace CastleOverlayV2.Controls
         private string _focusedChannel = "RPM"; // matches PlotManager's initial focus
         private readonly Dictionary<string, ChannelCard> _cards = new();
         private readonly Dictionary<string, ChannelDot> _dots = new();
+        private bool _racBoxSeparatorAdded; // visual gap between Castle and RaceBox channels
 
         // ---- Layout containers ---------------------------------------------
         private readonly Panel _stripRow;       // collapsed view: chevron + dots
@@ -127,6 +128,14 @@ namespace CastleOverlayV2.Controls
         {
             if (_cards.ContainsKey(channelName)) return;
 
+            // Group RaceBox channels visually after Castle (spec §6.4).
+            bool isRaceBox = channelName.StartsWith("RaceBox", StringComparison.Ordinal);
+            if (isRaceBox && !_racBoxSeparatorAdded)
+            {
+                AddSourceGroupSeparator();
+                _racBoxSeparatorAdded = true;
+            }
+
             var card = new ChannelCard(channelName, initialVisible);
             card.VisibilityChanged += (n, v) =>
             {
@@ -211,6 +220,31 @@ namespace CastleOverlayV2.Controls
             PerformLayout();
         }
 
+        /// <summary>
+        /// Insert a slim vertical separator into both the card grid and the dot strip so the
+        /// RaceBox channels read as a set distinct from the Castle channels.
+        /// </summary>
+        private void AddSourceGroupSeparator()
+        {
+            var cardSep = new Panel
+            {
+                Width = 2,
+                Height = 80,
+                BackColor = BorderDef,
+                Margin = new Padding(8, 6, 8, 6)
+            };
+            _cardFlow.Controls.Add(cardSep);
+
+            var dotSep = new Panel
+            {
+                Width = 2,
+                Height = 18,
+                BackColor = BorderDef,
+                Margin = new Padding(8, 7, 8, 7)
+            };
+            _dotFlow.Controls.Add(dotSep);
+        }
+
         private Button MakeChevronButton(bool expandedNow)
         {
             var b = new Button
@@ -250,6 +284,7 @@ namespace CastleOverlayV2.Controls
                 "Current" => v.ToString("F1"),
                 "Acceleration" => v.ToString("F2"),
                 "RaceBox Speed" => v.ToString("F1"),
+                "RaceBox Distance" => v.ToString("F0"),
                 "RaceBox G-Force X" => v.ToString("F2"),
                 _ => v.ToString("F2"),
             };
@@ -562,6 +597,7 @@ namespace CastleOverlayV2.Controls
                 "MotorTiming" => "Tim",
                 "Acceleration" => "Acc",
                 "RaceBox Speed" => "Spd",
+                "RaceBox Distance" => "Dst",
                 "RaceBox G-Force X" => "Gx",
                 _ => channelName.Substring(0, Math.Min(3, channelName.Length))
             };

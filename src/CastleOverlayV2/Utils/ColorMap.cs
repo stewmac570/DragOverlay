@@ -24,6 +24,7 @@ namespace CastleOverlayV2.Utils
 
             // RaceBox GPS channels
             { "RaceBox Speed", new ScottPlot.Color(0xD4, 0x53, 0x7E) },     // #D4537E  pink
+            { "RaceBox Distance", new ScottPlot.Color(0x63, 0x99, 0x22) },  // #639922  dark green
             { "RaceBox G-Force X", new ScottPlot.Color(0x9F, 0x8F, 0xE0) }, // #9F8FE0  light purple
         };
 
