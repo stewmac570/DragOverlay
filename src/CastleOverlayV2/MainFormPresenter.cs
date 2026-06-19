@@ -100,7 +100,7 @@ namespace CastleOverlayV2
                 _plot.SetupAllAxes();
                 _plot.RefreshPlot();
 
-                _view.SetSlotLoadedUI(slot, $"Run {slot}: {Path.GetFileName(path)}", _plot.GetRunVisibility(slot));
+                _view.SetSlotLoadedUI(slot, path, _plot.GetRunVisibility(slot));
 
                 // Surface any non-fatal warning (e.g. "no drag pass detected").
                 if (result.HasMessage) ShowResultMessage(result);
@@ -194,7 +194,7 @@ namespace CastleOverlayV2
                 EnsureRaceBoxChannelsInToggleBar();
                 PlotAllRuns();
 
-                _view.SetSlotLoadedUI(plotSlot, $"RaceBox {uiSlot}: {TruncateFileName(path)}", true);
+                _view.SetSlotLoadedUI(plotSlot, path, true);
             }
             catch (Exception ex)
             {
@@ -458,12 +458,5 @@ namespace CastleOverlayV2
                 _view.ShowError(result.Title!, result.Message!);
         }
 
-        private static string TruncateFileName(string filePath, int maxChars = 28)
-        {
-            string fileName = Path.GetFileName(filePath) ?? string.Empty;
-            if (fileName.Length <= maxChars) return fileName;
-            if (maxChars <= 3) return fileName.Substring(0, maxChars);
-            return fileName.Substring(0, maxChars - 3) + "...";
-        }
     }
 }
