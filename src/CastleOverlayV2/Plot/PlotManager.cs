@@ -78,6 +78,7 @@ namespace CastleOverlayV2.Plot
         private IYAxis accelAxis;
         private IYAxis raceBoxSpeedAxis;
         private IYAxis raceBoxGxAxis;
+        private IYAxis raceBoxDistanceAxis;
 
         // Events
         public event Action<Dictionary<string, double?[]>> CursorMoved;
@@ -585,6 +586,13 @@ namespace CastleOverlayV2.Plot
                 HideAxis(raceBoxGxAxis);
             }
 
+            if (raceBoxDistanceAxis is null)
+            {
+                raceBoxDistanceAxis = _plot.Plot.Axes.AddRightAxis();
+                raceBoxDistanceAxis.Label.Text = "Distance (ft)";
+                HideAxis(raceBoxDistanceAxis);
+            }
+
             // Show the focused channel's axis with its hue; keep the rest hidden.
             ApplyFocusToAxes();
 
@@ -602,7 +610,7 @@ namespace CastleOverlayV2.Plot
             foreach (var axis in new IAxis?[] {
                 throttleAxis, rpmAxis, voltageAxis, currentAxis, rippleAxis, powerAxis,
                 escTempAxis, motorTempAxis, motorTimingAxis, accelAxis,
-                raceBoxSpeedAxis, raceBoxGxAxis })
+                raceBoxSpeedAxis, raceBoxGxAxis, raceBoxDistanceAxis })
             {
                 if (axis is not null) HideAxis(axis);
             }
@@ -634,6 +642,7 @@ namespace CastleOverlayV2.Plot
             "MotorTiming" => motorTimingAxis,
             "Acceleration" => accelAxis,
             "RaceBox Speed" => raceBoxSpeedAxis,
+            "RaceBox Distance" => raceBoxDistanceAxis,
             "RaceBox G-Force X" => raceBoxGxAxis,
             _ => null
         };
@@ -648,7 +657,7 @@ namespace CastleOverlayV2.Plot
             {
                 throttleAxis, rpmAxis, voltageAxis, currentAxis, rippleAxis, powerAxis,
                 escTempAxis, motorTempAxis, motorTimingAxis, accelAxis,
-                raceBoxSpeedAxis, raceBoxGxAxis, _splitLabelAxis
+                raceBoxSpeedAxis, raceBoxGxAxis, raceBoxDistanceAxis, _splitLabelAxis
             }.Where(a => a is not null)!);
 
             var toRemove = new List<IAxisRule>();
@@ -662,6 +671,8 @@ namespace CastleOverlayV2.Plot
                 _plot.Plot.Axes.Rules.Add(new LockedVertical(raceBoxSpeedAxis, 0, 110));
             if (raceBoxGxAxis is not null)
                 _plot.Plot.Axes.Rules.Add(new LockedVertical(raceBoxGxAxis, -5, 7));
+            if (raceBoxDistanceAxis is not null)
+                _plot.Plot.Axes.Rules.Add(new LockedVertical(raceBoxDistanceAxis, 0, 1000));
             if (_splitLabelAxis is not null)
                 _plot.Plot.Axes.Rules.Add(new LockedVertical(_splitLabelAxis, 0.0, 1.0));
 
@@ -755,7 +766,7 @@ namespace CastleOverlayV2.Plot
         {
             if (run == null || !run.IsRaceBox) return;
 
-            var channels = new[] { "RaceBox Speed", "RaceBox G-Force X" };
+            var channels = new[] { "RaceBox Speed", "RaceBox Distance", "RaceBox G-Force X" };
             foreach (var ch in channels)
             {
                 if (!run.Data.TryGetValue(ch, out var pts) || pts.Count == 0)
@@ -776,7 +787,12 @@ namespace CastleOverlayV2.Plot
                 s.LineWidth = WidthFor(ch);
                 s.MarkerSize = 0; // line-only — markers are noise (spec §6.3)
                 s.Axes.XAxis = _plot.Plot.Axes.Bottom;
-                s.Axes.YAxis = ch == "RaceBox Speed" ? raceBoxSpeedAxis : raceBoxGxAxis;
+                s.Axes.YAxis = ch switch
+                {
+                    "RaceBox Speed" => raceBoxSpeedAxis,
+                    "RaceBox Distance" => raceBoxDistanceAxis,
+                    _ => raceBoxGxAxis,
+                };
 
                 bool chOn = _channelVisibility.TryGetValue(ch, out var vis) ? vis : true;
                 bool runOn = _runVisibility.TryGetValue(slot, out var rvis) ? rvis : true;
@@ -979,7 +995,7 @@ namespace CastleOverlayV2.Plot
                 _plot.Plot.Axes.Left,
                 throttleAxis, rpmAxis, voltageAxis, currentAxis, rippleAxis, powerAxis,
                 escTempAxis, motorTempAxis, motorTimingAxis, accelAxis,
-                raceBoxSpeedAxis, raceBoxGxAxis
+                raceBoxSpeedAxis, raceBoxGxAxis, raceBoxDistanceAxis
             }.Where(a => a != null).ToList();
 
             foreach (var axis in allAxes)
