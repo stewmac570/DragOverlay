@@ -18,6 +18,7 @@ namespace CastleOverlayV2
         private readonly ConfigService _configService;
         private readonly PlotManager _plotManager;
         private ChannelDrawer _channelDrawer;
+        private RunStrip _runStrip;
         private MainFormPresenter _presenter;
 
         public MainForm(ConfigService configService)
@@ -41,14 +42,6 @@ namespace CastleOverlayV2
 
             Logger.Log("MainForm initialized");
             Logger.Log($"🟢 New Session Started — {DateTime.Now}");
-
-            // Disable per-slot action buttons until a run is loaded.
-            DisableAllSlotButtons();
-            for (int i = 1; i <= 3; i++)
-            {
-                SetSlotShiftButtonsEnabled(i, false, isRaceBox: false);
-                SetSlotShiftButtonsEnabled(i, false, isRaceBox: true);
-            }
 
             this.WindowState = FormWindowState.Maximized;
 
@@ -90,6 +83,22 @@ namespace CastleOverlayV2
 
             _plotManager.ResetEmptyPlot();
 
+            // Phase 4: the legacy top button panel is replaced by the new RunStrip
+            // (chip-per-slot). The Designer-named buttons inside still exist but are
+            // hidden via topButtonPanel.Visible = false; the runTypeSwitch (Drag/Speed
+            // pill) lives in headerRow's column 1 and stays visible.
+            topButtonPanel.Visible = false;
+
+            _runStrip = new RunStrip();
+            Controls.Add(_runStrip); // Dock = Top
+            _runStrip.LoadRequested += slot =>
+            {
+                if (slot <= 3) _ = _presenter.LoadCastleRunAsync(slot);
+                else _ = _presenter.LoadRaceBoxRunAsync(slot - 3);
+            };
+            _runStrip.ToggleRequested += slot => _presenter.ToggleRun(slot);
+            _runStrip.DeleteRequested += slot => _presenter.DeleteRun(slot);
+
             // Presenter owns all run state + business logic. It subscribes to plot/toggle events.
             _presenter = new MainFormPresenter(this, _configService, _plotManager, _channelDrawer);
 
@@ -119,126 +128,16 @@ namespace CastleOverlayV2
         public void ShowInfo(string title, string message) =>
             MessageBox.Show(message, title, MessageBoxButtons.OK, MessageBoxIcon.Information);
 
-        /// <summary>A run was successfully loaded into <paramref name="slot"/>. Update button text + enable controls.</summary>
-        public void SetSlotLoadedUI(int slot, string loadButtonText, bool isVisible)
-        {
-            switch (slot)
-            {
-                case 1:
-                    btnLoadRun1.Text = loadButtonText;
-                    btnToggleRun1.Enabled = true;
-                    btnDeleteRun1.Enabled = true;
-                    btnToggleRun1.Text = isVisible ? "Hide" : "Show";
-                    SetSlotShiftButtonsEnabled(1, true, isRaceBox: false);
-                    break;
-                case 2:
-                    btnLoadRun2.Text = loadButtonText;
-                    btnToggleRun2.Enabled = true;
-                    btnDeleteRun2.Enabled = true;
-                    btnToggleRun2.Text = isVisible ? "Hide" : "Show";
-                    SetSlotShiftButtonsEnabled(2, true, isRaceBox: false);
-                    break;
-                case 3:
-                    btnLoadRun3.Text = loadButtonText;
-                    btnToggleRun3.Enabled = true;
-                    btnDeleteRun3.Enabled = true;
-                    btnToggleRun3.Text = isVisible ? "Hide" : "Show";
-                    SetSlotShiftButtonsEnabled(3, true, isRaceBox: false);
-                    break;
-                case 4:
-                    btnLoadRaceBox1.Text = loadButtonText;
-                    btnToggleRaceBox1.Enabled = true;
-                    btnDeleteRaceBox1.Enabled = true;
-                    btnToggleRaceBox1.Text = isVisible ? "Hide" : "Show";
-                    SetSlotShiftButtonsEnabled(1, true, isRaceBox: true);
-                    break;
-                case 5:
-                    btnLoadRaceBox2.Text = loadButtonText;
-                    btnToggleRaceBox2.Enabled = true;
-                    btnDeleteRaceBox2.Enabled = true;
-                    btnToggleRaceBox2.Text = isVisible ? "Hide" : "Show";
-                    SetSlotShiftButtonsEnabled(2, true, isRaceBox: true);
-                    break;
-                case 6:
-                    btnLoadRaceBox3.Text = loadButtonText;
-                    btnToggleRaceBox3.Enabled = true;
-                    btnDeleteRaceBox3.Enabled = true;
-                    btnToggleRaceBox3.Text = isVisible ? "Hide" : "Show";
-                    SetSlotShiftButtonsEnabled(3, true, isRaceBox: true);
-                    break;
-            }
-        }
+        /// <summary>A run was successfully loaded into <paramref name="slot"/>. Updates the run-strip chip.</summary>
+        public void SetSlotLoadedUI(int slot, string fullPath, bool isVisible) =>
+            _runStrip.SetSlotLoaded(slot, fullPath, isVisible);
 
-        /// <summary>Reset a slot's per-slot buttons to the empty/unloaded state.</summary>
-        public void ResetSlotUI(int slot)
-        {
-            switch (slot)
-            {
-                case 1:
-                    btnLoadRun1.Enabled = true;
-                    btnLoadRun1.Text = "Load Run 1";
-                    btnToggleRun1.Enabled = false;
-                    btnToggleRun1.Text = "Hide";
-                    btnDeleteRun1.Enabled = false;
-                    SetSlotShiftButtonsEnabled(1, false, isRaceBox: false);
-                    break;
-                case 2:
-                    btnLoadRun2.Enabled = true;
-                    btnLoadRun2.Text = "Load Run 2";
-                    btnToggleRun2.Enabled = false;
-                    btnToggleRun2.Text = "Hide";
-                    btnDeleteRun2.Enabled = false;
-                    SetSlotShiftButtonsEnabled(2, false, isRaceBox: false);
-                    break;
-                case 3:
-                    btnLoadRun3.Enabled = true;
-                    btnLoadRun3.Text = "Load Run 3";
-                    btnToggleRun3.Enabled = false;
-                    btnToggleRun3.Text = "Hide";
-                    btnDeleteRun3.Enabled = false;
-                    SetSlotShiftButtonsEnabled(3, false, isRaceBox: false);
-                    break;
-                case 4:
-                    btnLoadRaceBox1.Enabled = true;
-                    btnLoadRaceBox1.Text = "Load RaceBox 1";
-                    btnToggleRaceBox1.Enabled = false;
-                    btnToggleRaceBox1.Text = "Hide";
-                    btnDeleteRaceBox1.Enabled = false;
-                    SetSlotShiftButtonsEnabled(1, false, isRaceBox: true);
-                    break;
-                case 5:
-                    btnLoadRaceBox2.Enabled = true;
-                    btnLoadRaceBox2.Text = "Load RaceBox 2";
-                    btnToggleRaceBox2.Enabled = false;
-                    btnToggleRaceBox2.Text = "Hide";
-                    btnDeleteRaceBox2.Enabled = false;
-                    SetSlotShiftButtonsEnabled(2, false, isRaceBox: true);
-                    break;
-                case 6:
-                    btnLoadRaceBox3.Enabled = true;
-                    btnLoadRaceBox3.Text = "Load RaceBox 3";
-                    btnToggleRaceBox3.Enabled = false;
-                    btnToggleRaceBox3.Text = "Hide";
-                    btnDeleteRaceBox3.Enabled = false;
-                    SetSlotShiftButtonsEnabled(3, false, isRaceBox: true);
-                    break;
-            }
-        }
+        /// <summary>Reset a slot's chip back to the empty (Load …) state.</summary>
+        public void ResetSlotUI(int slot) => _runStrip.SetSlotEmpty(slot);
 
-        /// <summary>Update a slot's toggle button label ("Hide"/"Show") after a visibility flip.</summary>
-        public void SetSlotToggleText(int slot, bool isVisible)
-        {
-            string txt = isVisible ? "Hide" : "Show";
-            switch (slot)
-            {
-                case 1: btnToggleRun1.Text = txt; break;
-                case 2: btnToggleRun2.Text = txt; break;
-                case 3: btnToggleRun3.Text = txt; break;
-                case 4: if (!btnToggleRaceBox1.IsDisposed && btnToggleRaceBox1.Visible) btnToggleRaceBox1.Text = txt; break;
-                case 5: if (!btnToggleRaceBox2.IsDisposed && btnToggleRaceBox2.Visible) btnToggleRaceBox2.Text = txt; break;
-                case 6: if (!btnToggleRaceBox3.IsDisposed && btnToggleRaceBox3.Visible) btnToggleRaceBox3.Text = txt; break;
-            }
-        }
+        /// <summary>Update a slot's master eye toggle after a visibility flip.</summary>
+        public void SetSlotToggleText(int slot, bool isVisible) =>
+            _runStrip.SetSlotToggleState(slot, isVisible);
 
         /// <summary>Sync the RunType pill switch appearance with current mode + lock state.</summary>
         public void UpdateRunTypeLockState() => SyncRunTypeUI(_presenter?.IsSpeedRunMode ?? false, _presenter?.IsAnyRunLoaded ?? false);
@@ -365,98 +264,14 @@ namespace CastleOverlayV2
             ApplyRunTypeUI(isSpeedRun);
         }
 
-        /// <summary>Speed mode hides all RaceBox rows + Castle Run 3.</summary>
+        /// <summary>Speed mode hides Castle Run 3 + all RaceBox chips in the run strip.</summary>
         public void ApplyRunTypeUI(bool isSpeedRun)
         {
-            // RaceBox 1
-            btnLoadRaceBox1.Visible = !isSpeedRun;
-            btnShiftLeftRB1.Visible = !isSpeedRun;
-            btnShiftRightRB1.Visible = !isSpeedRun;
-            btnMenuRB1.Visible = !isSpeedRun;
-
-            // RaceBox 2
-            btnLoadRaceBox2.Visible = !isSpeedRun;
-            btnShiftLeftRB2.Visible = !isSpeedRun;
-            btnShiftRightRB2.Visible = !isSpeedRun;
-            btnMenuRB2.Visible = !isSpeedRun;
-
-            // RaceBox 3
-            btnLoadRaceBox3.Visible = !isSpeedRun;
-            btnShiftLeftRB3.Visible = !isSpeedRun;
-            btnShiftRightRB3.Visible = !isSpeedRun;
-            btnMenuRB3.Visible = !isSpeedRun;
-
-            // Castle Run 3
-            btnLoadRun3.Visible = !isSpeedRun;
-            btnShiftLeftRun3.Visible = !isSpeedRun;
-            btnShiftRightRun3.Visible = !isSpeedRun;
-            btnMenuRun3.Visible = !isSpeedRun;
-
-            topButtonPanel?.PerformLayout();
-            topButtonPanel?.Refresh();
-        }
-
-        private void DisableAllSlotButtons()
-        {
-            btnToggleRun1.Enabled = false;
-            btnDeleteRun1.Enabled = false;
-            btnToggleRun2.Enabled = false;
-            btnDeleteRun2.Enabled = false;
-            btnToggleRun3.Enabled = false;
-            btnDeleteRun3.Enabled = false;
-
-            btnToggleRaceBox1.Enabled = false;
-            btnDeleteRaceBox1.Enabled = false;
-            btnToggleRaceBox2.Enabled = false;
-            btnDeleteRaceBox2.Enabled = false;
-            btnToggleRaceBox3.Enabled = false;
-            btnDeleteRaceBox3.Enabled = false;
-        }
-
-        private void SetSlotShiftButtonsEnabled(int uiSlot, bool enabled, bool isRaceBox)
-        {
-            if (!isRaceBox)
-            {
-                switch (uiSlot)
-                {
-                    case 1:
-                        btnShiftLeftRun1.Enabled = enabled;
-                        btnShiftRightRun1.Enabled = enabled;
-                        btnShiftResetRun1.Enabled = enabled;
-                        break;
-                    case 2:
-                        btnShiftLeftRun2.Enabled = enabled;
-                        btnShiftRightRun2.Enabled = enabled;
-                        btnShiftResetRun2.Enabled = enabled;
-                        break;
-                    case 3:
-                        btnShiftLeftRun3.Enabled = enabled;
-                        btnShiftRightRun3.Enabled = enabled;
-                        btnShiftResetRun3.Enabled = enabled;
-                        break;
-                }
-            }
-            else
-            {
-                switch (uiSlot)
-                {
-                    case 1:
-                        btnShiftLeftRB1.Enabled = enabled;
-                        btnShiftRightRB1.Enabled = enabled;
-                        btnShiftResetRB1.Enabled = enabled;
-                        break;
-                    case 2:
-                        btnShiftLeftRB2.Enabled = enabled;
-                        btnShiftRightRB2.Enabled = enabled;
-                        btnShiftResetRB2.Enabled = enabled;
-                        break;
-                    case 3:
-                        btnShiftLeftRB3.Enabled = enabled;
-                        btnShiftRightRB3.Enabled = enabled;
-                        btnShiftResetRB3.Enabled = enabled;
-                        break;
-                }
-            }
+            // Castle Run 3 + all RaceBox slots hide in Speed-Run mode.
+            _runStrip?.SetSlotVisible(3, !isSpeedRun);
+            _runStrip?.SetSlotVisible(4, !isSpeedRun);
+            _runStrip?.SetSlotVisible(5, !isSpeedRun);
+            _runStrip?.SetSlotVisible(6, !isSpeedRun);
         }
     }
 }
