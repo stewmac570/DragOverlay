@@ -21,7 +21,7 @@ namespace CastleOverlayV2
         private readonly MainForm _view;
         private readonly ConfigService _config;
         private readonly PlotManager _plot;
-        private readonly ChannelToggleBar _toggleBar;
+        private readonly ChannelDrawer _drawer;
 
         // Active runs by slot. Castle = 1..3, RaceBox = 4..6.
         private readonly Dictionary<int, RunData> _runs = new();
@@ -39,19 +39,19 @@ namespace CastleOverlayV2
         public bool IsSpeedRunMode => _isSpeedRunMode;
         public bool IsAnyRunLoaded => _runs.Count > 0;
 
-        public MainFormPresenter(MainForm view, ConfigService config, PlotManager plot, ChannelToggleBar toggleBar)
+        public MainFormPresenter(MainForm view, ConfigService config, PlotManager plot, ChannelDrawer drawer)
         {
             _view = view;
             _config = config;
             _plot = plot;
-            _toggleBar = toggleBar;
+            _drawer = drawer;
 
             _isFourPoleMode = _config.Config.IsFourPoleMode;
             _plot.SetFourPoleMode(_isFourPoleMode);
             _plot.SetSpeedMode(_isSpeedRunMode);
 
-            _toggleBar.ChannelVisibilityChanged += OnChannelVisibilityChanged;
-            _toggleBar.RpmModeChanged += OnRpmModeChanged;
+            _drawer.ChannelVisibilityChanged += OnChannelVisibilityChanged;
+            _drawer.RpmModeChanged += OnRpmModeChanged;
             _plot.CursorMoved += OnCursorMoved;
         }
 
@@ -207,21 +207,21 @@ namespace CastleOverlayV2
         private void EnsureRaceBoxChannelsInToggleBar()
         {
             bool added = false;
-            var states = _toggleBar.GetChannelStates();
+            var states = _drawer.GetChannelStates();
             if (!states.ContainsKey("RaceBox Speed"))
             {
-                _toggleBar.AddChannel("RaceBox Speed", true);
+                _drawer.AddChannel("RaceBox Speed", true);
                 added = true;
             }
             if (!states.ContainsKey("RaceBox G-Force X"))
             {
-                _toggleBar.AddChannel("RaceBox G-Force X", true);
+                _drawer.AddChannel("RaceBox G-Force X", true);
                 added = true;
             }
             if (added)
             {
-                _toggleBar.PerformLayout();
-                _toggleBar.Refresh();
+                _drawer.PerformLayout();
+                _drawer.Refresh();
             }
         }
 
@@ -243,6 +243,7 @@ namespace CastleOverlayV2
                 _plot.ToggleRunVisibility(slot);
 
             _plot.PlotRuns(new Dictionary<int, RunData>(_runs));
+            PushAllStatsToDrawer();
             _view.UpdateRunTypeLockState();
         }
 
@@ -313,7 +314,7 @@ namespace CastleOverlayV2
 
         private void OnCursorMoved(Dictionary<string, double?[]> valuesAtCursor)
         {
-            _toggleBar.UpdateMousePositionValues(valuesAtCursor);
+            _drawer.UpdateCursorValues(valuesAtCursor);
         }
 
         // ============================================================
@@ -328,7 +329,7 @@ namespace CastleOverlayV2
                     Logger.Log($"  Run {slot}: {run.DataPoints.Count} points, shift={run.TimeShiftMs} ms");
             }
 
-            var visibilityMap = _toggleBar.GetChannelStates();
+            var visibilityMap = _drawer.GetChannelStates();
 
             if (Logger.IsEnabled)
             {
@@ -339,6 +340,101 @@ namespace CastleOverlayV2
 
             _plot.SetInitialChannelVisibility(visibilityMap);
             _plot.PlotRuns(new Dictionary<int, RunData>(_runs));
+
+            PushAllStatsToDrawer();
+        }
+
+        private static readonly string[] _knownChannels = new[]
+        {
+            "RPM", "Throttle %", "Voltage", "Current", "Ripple", "PowerOut",
+            "ESC Temp", "MotorTemp", "MotorTiming", "Acceleration",
+            "RaceBox Speed", "RaceBox G-Force X",
+        };
+
+        private void PushAllStatsToDrawer()
+        {
+            foreach (var ch in _knownChannels)
+                _drawer.UpdateChannelStats(ch, GetChannelStats(ch));
+        }
+
+        // ============================================================
+        // Channel stats (for the drawer's stat cards)
+        // ============================================================
+        public IReadOnlyList<ChannelRunStats> GetChannelStats(string channelLabel)
+        {
+            var list = new List<ChannelRunStats>();
+            foreach (var (slot, run) in _runs)
+            {
+                string label = slot <= 3 ? $"Run {slot}" : $"RB {slot - 3}";
+                if (!TryExtractChannelValues(run, channelLabel, out var values) || values.Count == 0)
+                    continue;
+
+                double max = values[0];
+                double sum = 0;
+                foreach (var v in values)
+                {
+                    if (v > max) max = v;
+                    sum += v;
+                }
+                double avg = sum / values.Count;
+                list.Add(new ChannelRunStats(slot, label, max, avg));
+            }
+            // Order by slot for a stable display.
+            list.Sort((a, b) => a.Slot.CompareTo(b.Slot));
+            return list;
+        }
+
+        private bool TryExtractChannelValues(RunData run, string channelLabel, out List<double> values)
+        {
+            values = new List<double>();
+            if (run.IsRaceBox)
+            {
+                if (run.Data.TryGetValue(channelLabel, out var pts))
+                {
+                    foreach (var p in pts) values.Add(p.Y);
+                    return true;
+                }
+                return false;
+            }
+
+            // Castle channel → DataPoint field
+            if (run.DataPoints == null || run.DataPoints.Count == 0) return false;
+            switch (channelLabel)
+            {
+                case "RPM":
+                    foreach (var p in run.DataPoints)
+                        values.Add(_isFourPoleMode ? p.Speed * 0.5 : p.Speed);
+                    return true;
+                case "Throttle %":
+                    foreach (var p in run.DataPoints) values.Add(p.ThrottlePercent);
+                    return true;
+                case "Voltage":
+                    foreach (var p in run.DataPoints) values.Add(p.Voltage);
+                    return true;
+                case "Current":
+                    foreach (var p in run.DataPoints) values.Add(p.Current);
+                    return true;
+                case "Ripple":
+                    foreach (var p in run.DataPoints) values.Add(p.Ripple);
+                    return true;
+                case "PowerOut":
+                    foreach (var p in run.DataPoints) values.Add(p.PowerOut);
+                    return true;
+                case "ESC Temp":
+                    foreach (var p in run.DataPoints) values.Add(p.Temperature);
+                    return true;
+                case "MotorTemp":
+                    foreach (var p in run.DataPoints) values.Add(p.MotorTemp);
+                    return true;
+                case "MotorTiming":
+                    foreach (var p in run.DataPoints) values.Add(p.MotorTiming);
+                    return true;
+                case "Acceleration":
+                    foreach (var p in run.DataPoints) values.Add(p.Acceleration);
+                    return true;
+                default:
+                    return false;
+            }
         }
 
         // ============================================================
