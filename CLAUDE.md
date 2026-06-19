@@ -81,7 +81,7 @@ The Castle CSV header sets `CsvConfiguration(CultureInfo.InvariantCulture)`, but
 ```
 src/CastleOverlayV2/
 ├─ Program.cs, MainForm.cs(/.Designer.cs/.resx)
-├─ Controls/   ChannelToggleBar
+├─ Controls/   ChannelDrawer (collapsible drawer + stat cards)
 ├─ Models/     RunData, DataPoint, Config, RaceBoxData, RaceBoxPoint
 ├─ Services/   CsvLoader, RaceBoxLoader, ConfigService, Logger, ThrottlePercent
 ├─ Plot/       PlotManager (all ScottPlot setup lives here)

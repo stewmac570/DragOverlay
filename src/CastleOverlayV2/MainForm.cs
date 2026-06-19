@@ -17,7 +17,7 @@ namespace CastleOverlayV2
     {
         private readonly ConfigService _configService;
         private readonly PlotManager _plotManager;
-        private ChannelToggleBar _channelToggleBar;
+        private ChannelDrawer _channelDrawer;
         private MainFormPresenter _presenter;
 
         public MainForm(ConfigService configService)
@@ -76,22 +76,22 @@ namespace CastleOverlayV2
             _configService.Config.ChannelVisibility = initialStates;
             _plotManager.SetInitialChannelVisibility(initialStates);
 
-            _channelToggleBar = new ChannelToggleBar(channelNames, initialStates);
-            Controls.Add(_channelToggleBar);
+            _channelDrawer = new ChannelDrawer(channelNames, initialStates);
+            Controls.Add(_channelDrawer);
 
             // Inject any extra known channels found in config but missing from the default list.
             var allowed = new HashSet<string>(channelNames, StringComparer.OrdinalIgnoreCase);
             foreach (var kv in initialStates)
             {
                 if (!allowed.Contains(kv.Key)) continue;
-                if (!_channelToggleBar.GetChannelStates().ContainsKey(kv.Key))
-                    _channelToggleBar.AddChannel(kv.Key, kv.Value);
+                if (!_channelDrawer.GetChannelStates().ContainsKey(kv.Key))
+                    _channelDrawer.AddChannel(kv.Key, kv.Value);
             }
 
             _plotManager.ResetEmptyPlot();
 
             // Presenter owns all run state + business logic. It subscribes to plot/toggle events.
-            _presenter = new MainFormPresenter(this, _configService, _plotManager, _channelToggleBar);
+            _presenter = new MainFormPresenter(this, _configService, _plotManager, _channelDrawer);
 
             // RunType pill: initial appearance (Drag mode, no runs loaded → not locked).
             ApplyRunTypeUI(_presenter.IsSpeedRunMode);
