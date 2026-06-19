@@ -36,10 +36,14 @@ namespace CastleOverlayV2.Plot
         // Lazy cache of channel → scatters, rebuilt on demand after _scatters mutates.
         private Dictionary<string, List<Scatter>>? _channelToScattersCache;
 
-        // Phase 1 focus model: one channel is "focused" (full opacity, owns the visible left Y axis);
-        // all other visible channels render as dim context traces. Focus is hardcoded to RPM
-        // for now — Phase 3 (#74) makes it interactive.
+        // Focus model: one channel is "focused" (full opacity, normal line width, owns the
+        // visible left Y axis); every other visible channel renders as a dim context trace.
+        // Initial value is RPM; SetFocusedChannel(...) flips it on a card click (Phase 3).
         private string _focusedChannel = "RPM";
+
+        // Line widths per focus state (spec §6.3).
+        private const float FocusedLineWidth = 2.0f;
+        private const float ContextLineWidth = 1.3f;
 
         // Dark theme tokens (from Docs/DragOverlay_UI_Spec.md §5).
         private static readonly ScottPlot.Color ThemePlotBg = new(0x0E, 0x12, 0x18);   // surface.plot
@@ -191,6 +195,28 @@ namespace CastleOverlayV2.Plot
             axis.FrameLineStyle.Color = color;
         }
 
+        public string FocusedChannel => _focusedChannel;
+
+        /// <summary>
+        /// Change the focused channel. Re-tints every existing scatter (full opacity if it
+        /// matches the new focus, dimmed otherwise), re-binds the single visible Y axis to
+        /// the new channel, and triggers a refresh. No replot needed.
+        /// </summary>
+        public void SetFocusedChannel(string channelName)
+        {
+            if (_focusedChannel == channelName) return;
+            _focusedChannel = channelName;
+
+            foreach (var s in _scatters)
+            {
+                s.Color = GetTraceColor(s.Label);
+                s.LineWidth = WidthFor(s.Label);
+            }
+
+            ApplyFocusToAxes();
+            _plot.Refresh();
+        }
+
         /// <summary>
         /// Channel hue, dimmed to <see cref="ContextAlpha"/> when this channel is not the focused one.
         /// </summary>
@@ -201,6 +227,9 @@ namespace CastleOverlayV2.Plot
                 ? baseColor
                 : baseColor.WithAlpha(ContextAlpha);
         }
+
+        private float WidthFor(string channelLabel) =>
+            channelLabel == _focusedChannel ? FocusedLineWidth : ContextLineWidth;
 
         // ---------------- Public API ----------------
 
@@ -384,7 +413,7 @@ namespace CastleOverlayV2.Plot
                     s.Label = channelLabel;
                     s.Color = GetTraceColor(channelLabel);
                     s.LinePattern = LineStyleHelper.GetLinePattern(slot - 1);
-                    s.LineWidth = (float)LineStyleHelper.GetLineWidth(slot - 1);
+                    s.LineWidth = WidthFor(channelLabel);
                     s.MarkerSize = 0; // line-only — markers are noise (spec §6.3)
                     s.Axes.XAxis = xAxis;
                     s.Axes.YAxis = channelLabel switch
@@ -744,7 +773,7 @@ namespace CastleOverlayV2.Plot
                 s.Label = ch;
                 s.Color = GetTraceColor(ch);
                 s.LinePattern = LineStyleHelper.GetLinePattern(slot - 1);
-                s.LineWidth = (float)LineStyleHelper.GetLineWidth(slot - 1);
+                s.LineWidth = WidthFor(ch);
                 s.MarkerSize = 0; // line-only — markers are noise (spec §6.3)
                 s.Axes.XAxis = _plot.Plot.Axes.Bottom;
                 s.Axes.YAxis = ch == "RaceBox Speed" ? raceBoxSpeedAxis : raceBoxGxAxis;

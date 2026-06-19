@@ -5,19 +5,8 @@ namespace CastleOverlayV2.Tests;
 
 public class LineStyleHelperTests
 {
-    [Theory]
-    [InlineData(0, 2.5)] // Castle Run 1 — boldest
-    [InlineData(1, 1.5)] // Castle Run 2
-    [InlineData(2, 1.0)] // Castle Run 3 — thinnest
-    [InlineData(3, 2.0)] // RaceBox 1 — default
-    [InlineData(4, 2.0)] // RaceBox 2 — default
-    [InlineData(5, 2.0)] // RaceBox 3 — default
-    [InlineData(99, 2.0)] // Split lines — default
-    [InlineData(-1, 2.0)] // Out of range — default
-    public void GetLineWidth_returns_expected(int index, double expected)
-    {
-        Assert.Equal(expected, LineStyleHelper.GetLineWidth(index));
-    }
+    // Note: GetLineWidth was removed when Phase 3 (#74) made line width focus-based
+    // (set in PlotManager.WidthFor), not slot-based. Run identity is now line style only.
 
     [Theory]
     [InlineData(0, "Solid")]  // Castle Run 1
