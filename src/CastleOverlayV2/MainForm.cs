@@ -26,6 +26,12 @@ namespace CastleOverlayV2
 
             InitializeComponent();
 
+            // Dark theme — surface.window (chrome around the plot).
+            // Phase 1 minimum: form + plot are dark; the run strip / drawer get full
+            // theme treatment in their own phases.
+            this.BackColor = Color.FromArgb(0x13, 0x17, 0x1E);
+            this.ForeColor = Color.FromArgb(0xE6, 0xE9, 0xEF);
+
             // App icon + title
             var iconStream = Assembly.GetExecutingAssembly()
                 .GetManifestResourceStream("CastleOverlayV2.Resources.DragOverlay.ico");
