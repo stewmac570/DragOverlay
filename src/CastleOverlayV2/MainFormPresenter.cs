@@ -99,7 +99,7 @@ namespace CastleOverlayV2
         {
             Logger.Log($"LoadCastleRunAsync({slot}) started");
 
-            string? path = _view.PickCsvFile();
+            string? path = _view.PickCastleCsvFile();
             if (path == null) return;
 
             try
@@ -161,7 +161,7 @@ namespace CastleOverlayV2
             int plotSlot = uiSlot + 3;
             Logger.Log($"LoadRaceBoxRunAsync(UI {uiSlot} → plot slot {plotSlot}) started");
 
-            string? path = _view.PickCsvFile();
+            string? path = _view.PickRaceBoxCsvFile();
             if (path == null) return;
 
             try

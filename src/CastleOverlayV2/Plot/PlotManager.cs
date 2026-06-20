@@ -87,6 +87,44 @@ namespace CastleOverlayV2.Plot
 
         private bool _isFourPoleMode = false;
 
+        // Voltage smoothing (Settings dialog).
+        private bool _voltageSmoothingEnabled;
+        private int _voltageSmoothingWindow = 5;
+
+        /// <summary>
+        /// Configure voltage trace smoothing. When enabled, the plotted Voltage trace and
+        /// hover read-out use a centered moving-average filter with <paramref name="window"/>
+        /// samples (clamped odd, 3..15). Source data is never mutated.
+        /// </summary>
+        public void SetVoltageSmoothing(bool enabled, int window)
+        {
+            _voltageSmoothingEnabled = enabled;
+            if (window < 3) window = 3;
+            if (window > 15) window = 15;
+            if (window % 2 == 0) window += 1;
+            _voltageSmoothingWindow = window;
+
+            if (_runsBySlot.Count > 0)
+                PlotRuns(new Dictionary<int, RunData>(_runsBySlot));
+        }
+
+        private static double[] MovingAverage(double[] src, int window)
+        {
+            int n = src.Length;
+            if (n == 0 || window <= 1) return src;
+            int half = window / 2;
+            var dst = new double[n];
+            for (int i = 0; i < n; i++)
+            {
+                int lo = Math.Max(0, i - half);
+                int hi = Math.Min(n - 1, i + half);
+                double sum = 0;
+                for (int j = lo; j <= hi; j++) sum += src[j];
+                dst[i] = sum / (hi - lo + 1);
+            }
+            return dst;
+        }
+
         // ---- Scale Profiles (Drag vs Speed-Run) ----
         private enum ScaleProfile { Drag, SpeedRun }
         private ScaleProfile _activeProfile = ScaleProfile.Drag;
@@ -423,6 +461,8 @@ namespace CastleOverlayV2.Plot
                     double[] ysToPlot = rawYs;
                     if (_isFourPoleMode && channelLabel == "RPM")
                         ysToPlot = rawYs.Select(v => v * 0.5).ToArray();
+                    if (_voltageSmoothingEnabled && channelLabel == "Voltage")
+                        ysToPlot = MovingAverage(ysToPlot, _voltageSmoothingWindow);
 
                     var s = _plot.Plot.Add.Scatter(xs, ysToPlot);
                     s.LegendText = channelLabel;
@@ -451,7 +491,9 @@ namespace CastleOverlayV2.Plot
                     s.IsVisible = chOn && runOn;
 
                     _scatters.Add(s);
-                    _rawYMap[s] = rawYs;
+                    // Hover values follow the displayed array — when smoothing is on for
+                    // Voltage, the hover read-out reflects the smoothed curve too.
+                    _rawYMap[s] = ysToPlot;
                     _scatterSlotMap[s] = slot;
                 }
             }

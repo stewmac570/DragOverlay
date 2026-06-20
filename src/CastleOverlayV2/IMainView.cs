@@ -8,6 +8,8 @@ namespace CastleOverlayV2
     {
         // File pickers
         string? PickCsvFile();
+        string? PickCastleCsvFile();
+        string? PickRaceBoxCsvFile();
         string? PickTuneFile();
         string? PickProjectFileToOpen();
         string? PickProjectFileToSave();
@@ -30,5 +32,8 @@ namespace CastleOverlayV2
         void ShowAlignmentUI(string runLabel, double offsetMs);
         void HideAlignmentUI();
         void SetAlignmentOffsetUI(double offsetMs);
+
+        // Settings
+        void ShowSettingsDialog();
     }
 }

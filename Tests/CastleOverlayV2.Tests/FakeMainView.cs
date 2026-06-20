@@ -26,7 +26,11 @@ public sealed class FakeMainView : IMainView
     public readonly List<double> AlignmentOffsets = new();
 
     public string? PickCsvFile() => CsvFileToReturn;
+    public string? PickCastleCsvFile() => CsvFileToReturn;
+    public string? PickRaceBoxCsvFile() => CsvFileToReturn;
     public string? PickTuneFile() => TuneFileToReturn;
+    public void ShowSettingsDialog() => SettingsShown++;
+    public int SettingsShown;
     public string? PickProjectFileToOpen() => ProjectOpenPathToReturn;
     public string? PickProjectFileToSave() => ProjectSavePathToReturn;
 
