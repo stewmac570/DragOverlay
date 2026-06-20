@@ -11,14 +11,14 @@ namespace CastleOverlayV2.Controls
         private const int ResizeGripWidth = 6;
 
         private readonly Panel _resizeGrip;
-        private readonly Button _collapseButton;
-        private readonly Panel _content;
+        private readonly VerticalTextButton _collapseButton;
+        private readonly UnifiedScrollPanel _content;
         private readonly FlowLayoutPanel _layout;
+        private readonly TableLayoutPanel _curveLayout;
         private readonly ComboBox _runCombo;
         private readonly Button _attachButton;
         private readonly Label _statusLabel;
         private readonly ComboBox _radioModeCombo;
-        private readonly ComboBox _radioSpeedTypeCombo;
         private readonly FlowLayoutPanel _radioModeFields;
         private readonly NumericUpDown _radioAllTurn;
         private readonly NumericUpDown _radioAllReturn;
@@ -39,6 +39,8 @@ namespace CastleOverlayV2.Controls
         private bool _isCollapsed;
         private bool _isUpdating;
         private bool _isResizing;
+        private bool _performingLayout;
+        private string _radioSpeedType = "Normal";
         private int _resizeStartMouseX;
         private int _resizeStartWidth;
         private int _lastExpandedWidth = ExpandedWidth;
@@ -65,13 +67,19 @@ namespace CastleOverlayV2.Controls
             _resizeGrip.MouseDown += ResizeGrip_MouseDown;
             _resizeGrip.MouseMove += ResizeGrip_MouseMove;
             _resizeGrip.MouseUp += ResizeGrip_MouseUp;
+            _resizeGrip.MouseCaptureChanged += (_, _) =>
+            {
+                if (_isResizing && !_resizeGrip.Capture)
+                    CompletePanelResize();
+            };
             Controls.Add(_resizeGrip);
 
-            _collapseButton = new Button
+            _collapseButton = new VerticalTextButton
             {
                 Dock = DockStyle.None,
                 Width = CollapsedWidth,
-                Text = "Tune\n‹",
+                Text = "Tune",
+                Arrow = "‹",
                 FlatStyle = FlatStyle.Flat,
                 BackColor = Color.FromArgb(0x1D, 0x23, 0x2D),
                 ForeColor = ForeColor
@@ -80,20 +88,17 @@ namespace CastleOverlayV2.Controls
             _collapseButton.Click += (_, _) => ToggleCollapsed();
             Controls.Add(_collapseButton);
 
-            _content = new Panel
+            _content = new UnifiedScrollPanel
             {
                 Dock = DockStyle.None,
                 Padding = new Padding(12),
                 AutoScroll = true,
                 BackColor = BackColor
             };
-            _content.HorizontalScroll.Enabled = false;
-            _content.HorizontalScroll.Visible = false;
             Controls.Add(_content);
 
             _layout = new FlowLayoutPanel
             {
-                Dock = DockStyle.Top,
                 FlowDirection = FlowDirection.TopDown,
                 WrapContents = false,
                 AutoSize = true,
@@ -101,7 +106,11 @@ namespace CastleOverlayV2.Controls
                 BackColor = BackColor
             };
             _content.Controls.Add(_layout);
-            _content.Resize += (_, _) => ResizeContent();
+            _content.Resize += (_, _) =>
+            {
+                if (!_isResizing)
+                    ResizeContent();
+            };
 
             _layout.Controls.Add(CreateTitle("Tune"));
 
@@ -151,17 +160,7 @@ namespace CastleOverlayV2.Controls
                 FlatStyle = FlatStyle.Flat
             };
             _radioModeCombo.Items.AddRange(new object[] { "Mode 1", "Mode 2", "Mode 3" });
-            _radioSpeedTypeCombo = new ComboBox
-            {
-                Dock = DockStyle.Fill,
-                DropDownStyle = ComboBoxStyle.DropDownList,
-                BackColor = Color.FromArgb(0x20, 0x26, 0x31),
-                ForeColor = ForeColor,
-                FlatStyle = FlatStyle.Flat
-            };
-            _radioSpeedTypeCombo.Items.AddRange(new object[] { "Normal", "Curve" });
             AddField(radioHeader, "Mode", _radioModeCombo);
-            AddField(radioHeader, "Speed type", _radioSpeedTypeCombo);
             _layout.Controls.Add(radioHeader);
 
             _radioModeFields = new FlowLayoutPanel
@@ -191,7 +190,6 @@ namespace CastleOverlayV2.Controls
                 RebuildRadioModeFields();
                 RaiseRadioChanged();
             };
-            _radioSpeedTypeCombo.SelectedIndexChanged += (_, _) => RaiseRadioChanged();
             foreach (var numeric in new[]
             {
                 _radioAllTurn, _radioAllReturn,
@@ -203,20 +201,34 @@ namespace CastleOverlayV2.Controls
 
             _layout.Controls.Add(CreateSection("Boost"));
             _boostLabel = CreateValueLabel("-");
-            _boostLabel.Height = 66;
+            _boostLabel.Height = 104;
             _layout.Controls.Add(_boostLabel);
 
             _layout.Controls.Add(CreateSection("Turbo"));
             _turboLabel = CreateValueLabel("-");
-            _turboLabel.Height = 66;
+            _turboLabel.Height = 72;
             _layout.Controls.Add(_turboLabel);
 
             _throttleCurve = new TuneCurvePreview();
             _boostCurve = new TuneCurvePreview();
-            _throttleCurve.Height = 170;
-            _boostCurve.Height = 170;
-            _layout.Controls.Add(_throttleCurve);
-            _layout.Controls.Add(_boostCurve);
+            _throttleCurve.Dock = DockStyle.Fill;
+            _boostCurve.Dock = DockStyle.Fill;
+            _throttleCurve.Margin = new Padding(0, 0, 0, 5);
+            _boostCurve.Margin = new Padding(0, 5, 0, 0);
+
+            _curveLayout = new TableLayoutPanel
+            {
+                ColumnCount = 1,
+                RowCount = 2,
+                BackColor = BackColor,
+                Margin = Padding.Empty
+            };
+            _curveLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            _curveLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
+            _curveLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
+            _curveLayout.Controls.Add(_throttleCurve, 0, 0);
+            _curveLayout.Controls.Add(_boostCurve, 0, 1);
+            _content.Controls.Add(_curveLayout);
 
             SetAvailableRuns(Array.Empty<int>(), preferredSlot: null);
             SetTune(null, null);
@@ -278,7 +290,10 @@ namespace CastleOverlayV2.Controls
                         ? "No Castle run selected. Load a tune to preview it."
                         : "Tune preview loaded. Load a Castle run to attach it.";
 
+                bool boostEnabled = tune?.BoostEnabled == true;
                 _boostLabel.Text = tune == null ? "-" : BuildBoostText(tune);
+                _boostLabel.Visible = tune == null || boostEnabled;
+                _boostLabel.Height = 72;
                 _turboLabel.Text = tune == null ? "-" : BuildTurboText(tune);
 
                 ApplyRadio(tune?.Radio);
@@ -290,8 +305,8 @@ namespace CastleOverlayV2.Controls
                 _boostCurve.SetCurve(
                     "Boost by throttle",
                     tune != null ? tune.BoostByThrottleCurve : Array.Empty<TuneCurvePoint>(),
-                    "No boost curve",
-                    tune is { BoostByThrottleCurve.Count: > 0, BoostEnabled: false });
+                    "No boost curve");
+                _boostCurve.Visible = true;
             }
             finally
             {
@@ -305,7 +320,8 @@ namespace CastleOverlayV2.Controls
             _content.Visible = !_isCollapsed;
             _resizeGrip.Visible = !_isCollapsed;
             Width = _isCollapsed ? CollapsedWidth : _lastExpandedWidth;
-            _collapseButton.Text = _isCollapsed ? "Tune\n›" : "Tune\n‹";
+            _collapseButton.Arrow = _isCollapsed ? "›" : "‹";
+            _collapseButton.Invalidate();
             ArrangePanelRegions();
         }
 
@@ -339,8 +355,8 @@ namespace CastleOverlayV2.Controls
                 Math.Max(0, ClientSize.Width - contentLeft),
                 ClientSize.Height);
 
-            _content.AutoScrollPosition = Point.Empty;
-            ResizeContent();
+            if (!_isResizing)
+                ResizeContent();
         }
 
         private void ResizeGrip_MouseDown(object? sender, MouseEventArgs e)
@@ -352,6 +368,7 @@ namespace CastleOverlayV2.Controls
             _resizeStartMouseX = Cursor.Position.X;
             _resizeStartWidth = Width;
             _resizeGrip.Capture = true;
+            _content.BeginInteractiveResize();
         }
 
         private void ResizeGrip_MouseMove(object? sender, MouseEventArgs e)
@@ -367,6 +384,14 @@ namespace CastleOverlayV2.Controls
 
             Width = Math.Clamp(_resizeStartWidth + delta, MinimumExpandedWidth, maximum);
             _lastExpandedWidth = Width;
+
+            int contentLeft = ResizeGripWidth + CollapsedWidth;
+            _content.SetBounds(
+                contentLeft,
+                0,
+                Math.Max(0, ClientSize.Width - contentLeft),
+                ClientSize.Height);
+            _content.Invalidate();
         }
 
         private void ResizeGrip_MouseUp(object? sender, MouseEventArgs e)
@@ -374,26 +399,89 @@ namespace CastleOverlayV2.Controls
             if (e.Button != MouseButtons.Left)
                 return;
 
-            _isResizing = false;
             _resizeGrip.Capture = false;
+            CompletePanelResize();
+        }
+
+        private void CompletePanelResize()
+        {
+            if (!_isResizing)
+                return;
+
+            _isResizing = false;
+            ArrangePanelRegions();
+            ResizeContent();
+            _content.EndInteractiveResize();
         }
 
         private void ResizeContent()
         {
-            if (_content == null || _layout == null)
+            if (_content == null || _layout == null || _curveLayout == null || _performingLayout)
                 return;
 
-            int contentWidth = Math.Max(
-                260,
-                _content.ClientSize.Width - _content.Padding.Horizontal - 2);
-            _layout.Width = contentWidth;
+            _performingLayout = true;
+            int verticalScroll = _content.VerticalScrollPosition;
+            _content.SuspendLayout();
+            _layout.SuspendLayout();
+            _radioModeFields.SuspendLayout();
+            _curveLayout.SuspendLayout();
+            try
+            {
+                _content.ResetHorizontalScroll();
 
-            foreach (Control control in _layout.Controls)
-                control.Width = Math.Max(240, contentWidth - control.Margin.Horizontal);
+                int innerLeft = _content.Padding.Left;
+                int innerTop = _content.Padding.Top;
+                int innerWidth = Math.Max(0, _content.Width - _content.Padding.Horizontal - 6);
+                int innerHeight = Math.Max(0, _content.ClientSize.Height - _content.Padding.Vertical);
+                int curveHeight = Math.Clamp(
+                    (int)Math.Round(innerHeight * 0.52),
+                    Math.Min(260, innerHeight),
+                    Math.Min(560, innerHeight));
+                int contentWidth = innerWidth;
+                _layout.Width = contentWidth;
 
-            _radioModeFields.Width = contentWidth;
-            foreach (Control control in _radioModeFields.Controls)
-                control.Width = Math.Max(240, contentWidth - control.Margin.Horizontal);
+                foreach (Control control in _layout.Controls)
+                    control.Width = Math.Max(0, contentWidth - control.Margin.Horizontal);
+
+                _radioModeFields.Width = contentWidth;
+                foreach (Control control in _radioModeFields.Controls)
+                    control.Width = Math.Max(0, contentWidth - control.Margin.Horizontal);
+
+                _layout.Location = new Point(innerLeft, innerTop);
+                int minimumContentHeight = _layout.Bottom + 10 + curveHeight + _content.Padding.Bottom;
+                int totalContentHeight = Math.Max(innerHeight + _content.Padding.Vertical, minimumContentHeight);
+                int curveTop = Math.Max(_layout.Bottom + 10, totalContentHeight - _content.Padding.Bottom - curveHeight);
+                _curveLayout.AutoSize = false;
+                _curveLayout.MinimumSize = Size.Empty;
+                _curveLayout.MaximumSize = Size.Empty;
+                _curveLayout.SetBounds(innerLeft, curveTop, innerWidth, curveHeight);
+                _throttleCurve.MinimumSize = Size.Empty;
+                _boostCurve.MinimumSize = Size.Empty;
+                _throttleCurve.SetBounds(
+                    0,
+                    0,
+                    innerWidth,
+                    Math.Max(0, curveHeight / 2 - 5));
+                _boostCurve.SetBounds(
+                    0,
+                    curveHeight / 2 + 5,
+                    innerWidth,
+                    Math.Max(0, curveHeight - curveHeight / 2 - 5));
+                _content.AutoScrollMinSize = new Size(1, totalContentHeight);
+            }
+            finally
+            {
+                _curveLayout.ResumeLayout(false);
+                _curveLayout.PerformLayout();
+                _radioModeFields.ResumeLayout(false);
+                _layout.ResumeLayout(false);
+                _content.ResumeLayout(true);
+                _throttleCurve.Invalidate();
+                _boostCurve.Invalidate();
+                _content.SetVerticalScroll(verticalScroll);
+                _content.RefreshScrollIndicator();
+                _performingLayout = false;
+            }
         }
 
         private bool TryGetSelectedSlot(out int slot)
@@ -426,7 +514,7 @@ namespace CastleOverlayV2.Controls
             {
                 Mode = GetRadioMode(),
                 ThrottleSpeedMode = _radioModeCombo.Text,
-                SpeedType = _radioSpeedTypeCombo.Text,
+                SpeedType = _radioSpeedType,
                 AllTurnPercent = ValueOrNull(_radioAllTurn),
                 AllReturnPercent = ValueOrNull(_radioAllReturn),
                 HighTurnPercent = ValueOrNull(_radioHighTurn),
@@ -444,10 +532,9 @@ namespace CastleOverlayV2.Controls
         {
             int mode = Math.Clamp(radio?.Mode ?? ParseLegacyMode(radio?.ThrottleSpeedMode), 1, 3);
             _radioModeCombo.SelectedIndex = mode - 1;
-            _radioSpeedTypeCombo.SelectedItem =
-                string.IsNullOrWhiteSpace(radio?.SpeedType) ? "Normal" : radio.SpeedType;
-            if (_radioSpeedTypeCombo.SelectedIndex < 0)
-                _radioSpeedTypeCombo.SelectedIndex = 0;
+            _radioSpeedType = string.IsNullOrWhiteSpace(radio?.SpeedType)
+                ? "Normal"
+                : radio.SpeedType;
 
             SetNumeric(_radioAllTurn, radio?.AllTurnPercent ?? radio?.AllPercent);
             SetNumeric(_radioAllReturn, radio?.AllReturnPercent ?? 100);
@@ -481,69 +568,81 @@ namespace CastleOverlayV2.Controls
             _radioModeFields.SuspendLayout();
             _radioModeFields.Controls.Clear();
 
+            var grid = new TableLayoutPanel
+            {
+                ColumnCount = 4,
+                AutoSize = false,
+                Width = Math.Max(0, _radioModeFields.ClientSize.Width),
+                Margin = new Padding(0),
+                BackColor = BackColor,
+                GrowStyle = TableLayoutPanelGrowStyle.AddRows
+            };
+            grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
+            grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
+            grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
+            grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
+            AddRadioHeader(grid);
+
             switch (GetRadioMode())
             {
                 case 2:
-                    _radioModeFields.Controls.Add(CreateZoneRow("High", _radioHighTurn, _radioHighReturn));
-                    _radioModeFields.Controls.Add(CreatePointRow("Point 1", _radioPoint1));
-                    _radioModeFields.Controls.Add(CreateZoneRow("Low", _radioLowTurn, _radioLowReturn));
+                    AddZoneRow(grid, null, _radioHighTurn, _radioHighReturn, "High");
+                    AddZoneRow(grid, _radioPoint1, _radioLowTurn, _radioLowReturn, "Low");
                     break;
                 case 3:
-                    _radioModeFields.Controls.Add(CreateZoneRow("High", _radioHighTurn, _radioHighReturn));
-                    _radioModeFields.Controls.Add(CreatePointRow("Point 2", _radioPoint2));
-                    _radioModeFields.Controls.Add(CreateZoneRow("Middle", _radioMiddleTurn, _radioMiddleReturn));
-                    _radioModeFields.Controls.Add(CreatePointRow("Point 1", _radioPoint1));
-                    _radioModeFields.Controls.Add(CreateZoneRow("Low", _radioLowTurn, _radioLowReturn));
+                    AddZoneRow(grid, null, _radioHighTurn, _radioHighReturn, "High");
+                    AddZoneRow(grid, _radioPoint2, _radioMiddleTurn, _radioMiddleReturn, "Middle");
+                    AddZoneRow(grid, _radioPoint1, _radioLowTurn, _radioLowReturn, "Low");
                     break;
                 default:
-                    _radioModeFields.Controls.Add(CreateZoneRow("All", _radioAllTurn, _radioAllReturn));
+                    AddZoneRow(grid, null, _radioAllTurn, _radioAllReturn, "All");
                     break;
             }
 
+            grid.Height = grid.RowStyles
+                .Cast<RowStyle>()
+                .Sum(style => (int)style.Height);
+            _radioModeFields.Controls.Add(grid);
             _radioModeFields.ResumeLayout(true);
             ResizeContent();
         }
 
-        private TableLayoutPanel CreateZoneRow(
-            string label,
-            NumericUpDown turn,
-            NumericUpDown returnValue)
+        private static void AddRadioHeader(TableLayoutPanel grid)
         {
-            var row = new TableLayoutPanel
-            {
-                ColumnCount = 3,
-                RowCount = 2,
-                Height = 52,
-                Margin = new Padding(0, 2, 0, 2),
-                BackColor = BackColor
-            };
-            row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 34));
-            row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33));
-            row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33));
-            row.Controls.Add(CreateSmallLabel(label), 0, 1);
-            row.Controls.Add(CreateSmallLabel("Turn"), 1, 0);
-            row.Controls.Add(CreateSmallLabel("Return"), 2, 0);
-            row.Controls.Add(turn, 1, 1);
-            row.Controls.Add(returnValue, 2, 1);
-            return row;
+            int row = grid.RowCount++;
+            grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 20));
+            grid.Controls.Add(CreateSmallLabel("Point"), 0, row);
+            grid.Controls.Add(CreateSmallLabel("Turn"), 1, row);
+            grid.Controls.Add(CreateSmallLabel("Return"), 2, row);
+            grid.Controls.Add(CreateSmallLabel(""), 3, row);
         }
 
-        private TableLayoutPanel CreatePointRow(string label, NumericUpDown value)
+        private static void AddZoneRow(
+            TableLayoutPanel grid,
+            NumericUpDown? pointValue,
+            NumericUpDown turn,
+            NumericUpDown returnValue,
+            string zoneLabel)
         {
-            var row = new TableLayoutPanel
-            {
-                ColumnCount = 2,
-                RowCount = 1,
-                Height = 30,
-                Margin = new Padding(0),
-                BackColor = BackColor
-            };
-            row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-            row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-            row.Controls.Add(CreateSmallLabel(label), 0, 0);
-            row.Controls.Add(value, 1, 0);
-            return row;
+            int row = grid.RowCount++;
+            grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
+            int tabIndex = row * 3;
+            if (pointValue != null)
+                pointValue.TabIndex = tabIndex++;
+            turn.TabIndex = tabIndex++;
+            returnValue.TabIndex = tabIndex;
+            grid.Controls.Add(pointValue ?? CreateSpacer(), 0, row);
+            grid.Controls.Add(turn, 1, row);
+            grid.Controls.Add(returnValue, 2, row);
+            grid.Controls.Add(CreateSmallLabel(zoneLabel), 3, row);
         }
+
+        private static Control CreateSpacer() => new Panel
+        {
+            Dock = DockStyle.Fill,
+            Margin = Padding.Empty,
+            BackColor = Color.Transparent
+        };
 
         private static Label CreateSmallLabel(string text) => new()
         {
@@ -624,16 +723,34 @@ namespace CastleOverlayV2.Controls
             BorderStyle = BorderStyle.FixedSingle
         };
 
-        private static NumericUpDown CreateNumeric() => new()
+        private static NumericUpDown CreateNumeric()
         {
-            Dock = DockStyle.Fill,
-            Minimum = 0,
-            Maximum = 100,
-            DecimalPlaces = 1,
-            Increment = 0.5M,
-            BackColor = Color.FromArgb(0x20, 0x26, 0x31),
-            ForeColor = Color.FromArgb(0xE6, 0xE9, 0xEF)
-        };
+            var numeric = new NumericUpDown
+            {
+                Dock = DockStyle.Fill,
+                Minimum = 1,
+                Maximum = 100,
+                DecimalPlaces = 0,
+                Increment = 1,
+                BackColor = Color.FromArgb(0x20, 0x26, 0x31),
+                ForeColor = Color.FromArgb(0xE6, 0xE9, 0xEF)
+            };
+            numeric.Enter += (_, _) => SelectNumericText(numeric);
+            numeric.MouseUp += (_, e) =>
+            {
+                if (e.Button == MouseButtons.Left)
+                    SelectNumericText(numeric);
+            };
+            return numeric;
+        }
+
+        private static void SelectNumericText(NumericUpDown numeric)
+        {
+            if (!numeric.IsHandleCreated)
+                return;
+
+            numeric.BeginInvoke(() => numeric.Select(0, numeric.Text.Length));
+        }
 
         private static void AddField(TableLayoutPanel grid, string label, Control input)
         {
@@ -658,20 +775,29 @@ namespace CastleOverlayV2.Controls
 
         private static string BuildBoostText(TuneSettings tune)
         {
-            string boost = tune.BoostEnabled ? "YES" : EmptyDash(tune.BoostModeEnableText);
+            bool throttleBased = tune.BoostTimingMode.Contains(
+                "Throttle",
+                StringComparison.OrdinalIgnoreCase);
+            string activationText = throttleBased
+                ? $"Start throttle: {Format(tune.BoostStartThrottlePct, "%")}\n" +
+                  $"End throttle: {Format(tune.BoostEndThrottlePct, "%")}"
+                : $"Start RPM: {Format(tune.BoostStartRpm, "")}\n" +
+                  $"End RPM: {Format(tune.BoostEndRpm, "")}";
+
             return
-                $"Enabled: {boost}   Amount: {Format(tune.BoostTimingAmountDeg, " deg")}\n" +
-                $"RPM: {Format(tune.BoostStartRpm, "")} - {Format(tune.BoostEndRpm, "")}\n" +
-                $"Throttle: {Format(tune.BoostStartThrottlePct, "%")} - {Format(tune.BoostEndThrottlePct, "%")}";
+                "Enabled: YES\n" +
+                $"Amount: {Format(tune.BoostTimingAmountDeg, " deg")}\n" +
+                activationText;
         }
 
         private static string BuildTurboText(TuneSettings tune)
         {
             string turbo = tune.TurboEnabled ? "YES" : EmptyDash(tune.TurboEnableText);
             return
-                $"Enabled: {turbo}   Amount: {Format(tune.TurboTimingAmountDeg, " deg")}\n" +
+                $"Enabled: {turbo}\n" +
+                $"Amount: {Format(tune.TurboTimingAmountDeg, " deg")}\n" +
                 $"Activation throttle: {Format(tune.TurboActivationThrottlePct, "%")}\n" +
-                $"Acceleration / Deceleration: {Format(tune.TurboAccelDegPerSecond, " deg/s")} / {Format(tune.TurboDecelDegPerSecond, " deg/s")}";
+                $"Acceleration: {Format(tune.TurboAccelDegPerSecond, " deg/s")}";
         }
 
         private static string BuildLegacyTimingText(TuneSettings tune)
@@ -697,13 +823,251 @@ namespace CastleOverlayV2.Controls
             string.IsNullOrWhiteSpace(value) ? "-" : value;
 
         private static double? ValueOrNull(NumericUpDown control) =>
-            control.Value == 0 ? null : (double)control.Value;
+            (double)decimal.Round(control.Value, 0, MidpointRounding.AwayFromZero);
 
         private static void SetNumeric(NumericUpDown control, double? value)
         {
             control.Value = value.HasValue
-                ? Math.Min(control.Maximum, Math.Max(control.Minimum, (decimal)value.Value))
-                : 0;
+                ? Math.Min(
+                    control.Maximum,
+                    Math.Max(
+                        control.Minimum,
+                        decimal.Round((decimal)value.Value, 0, MidpointRounding.AwayFromZero)))
+                : control.Minimum;
+        }
+
+        private sealed class UnifiedScrollPanel : Panel
+        {
+            private const int ScrollBarHorizontal = 0;
+            private const int ScrollBarVertical = 1;
+            private const int TrackWidth = 3;
+            private const int TrackRightMargin = 2;
+            private bool _draggingThumb;
+            private bool _resettingHorizontalScroll;
+            private int _dragStartY;
+            private int _dragStartScroll;
+
+            public UnifiedScrollPanel()
+            {
+                DoubleBuffered = true;
+                SetStyle(ControlStyles.ResizeRedraw, true);
+                HorizontalScroll.Enabled = false;
+                HorizontalScroll.Visible = false;
+                Scroll += (_, e) =>
+                {
+                    if (e.ScrollOrientation == ScrollOrientation.HorizontalScroll)
+                        ResetHorizontalScroll();
+                    InvalidateScrollTrack();
+                };
+            }
+
+            public int VerticalScrollPosition => Math.Max(0, -AutoScrollPosition.Y);
+
+            public void BeginInteractiveResize()
+            {
+                ResetHorizontalScroll();
+                HideNativeScrollBar();
+            }
+
+            public void EndInteractiveResize()
+            {
+                ResetHorizontalScroll();
+                HideNativeScrollBar();
+                Invalidate();
+            }
+
+            public void ResetHorizontalScroll()
+            {
+                if (_resettingHorizontalScroll || AutoScrollPosition.X == 0)
+                    return;
+
+                _resettingHorizontalScroll = true;
+                int vertical = VerticalScrollPosition;
+                try
+                {
+                    AutoScrollPosition = new Point(0, vertical);
+                }
+                finally
+                {
+                    _resettingHorizontalScroll = false;
+                }
+            }
+
+            public void SetVerticalScroll(int position)
+            {
+                int maximum = GetMaximumScroll();
+                AutoScrollPosition = new Point(0, Math.Clamp(position, 0, maximum));
+            }
+
+            public void RefreshScrollIndicator()
+            {
+                ResetHorizontalScroll();
+                HideNativeScrollBar();
+                InvalidateScrollTrack();
+            }
+
+            protected override void OnHandleCreated(EventArgs e)
+            {
+                base.OnHandleCreated(e);
+                HideNativeScrollBar();
+            }
+
+            protected override void OnLayout(LayoutEventArgs levent)
+            {
+                base.OnLayout(levent);
+                ResetHorizontalScroll();
+                HideNativeScrollBar();
+                InvalidateScrollTrack();
+            }
+
+            protected override Point ScrollToControl(Control activeControl)
+            {
+                Point target = base.ScrollToControl(activeControl);
+                return new Point(0, target.Y);
+            }
+
+            protected override void OnPaint(PaintEventArgs e)
+            {
+                base.OnPaint(e);
+                Rectangle thumb = GetThumbRectangle();
+                if (thumb.IsEmpty)
+                    return;
+
+                using var trackBrush = new SolidBrush(Color.FromArgb(0x18, 0x1D, 0x25));
+                using var thumbBrush = new SolidBrush(Color.FromArgb(0x3B, 0x43, 0x50));
+                int trackX = ClientSize.Width - TrackWidth - TrackRightMargin;
+                e.Graphics.FillRectangle(trackBrush, trackX, 0, TrackWidth, ClientSize.Height);
+                e.Graphics.FillRectangle(thumbBrush, thumb);
+            }
+
+            protected override void OnMouseDown(MouseEventArgs e)
+            {
+                Rectangle thumb = GetThumbRectangle();
+                if (!thumb.IsEmpty && thumb.Contains(e.Location))
+                {
+                    _draggingThumb = true;
+                    _dragStartY = e.Y;
+                    _dragStartScroll = -AutoScrollPosition.Y;
+                    Capture = true;
+                    return;
+                }
+
+                base.OnMouseDown(e);
+            }
+
+            protected override void OnMouseMove(MouseEventArgs e)
+            {
+                if (!_draggingThumb)
+                {
+                    base.OnMouseMove(e);
+                    return;
+                }
+
+                Rectangle thumb = GetThumbRectangle();
+                int maximumScroll = GetMaximumScroll();
+                int travel = Math.Max(1, ClientSize.Height - thumb.Height);
+                int scroll = _dragStartScroll +
+                    (int)Math.Round((e.Y - _dragStartY) * maximumScroll / (double)travel);
+                AutoScrollPosition = new Point(0, Math.Clamp(scroll, 0, maximumScroll));
+                InvalidateScrollTrack();
+            }
+
+            protected override void OnMouseUp(MouseEventArgs e)
+            {
+                if (_draggingThumb)
+                {
+                    _draggingThumb = false;
+                    Capture = false;
+                }
+
+                base.OnMouseUp(e);
+            }
+
+            protected override void OnMouseWheel(MouseEventArgs e)
+            {
+                int maximumScroll = GetMaximumScroll();
+                int scroll = Math.Clamp(
+                    -AutoScrollPosition.Y - Math.Sign(e.Delta) * 56,
+                    0,
+                    maximumScroll);
+                AutoScrollPosition = new Point(0, scroll);
+                InvalidateScrollTrack();
+            }
+
+            private Rectangle GetThumbRectangle()
+            {
+                int contentHeight = DisplayRectangle.Height;
+                if (contentHeight <= ClientSize.Height || ClientSize.Height <= 0)
+                    return Rectangle.Empty;
+
+                int thumbHeight = Math.Max(
+                    28,
+                    (int)Math.Round(ClientSize.Height * ClientSize.Height / (double)contentHeight));
+                int maximumScroll = GetMaximumScroll();
+                int travel = Math.Max(0, ClientSize.Height - thumbHeight);
+                int thumbY = maximumScroll == 0
+                    ? 0
+                    : (int)Math.Round(-AutoScrollPosition.Y * travel / (double)maximumScroll);
+                return new Rectangle(
+                    ClientSize.Width - TrackWidth - TrackRightMargin,
+                    thumbY,
+                    TrackWidth,
+                    thumbHeight);
+            }
+
+            private int GetMaximumScroll() =>
+                Math.Max(0, DisplayRectangle.Height - ClientSize.Height);
+
+            private void HideNativeScrollBar()
+            {
+                if (IsHandleCreated)
+                {
+                    ShowScrollBar(Handle, ScrollBarHorizontal, false);
+                    ShowScrollBar(Handle, ScrollBarVertical, false);
+                }
+            }
+
+            private void InvalidateScrollTrack()
+            {
+                Invalidate(new Rectangle(
+                    Math.Max(0, ClientSize.Width - TrackWidth - TrackRightMargin),
+                    0,
+                    TrackWidth + TrackRightMargin,
+                    ClientSize.Height));
+            }
+
+            [System.Runtime.InteropServices.DllImport("user32.dll")]
+            private static extern bool ShowScrollBar(IntPtr hWnd, int wBar, bool bShow);
+        }
+
+        private sealed class VerticalTextButton : Button
+        {
+            public string Arrow { get; set; } = "‹";
+
+            protected override void OnPaint(PaintEventArgs e)
+            {
+                e.Graphics.Clear(BackColor);
+                string verticalText = string.Join(
+                    Environment.NewLine,
+                    Text.ToUpperInvariant().ToCharArray());
+                Size textSize = TextRenderer.MeasureText(
+                    verticalText,
+                    Font,
+                    new Size(Width, Height),
+                    TextFormatFlags.HorizontalCenter | TextFormatFlags.NoPadding);
+                int textTop = Math.Max(0, (Height - textSize.Height) / 2);
+                TextRenderer.DrawText(
+                    e.Graphics,
+                    verticalText,
+                    Font,
+                    new Rectangle(0, textTop, Width, textSize.Height),
+                    ForeColor,
+                    TextFormatFlags.HorizontalCenter |
+                    TextFormatFlags.VerticalCenter |
+                    TextFormatFlags.NoPadding);
+
+                ControlPaint.DrawBorder(e.Graphics, ClientRectangle, FlatAppearance.BorderColor, ButtonBorderStyle.Solid);
+            }
         }
     }
 }
