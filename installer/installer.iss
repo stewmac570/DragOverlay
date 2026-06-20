@@ -1,14 +1,25 @@
 ; -----------------------------------------------
-; DragOverlay Inno Setup Script (Build 1.13)
+; DragOverlay Inno Setup Script
+;
+; Defaults below are Stewart's local-build paths. CI (.github/workflows/release.yml)
+; overrides MyPublishDir / MyOutputDir / MyAppVersion via /D arguments to ISCC.
 ; -----------------------------------------------
 
 #define MyAppName     "DragOverlay"
 #define MyCompany     "Stew-Mac"
 #define MyAppExeName  "CastleOverlayV2.exe"
-#define MyAppVersion  "1.13"
 
-#define MyPublishDir  "C:\Users\Stewart McMillan\DragOverlay\Publish"
-#define MyOutputDir   "C:\Users\Stewart McMillan\DragOverlay\Publish\InstallerOutput"
+#ifndef MyAppVersion
+  #define MyAppVersion "1.13"
+#endif
+
+#ifndef MyPublishDir
+  #define MyPublishDir "C:\Users\Stewart McMillan\DragOverlay\Publish"
+#endif
+
+#ifndef MyOutputDir
+  #define MyOutputDir "C:\Users\Stewart McMillan\DragOverlay\Publish\InstallerOutput"
+#endif
 
 #define MyAppId "{{7C2F6B4A-8C0E-4C5C-9E7B-2D6B3B2D2F31}}"
 
