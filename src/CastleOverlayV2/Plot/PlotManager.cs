@@ -46,7 +46,6 @@ namespace CastleOverlayV2.Plot
 
         // Line widths per focus state (spec §6.3).
         private const float FocusedLineWidth = 2.0f;
-        private const float ContextLineWidth = 1.3f;
 
         // Dark theme tokens (from Docs/DragOverlay_UI_Spec.md §5).
         private static readonly ScottPlot.Color ThemePlotBg = new(0x0E, 0x12, 0x18);   // surface.plot
@@ -55,7 +54,6 @@ namespace CastleOverlayV2.Plot
         private static readonly ScottPlot.Color ThemeTextDim = new(0x9A, 0xA3, 0xB2);  // text.secondary
         private static readonly ScottPlot.Color ThemeGrid = new(0xFF, 0xFF, 0xFF, 13); // border.grid (~0.05 alpha)
         private static readonly ScottPlot.Color ThemeSplit = new(0x7C, 0x5A, 0x2E);    // split markers (66 / 132 ft)
-        private const byte ContextAlpha = 71; // 0.28 × 255
 
         // Visibility & storage
         private readonly Dictionary<int, bool> _runVisibility = new();
@@ -225,18 +223,12 @@ namespace CastleOverlayV2.Plot
         }
 
         /// <summary>
-        /// Channel hue, dimmed to <see cref="ContextAlpha"/> when this channel is not the focused one.
+        /// Stable full-opacity channel hue.
         /// </summary>
         private ScottPlot.Color GetTraceColor(string channelLabel)
-        {
-            var baseColor = ChannelColorMap.GetColor(channelLabel);
-            return channelLabel == _focusedChannel
-                ? baseColor
-                : baseColor.WithAlpha(ContextAlpha);
-        }
+            => ChannelColorMap.GetColor(channelLabel);
 
-        private float WidthFor(string channelLabel) =>
-            channelLabel == _focusedChannel ? FocusedLineWidth : ContextLineWidth;
+        private static float WidthFor(string channelLabel) => FocusedLineWidth;
 
         // ---------------- Public API ----------------
 
@@ -1097,7 +1089,7 @@ namespace CastleOverlayV2.Plot
         }
 
         /// <summary>
-        /// Re-apply dense manual time ticks: major 0.05s, minor 0.005s.
+        /// Apply readable time labels with finer unlabeled grid intervals.
         /// Range spans plotted data with a small buffer.
         /// </summary>
         private void ApplyManualTimeTicks(Dictionary<int, RunData> runsBySlot)
@@ -1107,9 +1099,9 @@ namespace CastleOverlayV2.Plot
             maxX += 0.10;
 
             var manual = new ScottPlot.TickGenerators.NumericManual();
-            for (double pos = minX; pos <= maxX; pos += 0.05)
+            for (double pos = Math.Ceiling(minX / 0.25) * 0.25; pos <= maxX; pos += 0.25)
                 manual.AddMajor(pos, pos.ToString("0.00"));
-            for (double pos = minX + 0.005; pos <= maxX; pos += 0.005)
+            for (double pos = Math.Ceiling(minX / 0.05) * 0.05; pos <= maxX; pos += 0.05)
                 manual.AddMinor(pos);
 
             _plot.Plot.Axes.Bottom.TickGenerator = manual;
