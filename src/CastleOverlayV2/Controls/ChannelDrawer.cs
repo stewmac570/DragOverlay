@@ -37,7 +37,7 @@ namespace CastleOverlayV2.Controls
         public event Action<string>? ChannelFocused;
 
         // ---- State ----------------------------------------------------------
-        private bool _expanded = true;
+        private bool _expanded = false;
         private string _focusedChannel = "RPM"; // matches PlotManager's initial focus
         private readonly Dictionary<string, ChannelCard> _cards = new();
         private readonly Dictionary<string, ChannelDot> _dots = new();
@@ -70,7 +70,6 @@ namespace CastleOverlayV2.Controls
             };
             _chevronStrip = MakeChevronButton(expandedNow: false);
             _chevronStrip.Dock = DockStyle.Left;
-            _stripRow.Controls.Add(_chevronStrip);
 
             _dotFlow = new FlowLayoutPanel
             {
@@ -79,10 +78,12 @@ namespace CastleOverlayV2.Controls
                 WrapContents = false,
                 AutoScroll = true,
                 BackColor = SurfacePanel,
-                Padding = new Padding(4, 4, 4, 4),
+                Padding = new Padding(36, 4, 4, 4),
                 Margin = new Padding(0)
             };
             _stripRow.Controls.Add(_dotFlow);
+            _stripRow.Controls.Add(_chevronStrip);
+            _chevronStrip.BringToFront();
 
             // --- Expanded panel: header bar + wrapping card flow ---
             _expandedHeader = new Panel
@@ -187,6 +188,8 @@ namespace CastleOverlayV2.Controls
         /// <summary>Update per-slot @cursor values on every card.</summary>
         public void UpdateCursorValues(Dictionary<string, double?[]> values)
         {
+            if (!_expanded) return;
+
             foreach (var (name, vals) in values)
                 if (_cards.TryGetValue(name, out var card))
                     card.SetCursorValues(vals);
@@ -322,7 +325,9 @@ namespace CastleOverlayV2.Controls
 
                 Width = 168;
                 AutoSize = true;
-                AutoSizeMode = AutoSizeMode.GrowAndShrink;
+                AutoSizeMode = AutoSizeMode.GrowOnly;
+                MinimumSize = new Size(168, 72);
+                MaximumSize = new Size(168, 0);
                 BackColor = SurfaceCard;
                 ForeColor = TextPrimary;
                 Padding = new Padding(8, 6, 8, 6);
@@ -334,6 +339,8 @@ namespace CastleOverlayV2.Controls
                     Dock = DockStyle.Top,
                     AutoSize = true,
                     AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                    MinimumSize = new Size(150, 0),
+                    MaximumSize = new Size(150, 0),
                     ColumnCount = 1,
                     Margin = new Padding(0),
                     Padding = new Padding(0)
@@ -343,6 +350,9 @@ namespace CastleOverlayV2.Controls
                 var header = new TableLayoutPanel
                 {
                     Dock = DockStyle.Top,
+                    Width = 150,
+                    MinimumSize = new Size(150, 24),
+                    MaximumSize = new Size(150, 0),
                     ColumnCount = 3,
                     RowCount = 1,
                     Margin = new Padding(0),
@@ -361,6 +371,7 @@ namespace CastleOverlayV2.Controls
                     BackColor = ChannelHueColor(channelName)
                 };
                 header.Controls.Add(dot, 0, 0);
+                dot.Click += (_, _) => ToggleVisibility();
 
                 _nameLbl = new Label
                 {
@@ -386,6 +397,7 @@ namespace CastleOverlayV2.Controls
                 _eyeBtn.FlatAppearance.BorderSize = 0;
                 _eyeBtn.Click += (_, _) => ToggleVisibility();
                 header.Controls.Add(_eyeBtn, 2, 0);
+                header.Click += (_, _) => ToggleVisibility();
 
                 _layout.Controls.Add(header);
 
@@ -418,9 +430,9 @@ namespace CastleOverlayV2.Controls
                 // Card body (and the name label) → click focuses this channel.
                 // The eye button and RPM-mode button keep their own click handlers
                 // (they do NOT propagate to the body click).
-                this.Click += (_, _) => Focused?.Invoke(ChannelName);
-                _nameLbl.Click += (_, _) => Focused?.Invoke(ChannelName);
-                _layout.Click += (_, _) => Focused?.Invoke(ChannelName);
+                this.Click += (_, _) => ToggleVisibility();
+                _nameLbl.Click += (_, _) => ToggleVisibility();
+                _layout.Click += (_, _) => ToggleVisibility();
             }
 
             public void SetFocused(bool focused)
@@ -482,12 +494,35 @@ namespace CastleOverlayV2.Controls
                         Margin = new Padding(0, 2, 0, 0)
                     };
                     _statLabels[s.Slot] = lbl;
+                    lbl.Click += (_, _) => ToggleVisibility();
                     _layout.Controls.Add(lbl);
                 }
             }
 
             private void RebuildCursorRow()
             {
+                if (_lastCursor.Length > 0 &&
+                    _cursorLabels.Count == _lastCursor.Length + 1)
+                {
+                    for (int i = 0; i < _lastCursor.Length; i++)
+                    {
+                        string slotLabel = i switch
+                        {
+                            0 => "A",
+                            1 => "B",
+                            2 => "C",
+                            _ => $"{i + 1}"
+                        };
+                        string text = _lastCursor[i].HasValue
+                            ? $"{slotLabel}  {Format(ChannelName, _lastCursor[i]!.Value)}"
+                            : $"{slotLabel}  -";
+
+                        if (_cursorLabels[i].Text != text)
+                            _cursorLabels[i].Text = text;
+                    }
+                    return;
+                }
+
                 // Remove old cursor labels; recreate.
                 foreach (var lbl in _cursorLabels.Values)
                     _layout.Controls.Remove(lbl);
@@ -505,6 +540,7 @@ namespace CastleOverlayV2.Controls
                     Margin = new Padding(0, 6, 0, 0)
                 };
                 _cursorLabels[-1] = head;
+                head.Click += (_, _) => ToggleVisibility();
                 _layout.Controls.Add(head);
 
                 // Per-slot values (legacy 3-slot array — A/B/C labelling matches Run 1/2/3 conceptually).
@@ -523,6 +559,7 @@ namespace CastleOverlayV2.Controls
                         Margin = new Padding(0, 0, 0, 0)
                     };
                     _cursorLabels[i] = lbl;
+                    lbl.Click += (_, _) => ToggleVisibility();
                     _layout.Controls.Add(lbl);
                 }
             }
@@ -544,13 +581,13 @@ namespace CastleOverlayV2.Controls
                 IsChannelVisible = initialVisible;
 
                 AutoSize = false;
-                Width = 28;
+                Width = ButtonWidth(channelName);
                 Height = 24;
                 FlatStyle = FlatStyle.Flat;
                 Margin = new Padding(2, 4, 2, 4);
                 TabStop = false;
-                Text = ShortLabel(channelName);
-                Font = new Font(SystemFonts.DefaultFont.FontFamily, 7.5f, FontStyle.Bold);
+                Text = DisplayLabel(channelName);
+                Font = new Font(SystemFonts.DefaultFont.FontFamily, 8f, FontStyle.Bold);
                 FlatAppearance.BorderColor = BorderDef;
                 FlatAppearance.BorderSize = 1;
 
@@ -584,23 +621,28 @@ namespace CastleOverlayV2.Controls
                 }
             }
 
-            private static string ShortLabel(string channelName) => channelName switch
+            private static string DisplayLabel(string channelName) => channelName switch
             {
                 "RPM" => "RPM",
-                "Throttle %" => "Thr",
-                "Voltage" => "V",
-                "Current" => "I",
-                "Ripple" => "Rip",
-                "PowerOut" => "Pwr",
-                "ESC Temp" => "ESC",
-                "MotorTemp" => "Mtr",
-                "MotorTiming" => "Tim",
-                "Acceleration" => "Acc",
-                "RaceBox Speed" => "Spd",
-                "RaceBox Distance" => "Dst",
-                "RaceBox G-Force X" => "Gx",
-                _ => channelName.Substring(0, Math.Min(3, channelName.Length))
+                "Throttle %" => "Throttle",
+                "PowerOut" => "Power Out",
+                "MotorTemp" => "Motor Temp",
+                "MotorTiming" => "Timing",
+                "RaceBox Speed" => "GPS Speed",
+                "RaceBox Distance" => "GPS Distance",
+                "RaceBox G-Force X" => "GPS G-Force",
+                _ => channelName
             };
+
+            private static int ButtonWidth(string channelName)
+            {
+                string text = DisplayLabel(channelName);
+                using var font = new Font(
+                    SystemFonts.DefaultFont.FontFamily,
+                    8f,
+                    FontStyle.Bold);
+                return Math.Max(48, TextRenderer.MeasureText(text, font).Width + 18);
+            }
 
             private static bool UseLightTextOn(Color bg)
             {
