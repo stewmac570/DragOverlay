@@ -24,11 +24,13 @@ namespace CastleOverlayV2.Controls
         private static readonly Color TextDim       = Color.FromArgb(0x5C, 0x65, 0x73);
         private static readonly Color TextAccent    = Color.FromArgb(0x9A, 0xC7, 0xF2);
         private static readonly Color BorderDef     = Color.FromArgb(0x29, 0x2F, 0x39);
+        private static readonly Color SurfaceArmed  = Color.FromArgb(0x15, 0x31, 0x4E);
 
         // ---- Public events --------------------------------------------------
         public event Action<int>? LoadRequested;   // slot 1..6
         public event Action<int>? ToggleRequested; // slot 1..6
         public event Action<int>? DeleteRequested; // slot 1..6
+        public event Action<int>? ArmRequested;    // slot 1..6 (click on chip body)
 
         // ---- State ----------------------------------------------------------
         private readonly SlotChip[] _chips = new SlotChip[7]; // index 1..6
@@ -59,15 +61,19 @@ namespace CastleOverlayV2.Controls
 
             for (int slot = 1; slot <= 6; slot++)
             {
-                bool isCastle = slot <= 3;
-                string emptyLabel = isCastle ? $"Load Castle {slot}" : $"Load RaceBox {slot - 3}";
+                int capturedSlot = slot;
+                bool isCastle = capturedSlot <= 3;
+                string emptyLabel = isCastle
+                    ? $"Load Castle {capturedSlot}"
+                    : $"Load RaceBox {capturedSlot - 3}";
                 string sourceTag = isCastle ? "ESC" : "GPS";
 
-                var chip = new SlotChip(slot, emptyLabel, sourceTag, _toolTip);
-                chip.LoadClicked += () => LoadRequested?.Invoke(slot);
-                chip.ToggleClicked += () => ToggleRequested?.Invoke(slot);
-                chip.DeleteClicked += () => DeleteRequested?.Invoke(slot);
-                _chips[slot] = chip;
+                var chip = new SlotChip(capturedSlot, emptyLabel, sourceTag, _toolTip);
+                chip.LoadClicked += () => LoadRequested?.Invoke(capturedSlot);
+                chip.ToggleClicked += () => ToggleRequested?.Invoke(capturedSlot);
+                chip.DeleteClicked += () => DeleteRequested?.Invoke(capturedSlot);
+                chip.BodyClicked += () => ArmRequested?.Invoke(capturedSlot);
+                _chips[capturedSlot] = chip;
                 _flow.Controls.Add(chip);
             }
         }
@@ -79,6 +85,7 @@ namespace CastleOverlayV2.Controls
         public void SetSlotToggleState(int slot, bool isVisible) =>
             _chips[slot].SetToggleState(isVisible);
         public void SetSlotVisible(int slot, bool visible) => _chips[slot].Visible = visible;
+        public void SetSlotArmed(int slot, bool armed) => _chips[slot].SetArmed(armed);
 
         // ====================================================================
         // Nested: one chip per slot
@@ -90,6 +97,7 @@ namespace CastleOverlayV2.Controls
             public event Action? LoadClicked;
             public event Action? ToggleClicked;
             public event Action? DeleteClicked;
+            public event Action? BodyClicked;
 
             private readonly Button _loadBtn;
             private readonly Panel _loadedPanel;
@@ -101,6 +109,7 @@ namespace CastleOverlayV2.Controls
             private readonly string _emptyLabel;
             private bool _isVisible = true;
             private bool _isLoaded;
+            private bool _isArmed;
 
             public SlotChip(int slot, string emptyLabel, string sourceTag, ToolTip toolTip)
             {
@@ -211,6 +220,11 @@ namespace CastleOverlayV2.Controls
                 _loadedPanel.Controls.Add(layout);
                 Controls.Add(_loadedPanel);
 
+                WireBodyClick(_loadedPanel);
+                WireBodyClick(layout);
+                WireBodyClick(_tagLbl);
+                WireBodyClick(_nameLbl);
+
                 ApplyLoadedState();
             }
 
@@ -218,9 +232,11 @@ namespace CastleOverlayV2.Controls
             {
                 _isLoaded = false;
                 _isVisible = true;
+                _isArmed = false;
                 _toolTip.SetToolTip(_nameLbl, string.Empty);
                 _nameLbl.Text = string.Empty;
                 ApplyLoadedState();
+                UpdateArmedAppearance();
             }
 
             public void SetLoaded(string fullPath, bool isVisible)
@@ -231,6 +247,7 @@ namespace CastleOverlayV2.Controls
                 _toolTip.SetToolTip(_nameLbl, fullPath);
                 UpdateEyeAppearance();
                 ApplyLoadedState();
+                UpdateArmedAppearance();
             }
 
             public void SetToggleState(bool isVisible)
@@ -238,6 +255,13 @@ namespace CastleOverlayV2.Controls
                 if (_isVisible == isVisible) return;
                 _isVisible = isVisible;
                 UpdateEyeAppearance();
+            }
+
+            public void SetArmed(bool armed)
+            {
+                if (_isArmed == armed) return;
+                _isArmed = armed;
+                UpdateArmedAppearance();
             }
 
             private void ApplyLoadedState()
@@ -250,6 +274,29 @@ namespace CastleOverlayV2.Controls
             {
                 _eyeBtn.Text = _isVisible ? "●" : "○";
                 _eyeBtn.ForeColor = _isVisible ? TextAccent : TextDim;
+            }
+
+            private void UpdateArmedAppearance()
+            {
+                Color background = _isArmed ? SurfaceArmed : SurfaceCard;
+                BackColor = background;
+                _loadedPanel.BackColor = background;
+                _tagLbl.BackColor = background;
+                _nameLbl.BackColor = background;
+                _eyeBtn.BackColor = background;
+                _deleteBtn.BackColor = background;
+                _nameLbl.ForeColor = _isArmed ? TextAccent : TextPrimary;
+                BorderStyle = _isArmed ? BorderStyle.FixedSingle : BorderStyle.None;
+            }
+
+            private void WireBodyClick(Control control)
+            {
+                control.Cursor = Cursors.Hand;
+                control.Click += (_, _) =>
+                {
+                    if (_isLoaded)
+                        BodyClicked?.Invoke();
+                };
             }
 
             private static string Truncate(string s, int max)
