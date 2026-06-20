@@ -102,7 +102,6 @@ namespace CastleOverlayV2
                     return;
                 }
 
-                loaded.SourcePath = path;
                 _runs[slot] = loaded;
                 _selectedTuneSlot = slot;
                 Logger.Log($"Loaded Run {slot} - {Path.GetFileName(path)} - {loaded.DataPoints.Count} rows");
@@ -190,8 +189,7 @@ namespace CastleOverlayV2
                     IsRaceBox = true,
                     SplitTimes = rbData.SplitTimes,
                     SplitLabels = rbData.SplitLabels,
-                    FileName = Path.GetFileName(path),
-                    SourcePath = path
+                    FileName = Path.GetFileName(path)
                 };
                 run.Data["RaceBox Speed"] = points
                     .Select(p => new DataPoint { Time = p.Time.TotalSeconds, Y = p.SpeedMph })
@@ -394,9 +392,6 @@ namespace CastleOverlayV2
                 ShowResultMessage(result);
                 return;
             }
-
-            // Track the original .dat path so the project saver can embed the bytes.
-            result.Value!.SourcePath = path;
 
             if (slot.HasValue && run != null)
             {
@@ -669,95 +664,6 @@ namespace CastleOverlayV2
                 default:
                     return false;
             }
-        }
-
-        // ============================================================
-        // Project save (issue #86)
-        // ============================================================
-
-        /// <summary>
-        /// Snapshot the current analysis session into a <see cref="ProjectSnapshot"/>
-        /// suitable for handing to <see cref="ProjectSaver"/>.
-        /// Returns an error result if any loaded run is missing its on-disk source path
-        /// (which would prevent embedding the original bytes — required by issue #86).
-        /// </summary>
-        public LoadResult<ProjectSnapshot> BuildProjectSnapshot()
-        {
-            if (_runs.Count == 0)
-                return LoadResult<ProjectSnapshot>.Error("Save Project",
-                    "Load at least one Castle or RaceBox log before saving a project.");
-
-            var manifest = new ProjectManifest
-            {
-                AppBuild = _config.GetBuildNumber(),
-                CreatedUtc = DateTimeOffset.UtcNow,
-                RunMode = _isSpeedRunMode ? ProjectRunMode.Speed : ProjectRunMode.Drag,
-                ChannelVisibility = new Dictionary<string, bool>(
-                    _drawer.GetChannelStates(),
-                    StringComparer.OrdinalIgnoreCase)
-            };
-
-            var files = new List<ProjectSnapshotFile>();
-
-            foreach (var (plotSlot, run) in _runs.OrderBy(kv => kv.Key))
-            {
-                bool isRaceBox = plotSlot >= 4;
-                int uiSlot = isRaceBox ? plotSlot - 3 : plotSlot;
-                string sourceLabel = isRaceBox ? "racebox" : "castle";
-
-                if (string.IsNullOrWhiteSpace(run.SourcePath))
-                {
-                    return LoadResult<ProjectSnapshot>.Error("Save Project",
-                        $"Run {uiSlot} ({(isRaceBox ? "RaceBox" : "Castle")}) has no on-disk source path. " +
-                        "Re-load the file before saving the project.");
-                }
-
-                string sourceArchivePath = $"logs/{sourceLabel}-{uiSlot}{Path.GetExtension(run.SourcePath)?.ToLowerInvariant()}";
-                if (string.IsNullOrEmpty(Path.GetExtension(run.SourcePath)))
-                    sourceArchivePath = $"logs/{sourceLabel}-{uiSlot}.csv";
-
-                string? tuneArchivePath = null;
-                if (!isRaceBox && run.Tune?.SourcePath is { } tunePath && File.Exists(tunePath))
-                    tuneArchivePath = $"tunes/{sourceLabel}-{uiSlot}.dat";
-
-                manifest.Runs.Add(new ProjectRunEntry
-                {
-                    SourceType = isRaceBox ? ProjectSourceType.RaceBox : ProjectSourceType.Castle,
-                    UiSlot = uiSlot,
-                    PlotSlot = plotSlot,
-                    DisplayFileName = run.FileName ?? string.Empty,
-                    SourcePath = sourceArchivePath,
-                    IsVisible = _plot.GetRunVisibility(plotSlot),
-                    TimeShiftMs = run.TimeShiftMs,
-                    TunePath = tuneArchivePath,
-                    RadioSettings = run.Tune?.Radio
-                });
-
-                files.Add(new ProjectSnapshotFile(run.SourcePath, sourceArchivePath));
-                if (tuneArchivePath != null)
-                    files.Add(new ProjectSnapshotFile(run.Tune!.SourcePath!, tuneArchivePath));
-            }
-
-            return LoadResult<ProjectSnapshot>.Success(new ProjectSnapshot
-            {
-                Manifest = manifest,
-                Files = files
-            });
-        }
-
-        /// <summary>
-        /// Convenience: build the snapshot from current state and save to disk.
-        /// The caller is responsible for picking <paramref name="destinationPath"/> (e.g. via
-        /// <c>SaveFileDialog</c>) and showing any error returned here on the UI thread.
-        /// </summary>
-        public LoadResult<string> SaveProjectTo(string destinationPath)
-        {
-            var snapshot = BuildProjectSnapshot();
-            if (!snapshot.Ok)
-                return LoadResult<string>.Error(snapshot.Title ?? "Save Project",
-                    snapshot.Message ?? "Could not build the project snapshot.");
-
-            return new ProjectSaver().Save(destinationPath, snapshot.Value!);
         }
 
         // ============================================================

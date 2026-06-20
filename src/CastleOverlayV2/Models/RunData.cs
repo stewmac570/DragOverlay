@@ -5,12 +5,6 @@ namespace CastleOverlayV2.Models
     {
         public string FileName { get; set; }
 
-        // Absolute path of the original source file on disk. Tracked so the project saver
-        // can embed the original bytes back into a .dragoverlay package without
-        // reconstructing CSV content from parsed values. Null if loaded from somewhere
-        // other than a local file (rare).
-        public string? SourcePath { get; set; }
-
         // ✅ Castle logs use this (single combined point list)
         public List<DataPoint> DataPoints { get; set; }
 
