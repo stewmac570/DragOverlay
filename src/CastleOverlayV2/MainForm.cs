@@ -52,6 +52,9 @@ namespace CastleOverlayV2
             _plotManager = new PlotManager(formsPlot1);
             formsPlot1.Dock = DockStyle.Fill;
             _plotManager.SetupAllAxes();
+            _plotManager.SetVoltageSmoothing(
+                _configService.Config.VoltageSmoothingEnabled,
+                _configService.Config.VoltageSmoothingWindow);
 
             // Build canonical channel list + normalize saved visibility keys.
             var channelNames = new List<string>
@@ -97,6 +100,7 @@ namespace CastleOverlayV2
             _runStrip.ToggleRequested += slot => _presenter.ToggleRun(slot);
             _runStrip.DeleteRequested += slot => _presenter.DeleteRun(slot);
             _runStrip.ArmRequested += slot => _presenter.ToggleAlignmentArm(slot);
+            _runStrip.SettingsRequested += ShowSettingsDialog;
 
             _alignmentBar = new AlignmentBar();
             Controls.Add(_alignmentBar);
@@ -123,13 +127,26 @@ namespace CastleOverlayV2
         // Public view methods called by the Presenter
         // =====================================================================
 
-        /// <summary>Open file picker; null if cancelled.</summary>
-        public string? PickCsvFile()
+        public string? PickCsvFile() => PickCastleCsvFile();
+
+        public string? PickCastleCsvFile()
         {
             using var ofd = new OpenFileDialog
             {
-                Title = "Select CSV file",
-                Filter = "CSV files (*.csv)|*.csv|All files (*.*)|*.*"
+                Title = "Select Castle CSV file",
+                Filter = "CSV files (*.csv)|*.csv|All files (*.*)|*.*",
+                InitialDirectory = ExistingDirOrEmpty(_configService.Config.CastleLogDirectory)
+            };
+            return ofd.ShowDialog() == DialogResult.OK ? ofd.FileName : null;
+        }
+
+        public string? PickRaceBoxCsvFile()
+        {
+            using var ofd = new OpenFileDialog
+            {
+                Title = "Select RaceBox CSV file",
+                Filter = "CSV files (*.csv)|*.csv|All files (*.*)|*.*",
+                InitialDirectory = ExistingDirOrEmpty(_configService.Config.RaceBoxLogDirectory)
             };
             return ofd.ShowDialog() == DialogResult.OK ? ofd.FileName : null;
         }
@@ -139,10 +156,14 @@ namespace CastleOverlayV2
             using var ofd = new OpenFileDialog
             {
                 Title = "Select Castle Link tune file",
-                Filter = "Castle tune files (*.dat)|*.dat|All files (*.*)|*.*"
+                Filter = "Castle tune files (*.dat)|*.dat|All files (*.*)|*.*",
+                InitialDirectory = ExistingDirOrEmpty(_configService.Config.TuneDirectory)
             };
             return ofd.ShowDialog() == DialogResult.OK ? ofd.FileName : null;
         }
+
+        private static string ExistingDirOrEmpty(string? path) =>
+            !string.IsNullOrWhiteSpace(path) && Directory.Exists(path) ? path : "";
 
         public string? PickProjectFileToOpen()
         {
@@ -165,6 +186,15 @@ namespace CastleOverlayV2
                 OverwritePrompt = true
             };
             return sfd.ShowDialog() == DialogResult.OK ? sfd.FileName : null;
+        }
+
+        public void ShowSettingsDialog()
+        {
+            using var dlg = new SettingsForm(_configService);
+            if (dlg.ShowDialog(this) == DialogResult.OK)
+                _plotManager?.SetVoltageSmoothing(
+                    _configService.Config.VoltageSmoothingEnabled,
+                    _configService.Config.VoltageSmoothingWindow);
         }
 
         public void ShowError(string title, string message) =>

@@ -31,6 +31,7 @@ namespace CastleOverlayV2.Controls
         public event Action<int>? ToggleRequested; // slot 1..6
         public event Action<int>? DeleteRequested; // slot 1..6
         public event Action<int>? ArmRequested;    // slot 1..6 (click on chip body)
+        public event Action? SettingsRequested;    // gear button
 
         // ---- State ----------------------------------------------------------
         private readonly SlotChip[] _chips = new SlotChip[7]; // index 1..6
@@ -46,6 +47,26 @@ namespace CastleOverlayV2.Controls
             Padding = new Padding(4, 4, 4, 4);
 
             _toolTip = new ToolTip { AutoPopDelay = 8000, InitialDelay = 400, ReshowDelay = 200, ShowAlways = true };
+
+            // Gear button docks Right so the chips shift over to make room.
+            var gear = new Button
+            {
+                Text = "⚙",
+                Dock = DockStyle.Right,
+                Width = 36,
+                FlatStyle = FlatStyle.Flat,
+                BackColor = SurfaceCard,
+                ForeColor = TextPrimary,
+                Margin = new Padding(0),
+                Padding = new Padding(0),
+                Font = new Font(SystemFonts.DefaultFont.FontFamily, 12f, FontStyle.Bold),
+                TabStop = false
+            };
+            gear.FlatAppearance.BorderColor = BorderDef;
+            gear.FlatAppearance.BorderSize = 1;
+            gear.Click += (_, _) => SettingsRequested?.Invoke();
+            _toolTip.SetToolTip(gear, "Settings");
+            Controls.Add(gear);
 
             _flow = new FlowLayoutPanel
             {
