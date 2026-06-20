@@ -19,6 +19,7 @@ namespace CastleOverlayV2
         private readonly PlotManager _plotManager;
         private ChannelDrawer _channelDrawer;
         private RunStrip _runStrip;
+        private TunePanel _tunePanel;
         private MainFormPresenter _presenter;
 
         public MainForm(ConfigService configService)
@@ -44,7 +45,6 @@ namespace CastleOverlayV2
             Logger.Log($"🟢 New Session Started — {DateTime.Now}");
 
             this.WindowState = FormWindowState.Maximized;
-
             // PlotManager needs formsPlot1, which exists after InitializeComponent().
             _plotManager = new PlotManager(formsPlot1);
             formsPlot1.Dock = DockStyle.Fill;
@@ -72,6 +72,9 @@ namespace CastleOverlayV2
             _channelDrawer = new ChannelDrawer(channelNames, initialStates);
             Controls.Add(_channelDrawer);
 
+            _tunePanel = new TunePanel();
+            Controls.Add(_tunePanel);
+
             // Inject any extra known channels found in config but missing from the default list.
             var allowed = new HashSet<string>(channelNames, StringComparer.OrdinalIgnoreCase);
             foreach (var kv in initialStates)
@@ -98,9 +101,8 @@ namespace CastleOverlayV2
             };
             _runStrip.ToggleRequested += slot => _presenter.ToggleRun(slot);
             _runStrip.DeleteRequested += slot => _presenter.DeleteRun(slot);
-
             // Presenter owns all run state + business logic. It subscribes to plot/toggle events.
-            _presenter = new MainFormPresenter(this, _configService, _plotManager, _channelDrawer);
+            _presenter = new MainFormPresenter(this, _configService, _plotManager, _channelDrawer, _tunePanel);
 
             // RunType pill: initial appearance (Drag mode, no runs loaded → not locked).
             ApplyRunTypeUI(_presenter.IsSpeedRunMode);
@@ -118,6 +120,16 @@ namespace CastleOverlayV2
             {
                 Title = "Select CSV file",
                 Filter = "CSV files (*.csv)|*.csv|All files (*.*)|*.*"
+            };
+            return ofd.ShowDialog() == DialogResult.OK ? ofd.FileName : null;
+        }
+
+        public string? PickTuneFile()
+        {
+            using var ofd = new OpenFileDialog
+            {
+                Title = "Select Castle Link tune file",
+                Filter = "Castle tune files (*.dat)|*.dat|All files (*.*)|*.*"
             };
             return ofd.ShowDialog() == DialogResult.OK ? ofd.FileName : null;
         }
@@ -273,5 +285,6 @@ namespace CastleOverlayV2
             _runStrip?.SetSlotVisible(5, !isSpeedRun);
             _runStrip?.SetSlotVisible(6, !isSpeedRun);
         }
+
     }
 }
