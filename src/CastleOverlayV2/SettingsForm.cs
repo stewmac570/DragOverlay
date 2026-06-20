@@ -8,6 +8,14 @@ namespace CastleOverlayV2
     /// </summary>
     public sealed class SettingsForm : Form
     {
+        // Dark theme tokens (matches the rest of the app).
+        private static readonly Color SurfaceWindow = Color.FromArgb(0x13, 0x17, 0x1E);
+        private static readonly Color SurfaceCard   = Color.FromArgb(0x1A, 0x1F, 0x27);
+        private static readonly Color SurfaceInput  = Color.FromArgb(0x20, 0x26, 0x31);
+        private static readonly Color TextPrimary   = Color.FromArgb(0xE6, 0xE9, 0xEF);
+        private static readonly Color TextSecond    = Color.FromArgb(0x9A, 0xA3, 0xB2);
+        private static readonly Color BorderDef     = Color.FromArgb(0x29, 0x2F, 0x39);
+
         private readonly ConfigService _configService;
         private readonly TextBox _castleDir = new();
         private readonly TextBox _raceboxDir = new();
@@ -27,6 +35,10 @@ namespace CastleOverlayV2
             Width = 540;
             Height = 360;
             Font = new Font("Segoe UI", 9f);
+            BackColor = SurfaceWindow;
+            ForeColor = TextPrimary;
+
+            HandleCreated += (_, _) => Utils.WindowsDarkTitleBar.Apply(Handle);
 
             BuildLayout();
             LoadFromConfig();
@@ -61,15 +73,21 @@ namespace CastleOverlayV2
             _smoothingEnabled.Text = "Smooth voltage trace";
             _smoothingEnabled.AutoSize = true;
             _smoothingEnabled.Margin = new Padding(0, 5, 12, 0);
+            _smoothingEnabled.ForeColor = TextPrimary;
+            _smoothingEnabled.BackColor = SurfaceWindow;
             _smoothingWindow.Minimum = 3;
             _smoothingWindow.Maximum = 15;
             _smoothingWindow.Increment = 2;
             _smoothingWindow.Width = 60;
+            _smoothingWindow.BackColor = SurfaceInput;
+            _smoothingWindow.ForeColor = TextPrimary;
+            _smoothingWindow.BorderStyle = BorderStyle.FixedSingle;
             var winLabel = new Label
             {
                 Text = "Window:",
                 AutoSize = true,
                 Margin = new Padding(8, 5, 4, 0),
+                ForeColor = TextSecond,
             };
             smoothingPanel.Controls.Add(_smoothingEnabled);
             smoothingPanel.Controls.Add(winLabel);
@@ -90,6 +108,7 @@ namespace CastleOverlayV2
             Text = text,
             AutoSize = true,
             Font = new Font(Font, FontStyle.Bold),
+            ForeColor = TextSecond,
             Margin = new Padding(0, 0, 0, 6),
             Dock = DockStyle.Top,
         };
@@ -123,18 +142,19 @@ namespace CastleOverlayV2
                 TextAlign = ContentAlignment.MiddleLeft,
                 Dock = DockStyle.Fill,
                 Margin = new Padding(0, 4, 8, 4),
+                ForeColor = TextSecond,
             }, 0, row);
 
             text.Dock = DockStyle.Fill;
             text.Margin = new Padding(0, 2, 8, 2);
+            text.BackColor = SurfaceInput;
+            text.ForeColor = TextPrimary;
+            text.BorderStyle = BorderStyle.FixedSingle;
             panel.Controls.Add(text, 1, row);
 
-            var browse = new Button
-            {
-                Text = "Browse…",
-                Dock = DockStyle.Fill,
-                Margin = new Padding(0, 2, 0, 2),
-            };
+            var browse = MakeDarkButton("Browse…");
+            browse.Dock = DockStyle.Fill;
+            browse.Margin = new Padding(0, 2, 0, 2);
             browse.Click += (_, _) =>
             {
                 using var dlg = new FolderBrowserDialog();
@@ -146,6 +166,24 @@ namespace CastleOverlayV2
             panel.Controls.Add(browse, 2, row);
         }
 
+        private static Button MakeDarkButton(string text)
+        {
+            var b = new Button
+            {
+                Text = text,
+                FlatStyle = FlatStyle.Flat,
+                BackColor = SurfaceCard,
+                ForeColor = TextPrimary,
+                Font = new Font("Segoe UI", 9f),
+                UseVisualStyleBackColor = false,
+            };
+            b.FlatAppearance.BorderColor = BorderDef;
+            b.FlatAppearance.BorderSize = 1;
+            b.FlatAppearance.MouseOverBackColor = SurfaceInput;
+            b.FlatAppearance.MouseDownBackColor = SurfaceInput;
+            return b;
+        }
+
         private Panel BuildOkCancelRow()
         {
             var row = new Panel
@@ -153,21 +191,15 @@ namespace CastleOverlayV2
                 Height = 40,
                 Padding = new Padding(0, 8, 0, 0),
             };
-            var ok = new Button
-            {
-                Text = "OK",
-                DialogResult = DialogResult.OK,
-                Width = 80,
-                Anchor = AnchorStyles.Right | AnchorStyles.Top,
-            };
+            var ok = MakeDarkButton("OK");
+            ok.DialogResult = DialogResult.OK;
+            ok.Width = 80;
+            ok.Anchor = AnchorStyles.Right | AnchorStyles.Top;
             ok.Location = new Point(row.Width - 180, 4);
-            var cancel = new Button
-            {
-                Text = "Cancel",
-                DialogResult = DialogResult.Cancel,
-                Width = 80,
-                Anchor = AnchorStyles.Right | AnchorStyles.Top,
-            };
+            var cancel = MakeDarkButton("Cancel");
+            cancel.DialogResult = DialogResult.Cancel;
+            cancel.Width = 80;
+            cancel.Anchor = AnchorStyles.Right | AnchorStyles.Top;
             cancel.Location = new Point(row.Width - 90, 4);
             row.Controls.Add(ok);
             row.Controls.Add(cancel);

@@ -60,10 +60,13 @@ namespace CastleOverlayV2.Controls
                 Margin = new Padding(0),
                 Padding = new Padding(0),
                 Font = new Font(SystemFonts.DefaultFont.FontFamily, 12f, FontStyle.Bold),
-                TabStop = false
+                TabStop = false,
+                UseVisualStyleBackColor = false
             };
             gear.FlatAppearance.BorderColor = BorderDef;
             gear.FlatAppearance.BorderSize = 1;
+            gear.FlatAppearance.MouseOverBackColor = SurfaceBar;
+            gear.FlatAppearance.MouseDownBackColor = SurfaceBar;
             gear.Click += (_, _) => SettingsRequested?.Invoke();
             _toolTip.SetToolTip(gear, "Settings");
             Controls.Add(gear);
@@ -153,10 +156,13 @@ namespace CastleOverlayV2.Controls
                     BackColor = SurfaceCardDim,
                     ForeColor = TextSecond,
                     Font = new Font(SystemFonts.DefaultFont.FontFamily, 8.5f),
-                    TabStop = false
+                    TabStop = false,
+                    UseVisualStyleBackColor = false   // honour BackColor on Win11 dark systems
                 };
                 _loadBtn.FlatAppearance.BorderColor = BorderDef;
                 _loadBtn.FlatAppearance.BorderSize = 1;
+                _loadBtn.FlatAppearance.MouseOverBackColor = SurfaceCard;
+                _loadBtn.FlatAppearance.MouseDownBackColor = SurfaceCard;
                 _loadBtn.Click += (_, _) => LoadClicked?.Invoke();
                 Controls.Add(_loadBtn);
 
@@ -191,9 +197,12 @@ namespace CastleOverlayV2.Controls
                     Margin = new Padding(0),
                     Padding = new Padding(0),
                     Font = new Font(SystemFonts.DefaultFont.FontFamily, 10f),
-                    TabStop = false
+                    TabStop = false,
+                    UseVisualStyleBackColor = false
                 };
                 _eyeBtn.FlatAppearance.BorderSize = 0;
+                _eyeBtn.FlatAppearance.MouseOverBackColor = SurfaceCardDim;
+                _eyeBtn.FlatAppearance.MouseDownBackColor = SurfaceCardDim;
                 _eyeBtn.Click += (_, _) => ToggleClicked?.Invoke();
                 layout.Controls.Add(_eyeBtn, 0, 0);
 
@@ -232,9 +241,12 @@ namespace CastleOverlayV2.Controls
                     Margin = new Padding(0),
                     Padding = new Padding(0),
                     Font = new Font(SystemFonts.DefaultFont.FontFamily, 12f, FontStyle.Bold),
-                    TabStop = false
+                    TabStop = false,
+                    UseVisualStyleBackColor = false
                 };
                 _deleteBtn.FlatAppearance.BorderSize = 0;
+                _deleteBtn.FlatAppearance.MouseOverBackColor = SurfaceCardDim;
+                _deleteBtn.FlatAppearance.MouseDownBackColor = SurfaceCardDim;
                 _deleteBtn.Click += (_, _) => DeleteClicked?.Invoke();
                 layout.Controls.Add(_deleteBtn, 3, 0);
 
