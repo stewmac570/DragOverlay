@@ -16,6 +16,10 @@
         public double MotorTiming { get; set; }
         public double Acceleration { get; set; }
 
+        public bool PowerOutValid { get; set; } = true;
+        public bool CurrentValid { get; set; } = true;
+        public bool SpeedValid { get; set; } = true;
+
         // ✅ RaceBox Y-axis data for plotting (used for RaceBox Speed / G-X only)
         public double Y { get; set; }
 

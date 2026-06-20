@@ -13,11 +13,38 @@ public class AlignmentHelperTests
             DataPoints =
             [
                 new DataPoint { Time = -0.05, Throttle = 1.60, PowerOut = 0 },
-                new DataPoint { Time = 0.04, Throttle = 1.70, PowerOut = 20 }
+                new DataPoint { Time = 0.04, Throttle = 1.70, PowerOut = 20, PowerOutValid = true }
             ]
         };
 
         Assert.Equal(-40, AlignmentHelper.GetAutoOffsetMs(run));
+    }
+
+    [Fact]
+    public void CastleLaunch_IgnoresInvalidPowerOutSamples()
+    {
+        var run = new RunData
+        {
+            DataPoints =
+            [
+                new DataPoint
+                {
+                    Time = 0.04,
+                    Throttle = 1.70,
+                    PowerOut = 20,
+                    PowerOutValid = false
+                },
+                new DataPoint
+                {
+                    Time = 0.08,
+                    Throttle = 1.70,
+                    PowerOut = 20,
+                    PowerOutValid = true
+                }
+            ]
+        };
+
+        Assert.Equal(-80, AlignmentHelper.GetAutoOffsetMs(run));
     }
 
     [Fact]

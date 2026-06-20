@@ -20,6 +20,7 @@ namespace CastleOverlayV2
         private ChannelDrawer _channelDrawer;
         private RunStrip _runStrip;
         private AlignmentBar _alignmentBar;
+        private TunePanel _tunePanel;
         private MainFormPresenter _presenter;
 
         public MainForm(ConfigService configService)
@@ -74,6 +75,9 @@ namespace CastleOverlayV2
             _channelDrawer = new ChannelDrawer(channelNames, initialStates);
             Controls.Add(_channelDrawer);
 
+            _tunePanel = new TunePanel();
+            Controls.Add(_tunePanel);
+
             // Inject any extra known channels found in config but missing from the default list.
             var allowed = new HashSet<string>(channelNames, StringComparer.OrdinalIgnoreCase);
             foreach (var kv in initialStates)
@@ -116,7 +120,7 @@ namespace CastleOverlayV2
             Controls.SetChildIndex(_alignmentBar, 1);
 
             // Presenter owns all run state + business logic. It subscribes to plot/toggle events.
-            _presenter = new MainFormPresenter(this, _configService, _plotManager, _channelDrawer);
+            _presenter = new MainFormPresenter(this, _configService, _plotManager, _channelDrawer, _tunePanel);
 
             // RunType pill: initial appearance (Drag mode, no runs loaded → not locked).
             ApplyRunTypeUI(_presenter.IsSpeedRunMode);
@@ -134,6 +138,16 @@ namespace CastleOverlayV2
             {
                 Title = "Select CSV file",
                 Filter = "CSV files (*.csv)|*.csv|All files (*.*)|*.*"
+            };
+            return ofd.ShowDialog() == DialogResult.OK ? ofd.FileName : null;
+        }
+
+        public string? PickTuneFile()
+        {
+            using var ofd = new OpenFileDialog
+            {
+                Title = "Select Castle Link tune file",
+                Filter = "Castle tune files (*.dat)|*.dat|All files (*.*)|*.*"
             };
             return ofd.ShowDialog() == DialogResult.OK ? ofd.FileName : null;
         }
@@ -323,5 +337,6 @@ namespace CastleOverlayV2
 
             return base.ProcessCmdKey(ref msg, keyData);
         }
+
     }
 }

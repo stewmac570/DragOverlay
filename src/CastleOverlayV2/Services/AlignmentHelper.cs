@@ -14,7 +14,7 @@ namespace CastleOverlayV2.Services
             {
                 foreach (var point in run.DataPoints)
                 {
-                    if (point.Throttle > 1.65 && point.PowerOut > 10)
+                    if (point.Throttle > 1.65 && point.PowerOutValid && point.PowerOut > 10)
                         return -point.Time * 1000.0;
                 }
 

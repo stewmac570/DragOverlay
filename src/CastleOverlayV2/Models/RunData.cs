@@ -22,6 +22,8 @@ namespace CastleOverlayV2.Models
         // 🆕 Per-run constant time shift applied at plot-time (milliseconds; + = shift right)
         public double TimeShiftMs { get; set; }
 
+        public TuneSettings? Tune { get; set; }
+
         public RunData()
         {
             DataPoints = new List<DataPoint>();
