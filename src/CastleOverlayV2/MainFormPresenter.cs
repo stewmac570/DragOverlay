@@ -18,7 +18,7 @@ namespace CastleOverlayV2
     /// </summary>
     public class MainFormPresenter
     {
-        private readonly MainForm _view;
+        private readonly IMainView _view;
         private readonly ConfigService _config;
         private readonly PlotManager _plot;
         private readonly ChannelDrawer _drawer;
@@ -48,7 +48,7 @@ namespace CastleOverlayV2
         public bool IsAnyRunLoaded => _runs.Count > 0;
         public bool IsAlignmentArmed => _armedSlot.HasValue;
 
-        public MainFormPresenter(MainForm view, ConfigService config, PlotManager plot, ChannelDrawer drawer, TunePanel tunePanel)
+        public MainFormPresenter(IMainView view, ConfigService config, PlotManager plot, ChannelDrawer drawer, TunePanel tunePanel)
         {
             _view = view;
             _config = config;

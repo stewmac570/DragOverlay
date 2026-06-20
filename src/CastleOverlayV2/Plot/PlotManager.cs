@@ -214,8 +214,8 @@ namespace CastleOverlayV2.Plot
 
             foreach (var s in _scatters)
             {
-                s.Color = GetTraceColor(s.Label);
-                s.LineWidth = WidthFor(s.Label);
+                s.Color = GetTraceColor(s.LegendText);
+                s.LineWidth = WidthFor(s.LegendText);
             }
 
             ApplyFocusToAxes();
@@ -259,7 +259,7 @@ namespace CastleOverlayV2.Plot
             {
                 if (_scatterSlotMap.TryGetValue(s, out int ss) && ss == slot)
                 {
-                    string ch = s.Label;
+                    string ch = s.LegendText;
                     bool chOn = _channelVisibility.TryGetValue(ch, out bool vis) ? vis : true;
                     s.IsVisible = ns && chOn;
                 }
@@ -276,7 +276,7 @@ namespace CastleOverlayV2.Plot
 
             foreach (var s in _scatters)
             {
-                if (s.Label == channelName && _scatterSlotMap.TryGetValue(s, out int slot))
+                if (s.LegendText == channelName && _scatterSlotMap.TryGetValue(s, out int slot))
                 {
                     bool runVisible = _runVisibility.TryGetValue(slot, out bool rv) ? rv : true;
                     s.IsVisible = runVisible && isVisible;
@@ -425,7 +425,7 @@ namespace CastleOverlayV2.Plot
                         ysToPlot = rawYs.Select(v => v * 0.5).ToArray();
 
                     var s = _plot.Plot.Add.Scatter(xs, ysToPlot);
-                    s.Label = channelLabel;
+                    s.LegendText = channelLabel;
                     s.Color = GetTraceColor(channelLabel);
                     s.LinePattern = LineStyleHelper.GetLinePattern(slot - 1);
                     s.LineWidth = WidthFor(channelLabel);
@@ -475,7 +475,7 @@ namespace CastleOverlayV2.Plot
                 {
                     if (_scatterSlotMap.TryGetValue(s, out int sSlot) && sSlot == slot)
                     {
-                        string label = s.Label;
+                        string label = s.LegendText;
                         bool chOn = _channelVisibility.TryGetValue(label, out var cv) ? cv : true;
                         s.IsVisible = isVisible && chOn;
                     }
@@ -805,7 +805,7 @@ namespace CastleOverlayV2.Plot
                 double[] ys = rbTyped.Select(p => p.Y).ToArray();
 
                 var s = _plot.Plot.Add.Scatter(xs, ys);
-                s.Label = ch;
+                s.LegendText = ch;
                 s.Color = GetTraceColor(ch);
                 s.LinePattern = LineStyleHelper.GetLinePattern(slot - 1);
                 s.LineWidth = WidthFor(ch);
@@ -871,11 +871,11 @@ namespace CastleOverlayV2.Plot
                 var lbl = _plot.Plot.Add.Text(txt, times[i], 0.95);
                 lbl.Axes.YAxis = _splitLabelAxis!;
                 lbl.Alignment = Alignment.UpperCenter;
-                lbl.FontSize = 11;
-                lbl.FontColor = labelFg;
-                lbl.BackgroundColor = labelBg;
-                lbl.BorderColor = splitColor;
-                lbl.BorderWidth = 1;
+                lbl.LabelFontSize = 11;
+                lbl.LabelFontColor = labelFg;
+                lbl.LabelBackgroundColor = labelBg;
+                lbl.LabelBorderColor = splitColor;
+                lbl.LabelBorderWidth = 1;
                 lbl.OffsetY = -2;
                 lbls.Add(lbl);
             }
@@ -923,10 +923,10 @@ namespace CastleOverlayV2.Plot
             var cache = new Dictionary<string, List<Scatter>>();
             foreach (var s in _scatters)
             {
-                if (!cache.TryGetValue(s.Label, out var list))
+                if (!cache.TryGetValue(s.LegendText, out var list))
                 {
                     list = new List<Scatter>();
-                    cache[s.Label] = list;
+                    cache[s.LegendText] = list;
                 }
                 list.Add(s);
             }
@@ -1060,8 +1060,8 @@ namespace CastleOverlayV2.Plot
 
             var msg = _plot.Plot.Add.Text("Waiting for log...", 0, 0);
             msg.Alignment = Alignment.MiddleCenter;
-            msg.FontSize = 18;
-            msg.Color = ThemeTextDim;
+            msg.LabelFontSize = 18;
+            msg.LabelFontColor = ThemeTextDim;
 
             PixelPadding padding = new(left: 40, right: 40, top: 10, bottom: 50);
             _plot.Plot.Layout.Fixed(padding);

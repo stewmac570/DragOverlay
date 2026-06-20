@@ -13,7 +13,7 @@ using System.Windows.Forms;
 
 namespace CastleOverlayV2
 {
-    public partial class MainForm : Form
+    public partial class MainForm : Form, IMainView
     {
         private readonly ConfigService _configService;
         private readonly PlotManager _plotManager;
@@ -60,15 +60,7 @@ namespace CastleOverlayV2
                 "PowerOut", "MotorTemp", "ESC Temp", "MotorTiming", "Acceleration"
             };
             var rawStates = _configService.Config.ChannelVisibility ?? new Dictionary<string, bool>();
-            var initialStates = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
-            foreach (var kv in rawStates)
-            {
-                string key = kv.Key;
-                if (key.Equals("Throttle", StringComparison.OrdinalIgnoreCase) ||
-                    key.Equals("Throttle %.", StringComparison.OrdinalIgnoreCase))
-                    key = "Throttle %";
-                initialStates[key] = kv.Value;
-            }
+            var initialStates = new Dictionary<string, bool>(rawStates, StringComparer.OrdinalIgnoreCase);
             _configService.Config.ChannelVisibility = initialStates;
             _plotManager.SetInitialChannelVisibility(initialStates);
 
