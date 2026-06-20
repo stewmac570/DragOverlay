@@ -603,7 +603,40 @@ namespace CastleOverlayV2
             _plot.SetInitialChannelVisibility(visibilityMap);
             _plot.PlotRuns(new Dictionary<int, RunData>(_runs));
 
+            AutoScaleVoltage();
             PushAllStatsToDrawer();
+        }
+
+        /// <summary>
+        /// Recompute the Voltage Y-axis range from the currently loaded Castle runs
+        /// so the trace fits whatever pack the user is running (2S → 8S+). Skips
+        /// non-positive readings (zero = no sample). No-op if no Castle data is loaded.
+        /// </summary>
+        private void AutoScaleVoltage()
+        {
+            double min = double.PositiveInfinity;
+            double max = double.NegativeInfinity;
+            foreach (var (_, run) in _runs)
+            {
+                if (run.IsRaceBox || run.DataPoints == null) continue;
+                foreach (var dp in run.DataPoints)
+                {
+                    if (dp.Voltage <= 0) continue;
+                    if (dp.Voltage < min) min = dp.Voltage;
+                    if (dp.Voltage > max) max = dp.Voltage;
+                }
+            }
+            if (!double.IsFinite(min) || !double.IsFinite(max) || max <= min) return;
+
+            // Pad: at least 0.2V or 5% of range, whichever is larger. Clamp lower bound at 0.
+            double range = max - min;
+            double pad = Math.Max(0.2, range * 0.05);
+            double lo = Math.Max(0, min - pad);
+            double hi = max + pad;
+
+            // Apply to both profiles so switching Drag ↔ Speed-Run preserves the fit.
+            _plot.SetChannelScale("Voltage", lo, hi, forSpeedRun: false);
+            _plot.SetChannelScale("Voltage", lo, hi, forSpeedRun: true);
         }
 
         private static readonly string[] _knownChannels = new[]
