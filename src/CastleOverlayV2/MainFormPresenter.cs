@@ -22,6 +22,7 @@ namespace CastleOverlayV2
         private readonly ConfigService _config;
         private readonly PlotManager _plot;
         private readonly ChannelDrawer _drawer;
+        private readonly TunePanel _tunePanel;
 
         // Active runs by slot. Castle = 1..3, RaceBox = 4..6.
         private readonly Dictionary<int, RunData> _runs = new();
@@ -31,6 +32,7 @@ namespace CastleOverlayV2
 
         private bool _isFourPoleMode;
         private bool _isSpeedRunMode;
+        private int? _selectedTuneSlot;
 
         // Modifier-key shift step sizes (ms).
         private const double SHIFT_FINE_MS = 1;     // Ctrl
@@ -39,12 +41,13 @@ namespace CastleOverlayV2
         public bool IsSpeedRunMode => _isSpeedRunMode;
         public bool IsAnyRunLoaded => _runs.Count > 0;
 
-        public MainFormPresenter(MainForm view, ConfigService config, PlotManager plot, ChannelDrawer drawer)
+        public MainFormPresenter(MainForm view, ConfigService config, PlotManager plot, ChannelDrawer drawer, TunePanel tunePanel)
         {
             _view = view;
             _config = config;
             _plot = plot;
             _drawer = drawer;
+            _tunePanel = tunePanel;
 
             _isFourPoleMode = _config.Config.IsFourPoleMode;
             _plot.SetFourPoleMode(_isFourPoleMode);
@@ -54,6 +57,11 @@ namespace CastleOverlayV2
             _drawer.RpmModeChanged += OnRpmModeChanged;
             _drawer.ChannelFocused += OnChannelFocused;
             _plot.CursorMoved += OnCursorMoved;
+            _tunePanel.AttachTuneRequested += AttachTuneToRun;
+            _tunePanel.RadioSettingsChanged += UpdateRadioSettings;
+            _tunePanel.SelectedRunChanged += SelectTuneRun;
+
+            RefreshTunePanelRuns();
         }
 
         // ============================================================
@@ -90,6 +98,7 @@ namespace CastleOverlayV2
                 }
 
                 _runs[slot] = loaded;
+                _selectedTuneSlot = slot;
                 Logger.Log($"Loaded Run {slot} - {Path.GetFileName(path)} - {loaded.DataPoints.Count} rows");
 
                 _plot.SetRun(slot, loaded);
@@ -112,6 +121,7 @@ namespace CastleOverlayV2
             }
 
             _view.UpdateRunTypeLockState();
+            RefreshTunePanelRuns();
         }
 
         // ============================================================
@@ -204,6 +214,7 @@ namespace CastleOverlayV2
             }
 
             _view.UpdateRunTypeLockState();
+            RefreshTunePanelRuns();
         }
 
         private void EnsureRaceBoxChannelsInToggleBar()
@@ -274,12 +285,93 @@ namespace CastleOverlayV2
             _runs.Remove(slot);
             _view.ResetSlotUI(slot);
 
+            if (_selectedTuneSlot == slot)
+                _selectedTuneSlot = null;
+
             if (_plot.GetRunVisibility(slot))
                 _plot.ToggleRunVisibility(slot);
 
             _plot.PlotRuns(new Dictionary<int, RunData>(_runs));
             PushAllStatsToDrawer();
             _view.UpdateRunTypeLockState();
+            RefreshTunePanelRuns();
+        }
+
+        public void AttachTuneToRun(int? slot)
+        {
+            RunData? run = null;
+            if (slot.HasValue &&
+                (!_runs.TryGetValue(slot.Value, out run) || run.IsRaceBox))
+            {
+                _view.ShowInfo("Attach Tune", "Tune files can only be attached to Castle log runs.");
+                RefreshTunePanelRuns();
+                return;
+            }
+
+            string? path = _view.PickTuneFile();
+            if (path == null)
+                return;
+
+            var result = new CastleTuneLoader().Load(path);
+            if (!result.Ok)
+            {
+                ShowResultMessage(result);
+                return;
+            }
+
+            if (slot.HasValue && run != null)
+            {
+                var previousRadio = run.Tune?.Radio.Clone();
+                run.Tune = result.Value!;
+                if (previousRadio != null)
+                    run.Tune.Radio = previousRadio;
+
+                _selectedTuneSlot = slot.Value;
+                Logger.Log($"Attached tune to Run {slot.Value}: {Path.GetFileName(path)}");
+                RefreshTunePanelRuns();
+            }
+            else
+            {
+                Logger.Log($"Previewed tune without a loaded run: {Path.GetFileName(path)}");
+                _tunePanel.SetTune(null, result.Value);
+            }
+        }
+
+        public void UpdateRadioSettings(int slot, RadioTuneSettings settings)
+        {
+            if (!_runs.TryGetValue(slot, out var run) || run.IsRaceBox)
+                return;
+
+            run.Tune ??= new TuneSettings();
+            run.Tune.Radio = settings;
+            _selectedTuneSlot = slot;
+        }
+
+        private void SelectTuneRun(int slot)
+        {
+            _selectedTuneSlot = slot;
+            _tunePanel.SetTune(slot, _runs.TryGetValue(slot, out var run) ? run.Tune : null);
+        }
+
+        private void RefreshTunePanelRuns()
+        {
+            var castleSlots = _runs
+                .Where(kvp => kvp.Key <= 3 && !kvp.Value.IsRaceBox)
+                .Select(kvp => kvp.Key)
+                .OrderBy(slot => slot)
+                .ToList();
+
+            if (_selectedTuneSlot.HasValue && !castleSlots.Contains(_selectedTuneSlot.Value))
+                _selectedTuneSlot = null;
+
+            int? selected = _selectedTuneSlot ?? castleSlots.FirstOrDefault();
+            if (selected == 0)
+                selected = null;
+
+            _tunePanel.SetAvailableRuns(castleSlots, selected);
+            _tunePanel.SetTune(
+                selected,
+                selected.HasValue && _runs.TryGetValue(selected.Value, out var run) ? run.Tune : null);
         }
 
         public void ApplyShiftDirection(int slot, int direction, Keys modifiers)
