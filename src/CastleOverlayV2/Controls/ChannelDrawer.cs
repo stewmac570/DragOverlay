@@ -175,6 +175,21 @@ namespace CastleOverlayV2.Controls
                 next.SetFocused(true);
         }
 
+        /// <summary>
+        /// Apply visibility states from a project (issue #87 restore path). Only channels
+        /// already present in the drawer are updated; unknown keys are ignored safely.
+        /// </summary>
+        public void ApplyChannelVisibility(IReadOnlyDictionary<string, bool> visibility)
+        {
+            foreach (var (name, vis) in visibility)
+            {
+                if (_cards.TryGetValue(name, out var card))
+                    card.SetVisible(vis);
+                if (_dots.TryGetValue(name, out var dot))
+                    dot.SetVisible(vis);
+            }
+        }
+
         public Dictionary<string, bool> GetChannelStates() =>
             _cards.ToDictionary(kv => kv.Key, kv => kv.Value.IsChannelVisible);
 
