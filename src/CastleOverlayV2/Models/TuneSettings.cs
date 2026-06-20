@@ -3,13 +3,6 @@ namespace CastleOverlayV2.Models
     public sealed class TuneSettings
     {
         public string SourceFileName { get; set; } = "";
-
-        /// <summary>
-        /// Absolute path of the original .dat file on disk. Tracked so the project saver
-        /// can embed the original bytes back into a .dragoverlay package. Null if the
-        /// tune was synthesised or otherwise has no on-disk origin.
-        /// </summary>
-        public string? SourcePath { get; set; }
         public string DeviceName { get; set; } = "";
         public string Firmware { get; set; } = "";
         public string CreatedText { get; set; } = "";
