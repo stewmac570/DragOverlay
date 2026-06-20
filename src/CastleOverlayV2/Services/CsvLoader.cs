@@ -60,6 +60,7 @@ namespace CastleOverlayV2.Services
                 NeutralMs = 1.500,
                 MaxMs = 1.910    // Full Forward
             };
+            double sampleIntervalSeconds = 0.05;
 
             using (var reader = new StreamReader(filePath))
             {
@@ -93,6 +94,12 @@ namespace CastleOverlayV2.Services
                             if (double.TryParse(
                                 meta.Split(':').Last().Replace("ms", "", StringComparison.OrdinalIgnoreCase).Trim(),
                                 NumberStyles.Any, CultureInfo.InvariantCulture, out double v)) cal.MaxMs = v;
+                        }
+                        else if (meta.Contains("Sample Time:", StringComparison.OrdinalIgnoreCase))
+                        {
+                            string sampleTimeText = meta.Split("Sample Time:", StringSplitOptions.RemoveEmptyEntries).Last().Trim();
+                            if (double.TryParse(sampleTimeText, NumberStyles.Any, CultureInfo.InvariantCulture, out double v) && v > 0)
+                                sampleIntervalSeconds = v;
                         }
                     }
                     else
@@ -128,66 +135,65 @@ namespace CastleOverlayV2.Services
 
                     int rowIndex = 0;
                     const int rowMax = 10000;
-                    bool launchPointFound = false;
 
                     while (csv.Read())
                     {
+                        string rawRecord = csv.Parser.RawRecord ?? string.Empty;
+                        if (rawRecord.TrimStart().StartsWith("#", StringComparison.Ordinal))
+                        {
+                            log?.WriteLine("Next Castle session encountered; stopping at first session.");
+                            break;
+                        }
+
                         if (rowIndex > rowMax)
                         {
                             log?.WriteLine("Row limit hit!");
                             break;
                         }
 
-                        string rawPowerOut = csv.GetField<string>("Power-Out");
-                        double powerOut = 0.0;
-                        if (!string.IsNullOrWhiteSpace(rawPowerOut))
-                        {
-                            rawPowerOut = rawPowerOut.Replace("b", "").Replace("%", "").Trim();
-                            double.TryParse(rawPowerOut, NumberStyles.Any, CultureInfo.InvariantCulture, out powerOut);
-                        }
-
-                        if (trimForDrag)
-                        {
-                            if (!launchPointFound && powerOut >= 5.0)
-                            {
-                                launchPointFound = true;
-                                log?.WriteLine($"Launch found at row {rowIndex}");
-                            }
-                            if (!launchPointFound)
-                            {
-                                rowIndex++;
-                                continue;
-                            }
-                        }
-
                         string rpmField = csv.HeaderRecord.Contains("RPM") ? "RPM" : "Speed";
 
-                        double GetDouble(string col)
+                        CastleCell GetCell(string col)
                         {
+                            if (!csv.HeaderRecord.Contains(col, StringComparer.OrdinalIgnoreCase))
+                                return new CastleCell(0.0, false);
+
                             string raw = csv.GetField<string>(col);
-                            if (string.IsNullOrWhiteSpace(raw)) return 0.0;
-                            raw = raw.Replace("b", "").Replace("%", "").Trim();
-                            return double.TryParse(raw, NumberStyles.Any, CultureInfo.InvariantCulture, out double result) ? result : 0.0;
+                            if (string.IsNullOrWhiteSpace(raw))
+                                return new CastleCell(0.0, false);
+
+                            bool hasBadMarker = raw.Contains('b', StringComparison.OrdinalIgnoreCase);
+                            raw = raw.Replace("b", "", StringComparison.OrdinalIgnoreCase).Replace("%", "").Trim();
+                            bool parsed = double.TryParse(raw, NumberStyles.Any, CultureInfo.InvariantCulture, out double result);
+                            return new CastleCell(parsed ? result : 0.0, parsed && !hasBadMarker);
                         }
 
-                        double throttleMs = GetDouble("Throttle");
+                        CastleCell throttleCell = GetCell("Throttle");
+                        CastleCell powerOutCell = GetCell("Power-Out");
+                        CastleCell currentCell = GetCell("Current");
+                        CastleCell speedCell = GetCell(rpmField);
+
+                        double throttleMs = throttleCell.Value;
                         double throttlePct = ThrottlePercent.FromMilliseconds(
                             throttleMs, cal.MinMs, cal.NeutralMs, cal.MaxMs);
 
                         var point = new DataPoint
                         {
-                            Time = rowIndex * 0.05,
+                            Time = rowIndex * sampleIntervalSeconds,
                             Throttle = throttleMs,
                             ThrottlePercent = throttlePct,
-                            PowerOut = powerOut,
-                            Voltage = GetDouble("Voltage"),
-                            Ripple = GetDouble("Ripple"),
-                            Current = GetDouble("Current"),
-                            Speed = GetDouble(rpmField),
-                            Temperature = GetDouble("Temperature"),
-                            MotorTemp = GetDouble("Motor Temp."),
-                            MotorTiming = GetDouble("Motor Timing."),
-                            Acceleration = GetDouble("Acceleration.")
+                            PowerOut = powerOutCell.Value,
+                            PowerOutValid = powerOutCell.Valid,
+                            Voltage = GetCell("Voltage").Value,
+                            Ripple = GetCell("Ripple").Value,
+                            Current = currentCell.Value,
+                            CurrentValid = currentCell.Valid,
+                            Speed = speedCell.Value,
+                            SpeedValid = speedCell.Valid,
+                            Temperature = GetCell("Temperature").Value,
+                            MotorTemp = GetCell("Motor Temp.").Value,
+                            MotorTiming = GetCell("Motor Timing.").Value,
+                            Acceleration = GetCell("Acceleration.").Value
                         };
 
                         log?.WriteLine($"Row {rowIndex}: Throttle(ms)={throttleMs:F4}  Throttle(%)={throttlePct:F1}");
@@ -209,16 +215,16 @@ namespace CastleOverlayV2.Services
                 if (runData.DataPoints.Count > 100 &&
                     runData.DataPoints[^1].Time - runData.DataPoints[0].Time > 3.0)
                 {
-                    int launchIndex = DetectDragStartIndex(runData.DataPoints);
-                    Logger.Log($"CsvLoader: LaunchIndex = {launchIndex}");
+                    DragPassDetectionResult detection = DragPassDetector.Detect(runData.DataPoints, sampleIntervalSeconds);
+                    Logger.Log($"CsvLoader: LaunchIndex = {detection.LaunchIndex}; Score = {detection.Score:F2}");
 
-                    if (launchIndex == -1)
+                    if (!detection.Found)
                     {
                         noDragPass = true;
                     }
                     else
                     {
-                        runData.DataPoints = AutoTrim(runData.DataPoints, launchIndex);
+                        runData.DataPoints = AutoTrim(runData.DataPoints, detection);
                         Logger.Log($"CsvLoader: Trimmed count = {runData.DataPoints.Count}");
                         Logger.Log($"CsvLoader: First Point Time = {runData.DataPoints[0].Time:F2}");
                         Logger.Log($"CsvLoader: Last Point Time = {runData.DataPoints[^1].Time:F2}");
@@ -264,74 +270,18 @@ namespace CastleOverlayV2.Services
             public double MaxMs;
         }
 
-        private static int DetectDragStartIndex(List<DataPoint> data)
+        private sealed record CastleCell(double Value, bool Valid);
+
+        private static List<DataPoint> AutoTrim(List<DataPoint> data, DragPassDetectionResult detection)
         {
-            int sustainWindow = 5;
-            for (int i = 1; i < data.Count - sustainWindow; i++)
-            {
-                double prevThrottle = data[i - 1].Throttle;
-                double currThrottle = data[i].Throttle;
-                double currPower = data[i].PowerOut;
-                double currAccel = data[i].Acceleration;
-                double currCurrent = data[i].Current;
-
-                if (prevThrottle <= 1.65 && currThrottle > 1.65)
-                {
-                    bool sustained = true;
-                    for (int k = 0; k < sustainWindow; k++)
-                    {
-                        if (data[i + k].PowerOut < 20.0 || data[i + k].Acceleration < 0.5)
-                        {
-                            sustained = false;
-                            break;
-                        }
-                    }
-                    if (sustained)
-                    {
-                        Logger.Log($"DetectDragStartIndex: Sustained launch detected at row {i}");
-                        return i;
-                    }
-                }
-
-                int triggerScore = 0;
-                if (currPower > 65.0) triggerScore++;
-                if (data[i].Speed > 5000) triggerScore++;
-                if (currAccel > 1.0) triggerScore++;
-                if (currThrottle > 1.7) triggerScore++;
-                if (currCurrent > 5.0) triggerScore++;
-
-                if (triggerScore >= 3)
-                {
-                    bool sustained = true;
-                    for (int k = 0; k < sustainWindow; k++)
-                    {
-                        if (data[i + k].PowerOut < 20.0)
-                        {
-                            sustained = false;
-                            break;
-                        }
-                    }
-                    if (sustained)
-                    {
-                        Logger.Log($"DetectDragStartIndex: Sustained fallback launch detected at row {i}");
-                        return i;
-                    }
-                }
-            }
-            Logger.Log("DetectDragStartIndex: No drag pass detected.");
-            return -1;
-        }
-
-        private static List<DataPoint> AutoTrim(List<DataPoint> data, int index)
-        {
-            if (index == -1 || index >= data.Count)
+            if (!detection.Found || detection.LaunchIndex < 0 || detection.LaunchIndex >= data.Count)
                 return data;
 
-            double t0 = data[index].Time;
-            double tMin = t0 - 0.5;
-            double tMax = t0 + 2.5;
-
-            var trimmed = data.Where(p => p.Time >= tMin && p.Time <= tMax).ToList();
+            double t0 = data[detection.LaunchIndex].Time;
+            var trimmed = data
+                .Skip(detection.TrimStartIndex)
+                .Take(detection.TrimEndIndex - detection.TrimStartIndex + 1)
+                .ToList();
             foreach (var p in trimmed)
                 p.Time -= t0;
 
