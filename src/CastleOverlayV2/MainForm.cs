@@ -152,6 +152,29 @@ namespace CastleOverlayV2
             return ofd.ShowDialog() == DialogResult.OK ? ofd.FileName : null;
         }
 
+        public string? PickProjectFileToOpen()
+        {
+            using var ofd = new OpenFileDialog
+            {
+                Title = "Open DragOverlay project",
+                Filter = "DragOverlay project (*.dragoverlay)|*.dragoverlay|All files (*.*)|*.*"
+            };
+            return ofd.ShowDialog() == DialogResult.OK ? ofd.FileName : null;
+        }
+
+        public string? PickProjectFileToSave()
+        {
+            using var sfd = new SaveFileDialog
+            {
+                Title = "Save DragOverlay project",
+                Filter = "DragOverlay project (*.dragoverlay)|*.dragoverlay",
+                DefaultExt = "dragoverlay",
+                AddExtension = true,
+                OverwritePrompt = true
+            };
+            return sfd.ShowDialog() == DialogResult.OK ? sfd.FileName : null;
+        }
+
         public void ShowError(string title, string message) =>
             MessageBox.Show(message, title, MessageBoxButtons.OK, MessageBoxIcon.Error);
 

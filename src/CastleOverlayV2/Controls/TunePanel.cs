@@ -48,6 +48,16 @@ namespace CastleOverlayV2.Controls
         public event Action<int?>? AttachTuneRequested;
         public event Action<int, RadioTuneSettings>? RadioSettingsChanged;
         public event Action<int>? SelectedRunChanged;
+        public event Action? OpenProjectRequested;
+        public event Action? SaveProjectRequested;
+
+        private Button? _openProjectButton;
+        private Button? _saveProjectButton;
+
+        public void SetSaveProjectEnabled(bool enabled)
+        {
+            if (_saveProjectButton != null) _saveProjectButton.Enabled = enabled;
+        }
 
         public TunePanel()
         {
@@ -113,6 +123,28 @@ namespace CastleOverlayV2.Controls
             };
 
             _layout.Controls.Add(CreateTitle("Tune"));
+
+            var projectRow = new TableLayoutPanel
+            {
+                ColumnCount = 2,
+                RowCount = 1,
+                Width = 360,
+                Height = 34,
+                Margin = new Padding(0, 4, 0, 6),
+                BackColor = BackColor
+            };
+            projectRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+            projectRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+            _openProjectButton = CreateButton("Open project");
+            _openProjectButton.Dock = DockStyle.Fill;
+            _openProjectButton.Click += (_, _) => OpenProjectRequested?.Invoke();
+            _saveProjectButton = CreateButton("Save project");
+            _saveProjectButton.Dock = DockStyle.Fill;
+            _saveProjectButton.Enabled = false;
+            _saveProjectButton.Click += (_, _) => SaveProjectRequested?.Invoke();
+            projectRow.Controls.Add(_openProjectButton, 0, 0);
+            projectRow.Controls.Add(_saveProjectButton, 1, 0);
+            _layout.Controls.Add(projectRow);
 
             var attachRow = new TableLayoutPanel
             {

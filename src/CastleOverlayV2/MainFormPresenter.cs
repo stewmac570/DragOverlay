@@ -35,6 +35,9 @@ namespace CastleOverlayV2
         private int? _armedSlot;
         private int? _selectedTuneSlot;
 
+        // Cleanup tracker for the temp-extracted project (issue #87).
+        private string? _activeProjectTempDir;
+
         // Modifier-key shift step sizes (ms).
         private const double SHIFT_FINE_MS = 1;     // Ctrl
         private const double SHIFT_COARSE_MS = 1000; // Shift
@@ -65,8 +68,28 @@ namespace CastleOverlayV2
             _tunePanel.AttachTuneRequested += AttachTuneToRun;
             _tunePanel.RadioSettingsChanged += UpdateRadioSettings;
             _tunePanel.SelectedRunChanged += SelectTuneRun;
+            _tunePanel.OpenProjectRequested += OnOpenProjectRequested;
+            _tunePanel.SaveProjectRequested += OnSaveProjectRequested;
 
             RefreshTunePanelRuns();
+            _tunePanel.SetSaveProjectEnabled(IsAnyRunLoaded);
+        }
+
+        private void OnOpenProjectRequested()
+        {
+            string? path = _view.PickProjectFileToOpen();
+            if (path == null) return;
+            var result = OpenProjectFrom(path);
+            if (!result.Ok) ShowResultMessage(result);
+            _tunePanel.SetSaveProjectEnabled(IsAnyRunLoaded);
+        }
+
+        private void OnSaveProjectRequested()
+        {
+            string? path = _view.PickProjectFileToSave();
+            if (path == null) return;
+            var result = SaveProjectTo(path);
+            if (!result.Ok) ShowResultMessage(result);
         }
 
         // ============================================================
@@ -432,6 +455,9 @@ namespace CastleOverlayV2
             _tunePanel.SetTune(slot, _runs.TryGetValue(slot, out var run) ? run.Tune : null);
         }
 
+        private void RefreshProjectButtonsState() =>
+            _tunePanel.SetSaveProjectEnabled(IsAnyRunLoaded);
+
         private void RefreshTunePanelRuns()
         {
             var castleSlots = _runs
@@ -451,6 +477,8 @@ namespace CastleOverlayV2
             _tunePanel.SetTune(
                 selected,
                 selected.HasValue && _runs.TryGetValue(selected.Value, out var run) ? run.Tune : null);
+
+            RefreshProjectButtonsState();
         }
 
         public void ApplyShiftDirection(int slot, int direction, Keys modifiers)
@@ -758,6 +786,86 @@ namespace CastleOverlayV2
                     snapshot.Message ?? "Could not build the project snapshot.");
 
             return new ProjectSaver().Save(destinationPath, snapshot.Value!);
+        }
+
+        // ============================================================
+        // Project open (issue #87)
+        // ============================================================
+
+        /// <summary>
+        /// Open a <c>.dragoverlay</c> package and atomically swap the current session for
+        /// the restored one. Validation happens before any mutation — on failure the current
+        /// session is untouched.
+        /// </summary>
+        public LoadResult<string> OpenProjectFrom(string packagePath)
+        {
+            var loadResult = new ProjectLoader(_config).Load(packagePath);
+            if (!loadResult.Ok)
+                return LoadResult<string>.Error(loadResult.Title ?? "Open Project",
+                    loadResult.Message ?? "Could not open the project.");
+
+            var restored = loadResult.Value!;
+
+            // Disarm any in-progress alignment so we don't trip drag events during swap.
+            if (_armedSlot.HasValue)
+                DisarmAlignment();
+
+            // Tear down the current session — clear plot scatters and chip state, but
+            // do NOT call DeleteRun (which writes to config + nudges Castle delete UI flows).
+            for (int slot = 1; slot <= 6; slot++)
+            {
+                if (_runs.ContainsKey(slot))
+                {
+                    _runs.Remove(slot);
+                    _plot.SetRun(slot, null!);
+                    _view.ResetSlotUI(slot);
+                }
+            }
+            _selectedTuneSlot = null;
+
+            // Apply manifest-level state.
+            _isSpeedRunMode = restored.Manifest.RunMode == ProjectRunMode.Speed;
+            _plot.SetSpeedMode(_isSpeedRunMode);
+            _view.ApplyRunTypeUI(_isSpeedRunMode);
+
+            if (restored.Manifest.ChannelVisibility is { Count: > 0 } chanVis)
+                _drawer.ApplyChannelVisibility(chanVis);
+
+            // Insert each restored run into its slot.
+            foreach (var (plotSlot, run) in restored.RunsBySlot.OrderBy(kv => kv.Key))
+            {
+                _runs[plotSlot] = run;
+                _plot.SetRun(plotSlot, run);
+
+                bool isVisible = restored.Manifest.Runs
+                    .FirstOrDefault(r => r.PlotSlot == plotSlot)?.IsVisible ?? true;
+                _plot.SetRunVisibility(plotSlot, isVisible);
+
+                _view.SetSlotLoadedUI(plotSlot, run.SourcePath ?? run.FileName ?? "", isVisible);
+            }
+
+            EnsureRaceBoxChannelsInToggleBar();
+            PlotAllRuns();
+            _plot.SetupAllAxes();
+            _plot.RefreshPlot();
+
+            // Pick the first Castle slot for the tune panel (or first run if no Castle).
+            _selectedTuneSlot = restored.RunsBySlot.Keys.Where(s => s <= 3).OrderBy(s => s).FirstOrDefault();
+            if (_selectedTuneSlot == 0) _selectedTuneSlot = null;
+            RefreshTunePanelRuns();
+            _view.UpdateRunTypeLockState();
+
+            // Replace the previous extracted temp dir with the new one.
+            ProjectLoader.TryDeleteTempDir(_activeProjectTempDir ?? "");
+            _activeProjectTempDir = restored.TempDir;
+
+            if (restored.Warnings.Count > 0)
+            {
+                _view.ShowInfo("Open Project",
+                    "Project opened with warnings:\n\n" + string.Join("\n", restored.Warnings));
+            }
+
+            return LoadResult<string>.Success(packagePath);
         }
 
         // ============================================================
