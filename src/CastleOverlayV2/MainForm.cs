@@ -28,6 +28,7 @@ namespace CastleOverlayV2
             _configService = configService ?? new ConfigService();
 
             InitializeComponent();
+            HandleCreated += (_, _) => Utils.WindowsDarkTitleBar.Apply(Handle);
 
             // Dark theme — surface.window (chrome around the plot).
             // Phase 1 minimum: form + plot are dark; the run strip / drawer get full
@@ -89,6 +90,13 @@ namespace CastleOverlayV2
             // hidden via topButtonPanel.Visible = false; the runTypeSwitch (Drag/Speed
             // pill) lives in headerRow's column 1 and stays visible.
             topButtonPanel.Visible = false;
+            // Dark-theme every container the Designer leaves at default light gray, so
+            // there are no white strips behind the run strip, plot, or pill.
+            var surfaceBar    = Color.FromArgb(0x1B, 0x21, 0x2B);
+            var surfaceWindow = Color.FromArgb(0x13, 0x17, 0x1E);
+            mainContainer.BackColor = surfaceWindow;
+            headerRow.BackColor = surfaceBar;
+            topButtonPanel.BackColor = surfaceBar;
 
             _runStrip = new RunStrip();
             Controls.Add(_runStrip); // Dock = Top
@@ -312,28 +320,34 @@ namespace CastleOverlayV2
         //   (Touches Designer-named controls — stays in the view.)
         // =====================================================================
 
-        // RunType colors
-        private readonly Color _rtBaseBg = Color.FromArgb(235, 235, 235);
+        // RunType colors (dark theme — match the rest of the app).
+        private readonly Color _rtBaseBg = Color.FromArgb(0x1A, 0x1F, 0x27);   // surface.card
+        private readonly Color _rtKnobBg = Color.FromArgb(0x17, 0x22, 0x30);   // surface.card.focus
 
         private void SyncRunTypeUI(bool isSpeedRun, bool locked)
         {
             if (runTypeKnob != null)
+            {
                 runTypeKnob.Left = isSpeedRun ? 54 : 0;
+                runTypeKnob.BackColor = _rtKnobBg;
+            }
 
             if (runTypeSwitch != null)
                 runTypeSwitch.BackColor = _rtBaseBg;
 
-            var activeFg = Color.FromArgb(35, 35, 35);
-            var inactiveFg = Color.FromArgb(140, 140, 140);
+            var activeFg = Color.FromArgb(0xE6, 0xE9, 0xEF);    // text.primary
+            var inactiveFg = Color.FromArgb(0x5C, 0x65, 0x73);  // text.dim
 
             if (runTypeDrag != null)
             {
                 runTypeDrag.ForeColor = isSpeedRun ? inactiveFg : activeFg;
+                runTypeDrag.BackColor = _rtBaseBg;
                 runTypeDrag.Font = new Font(runTypeDrag.Font, isSpeedRun ? FontStyle.Regular : FontStyle.Bold);
             }
             if (runTypeSpeed != null)
             {
                 runTypeSpeed.ForeColor = isSpeedRun ? activeFg : inactiveFg;
+                runTypeSpeed.BackColor = _rtBaseBg;
                 runTypeSpeed.Font = new Font(runTypeSpeed.Font, isSpeedRun ? FontStyle.Bold : FontStyle.Regular);
             }
 
