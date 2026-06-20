@@ -24,6 +24,9 @@ namespace CastleOverlayV2.Plot
     public class PlotManager
     {
         private readonly FormsPlot _plot;
+        private bool _alignmentMode;
+        private bool _alignmentDragging;
+        private double _lastAlignmentMouseX;
 
         // Cursor
         private VerticalLine _cursor;
@@ -82,6 +85,7 @@ namespace CastleOverlayV2.Plot
 
         // Events
         public event Action<Dictionary<string, double?[]>> CursorMoved;
+        public event Action<double>? AlignmentDragged;
 
         private bool _isFourPoleMode = false;
 
@@ -181,6 +185,8 @@ namespace CastleOverlayV2.Plot
             _plot.Plot.Grid.MinorLineWidth = 1;
 
             _plot.MouseMove += FormsPlot_MouseMove;
+            _plot.MouseDown += FormsPlot_MouseDown;
+            _plot.MouseUp += FormsPlot_MouseUp;
             _plot.Refresh();
         }
 
@@ -301,6 +307,14 @@ namespace CastleOverlayV2.Plot
 
         public void RefreshPlot() => _plot.Refresh();
 
+        public void SetAlignmentMode(bool enabled)
+        {
+            _alignmentMode = enabled;
+            _alignmentDragging = false;
+            _plot.Cursor = Cursors.Default;
+            _plot.UserInputProcessor.Enable();
+        }
+
         public void FitToData()
         {
             _plot.Refresh();
@@ -359,6 +373,14 @@ namespace CastleOverlayV2.Plot
                 ResetEmptyPlot();
                 return;
             }
+
+            var previousLimits = _plot.Plot.Axes.GetLimits();
+            bool preserveAlignmentZoom =
+                _alignmentMode &&
+                _scatters.Count > 0 &&
+                double.IsFinite(previousLimits.Left) &&
+                double.IsFinite(previousLimits.Right) &&
+                previousLimits.Right > previousLimits.Left;
 
             // Clear
             _plot.Plot.Clear();
@@ -477,10 +499,20 @@ namespace CastleOverlayV2.Plot
 
             _plot.Plot.Legend.IsVisible = false;
 
-            // --- Set initial X range from the data without touching Y ---
-            (double minX, double maxX) = GetTimeRange(runsBySlot);
-            minX -= 0.10;
-            maxX += 0.10;
+            double minX;
+            double maxX;
+            if (preserveAlignmentZoom)
+            {
+                minX = previousLimits.Left;
+                maxX = previousLimits.Right;
+            }
+            else
+            {
+                // --- Set initial X range from the data without touching Y ---
+                (minX, maxX) = GetTimeRange(runsBySlot);
+                minX -= 0.10;
+                maxX += 0.10;
+            }
 
             // preserve current Y limits exactly as-is
             var lim = _plot.Plot.Axes.GetLimits();
@@ -912,6 +944,16 @@ namespace CastleOverlayV2.Plot
 
         private void FormsPlot_MouseMove(object sender, MouseEventArgs e)
         {
+            if (_alignmentMode && _alignmentDragging)
+            {
+                double currentX = _plot.Plot.GetCoordinates(new Pixel(e.X, e.Y)).X;
+                double deltaMs = (currentX - _lastAlignmentMouseX) * 1000.0;
+                _lastAlignmentMouseX = currentX;
+                if (Math.Abs(deltaMs) > 0.001)
+                    AlignmentDragged?.Invoke(deltaMs);
+                return;
+            }
+
             if (_cursor == null) return;
 
             var mouseCoord = _plot.Plot.GetCoordinates(new Pixel(e.X, e.Y));
@@ -960,6 +1002,23 @@ namespace CastleOverlayV2.Plot
 
             CursorMoved?.Invoke(valuesAtCursor);
             _plot.Refresh();
+        }
+
+        private void FormsPlot_MouseDown(object? sender, MouseEventArgs e)
+        {
+            if (!_alignmentMode || e.Button != MouseButtons.Left) return;
+            if ((Control.ModifierKeys & Keys.Control) != Keys.Control) return;
+
+            _alignmentDragging = true;
+            _lastAlignmentMouseX = _plot.Plot.GetCoordinates(new Pixel(e.X, e.Y)).X;
+            _plot.Capture = true;
+        }
+
+        private void FormsPlot_MouseUp(object? sender, MouseEventArgs e)
+        {
+            if (!_alignmentDragging || e.Button != MouseButtons.Left) return;
+            _alignmentDragging = false;
+            _plot.Capture = false;
         }
 
         // ---------------- Helpers ----------------

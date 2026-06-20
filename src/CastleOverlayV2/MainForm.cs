@@ -19,6 +19,7 @@ namespace CastleOverlayV2
         private readonly PlotManager _plotManager;
         private ChannelDrawer _channelDrawer;
         private RunStrip _runStrip;
+        private AlignmentBar _alignmentBar;
         private TunePanel _tunePanel;
         private MainFormPresenter _presenter;
 
@@ -45,6 +46,8 @@ namespace CastleOverlayV2
             Logger.Log($"🟢 New Session Started — {DateTime.Now}");
 
             this.WindowState = FormWindowState.Maximized;
+            this.KeyPreview = true;
+
             // PlotManager needs formsPlot1, which exists after InitializeComponent().
             _plotManager = new PlotManager(formsPlot1);
             formsPlot1.Dock = DockStyle.Fill;
@@ -101,6 +104,21 @@ namespace CastleOverlayV2
             };
             _runStrip.ToggleRequested += slot => _presenter.ToggleRun(slot);
             _runStrip.DeleteRequested += slot => _presenter.DeleteRun(slot);
+            _runStrip.ArmRequested += slot => _presenter.ToggleAlignmentArm(slot);
+
+            _alignmentBar = new AlignmentBar();
+            Controls.Add(_alignmentBar);
+            _alignmentBar.AutoRequested += () => _presenter.AutoAlignArmedRun();
+            _alignmentBar.FineNudgeRequested += direction =>
+                _presenter.NudgeArmedRun(direction, coarse: false);
+            _alignmentBar.CoarseNudgeRequested += direction =>
+                _presenter.NudgeArmedRun(direction, coarse: true);
+            _alignmentBar.ResetRequested += () => _presenter.ResetArmedRun();
+            _alignmentBar.CloseRequested += () => _presenter.DisarmAlignment();
+
+            Controls.SetChildIndex(_runStrip, 0);
+            Controls.SetChildIndex(_alignmentBar, 1);
+
             // Presenter owns all run state + business logic. It subscribes to plot/toggle events.
             _presenter = new MainFormPresenter(this, _configService, _plotManager, _channelDrawer, _tunePanel);
 
@@ -150,6 +168,17 @@ namespace CastleOverlayV2
         /// <summary>Update a slot's master eye toggle after a visibility flip.</summary>
         public void SetSlotToggleText(int slot, bool isVisible) =>
             _runStrip.SetSlotToggleState(slot, isVisible);
+
+        public void SetSlotArmedUI(int slot, bool armed) =>
+            _runStrip.SetSlotArmed(slot, armed);
+
+        public void ShowAlignmentUI(string fileName, double offsetMs) =>
+            _alignmentBar.ShowFor(fileName, offsetMs);
+
+        public void SetAlignmentOffsetUI(double offsetMs) =>
+            _alignmentBar.SetOffset(offsetMs);
+
+        public void HideAlignmentUI() => _alignmentBar.HideBar();
 
         /// <summary>Sync the RunType pill switch appearance with current mode + lock state.</summary>
         public void UpdateRunTypeLockState() => SyncRunTypeUI(_presenter?.IsSpeedRunMode ?? false, _presenter?.IsAnyRunLoaded ?? false);
@@ -284,6 +313,29 @@ namespace CastleOverlayV2
             _runStrip?.SetSlotVisible(4, !isSpeedRun);
             _runStrip?.SetSlotVisible(5, !isSpeedRun);
             _runStrip?.SetSlotVisible(6, !isSpeedRun);
+        }
+
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+        {
+            if (_presenter?.IsAlignmentArmed == true)
+            {
+                Keys keyCode = keyData & Keys.KeyCode;
+                if (keyCode == Keys.Escape)
+                {
+                    _presenter.DisarmAlignment();
+                    return true;
+                }
+
+                if (keyCode == Keys.Left || keyCode == Keys.Right)
+                {
+                    int direction = keyCode == Keys.Left ? -1 : 1;
+                    bool coarse = (keyData & Keys.Shift) == Keys.Shift;
+                    _presenter.NudgeArmedRun(direction, coarse);
+                    return true;
+                }
+            }
+
+            return base.ProcessCmdKey(ref msg, keyData);
         }
 
     }

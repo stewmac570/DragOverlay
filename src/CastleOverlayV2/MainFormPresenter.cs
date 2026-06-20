@@ -32,14 +32,18 @@ namespace CastleOverlayV2
 
         private bool _isFourPoleMode;
         private bool _isSpeedRunMode;
+        private int? _armedSlot;
         private int? _selectedTuneSlot;
 
         // Modifier-key shift step sizes (ms).
         private const double SHIFT_FINE_MS = 1;     // Ctrl
         private const double SHIFT_COARSE_MS = 1000; // Shift
+        private const double ALIGN_FINE_MS = 10;
+        private const double ALIGN_COARSE_MS = 100;
 
         public bool IsSpeedRunMode => _isSpeedRunMode;
         public bool IsAnyRunLoaded => _runs.Count > 0;
+        public bool IsAlignmentArmed => _armedSlot.HasValue;
 
         public MainFormPresenter(MainForm view, ConfigService config, PlotManager plot, ChannelDrawer drawer, TunePanel tunePanel)
         {
@@ -57,6 +61,7 @@ namespace CastleOverlayV2
             _drawer.RpmModeChanged += OnRpmModeChanged;
             _drawer.ChannelFocused += OnChannelFocused;
             _plot.CursorMoved += OnCursorMoved;
+            _plot.AlignmentDragged += OnAlignmentDragged;
             _tunePanel.AttachTuneRequested += AttachTuneToRun;
             _tunePanel.RadioSettingsChanged += UpdateRadioSettings;
             _tunePanel.SelectedRunChanged += SelectTuneRun;
@@ -282,6 +287,9 @@ namespace CastleOverlayV2
 
         public void DeleteRun(int slot)
         {
+            if (_armedSlot == slot)
+                DisarmAlignment();
+
             _runs.Remove(slot);
             _view.ResetSlotUI(slot);
 
@@ -295,6 +303,72 @@ namespace CastleOverlayV2
             PushAllStatsToDrawer();
             _view.UpdateRunTypeLockState();
             RefreshTunePanelRuns();
+        }
+
+        public void ToggleAlignmentArm(int slot)
+        {
+            if (!_runs.TryGetValue(slot, out var run))
+                return;
+
+            if (_armedSlot == slot)
+            {
+                DisarmAlignment();
+                return;
+            }
+
+            if (_armedSlot.HasValue)
+                _view.SetSlotArmedUI(_armedSlot.Value, false);
+
+            _armedSlot = slot;
+            _view.SetSlotArmedUI(slot, true);
+            _view.ShowAlignmentUI(run.FileName, run.TimeShiftMs);
+            _plot.SetAlignmentMode(true);
+        }
+
+        public void DisarmAlignment()
+        {
+            if (_armedSlot.HasValue)
+                _view.SetSlotArmedUI(_armedSlot.Value, false);
+
+            _armedSlot = null;
+            _view.HideAlignmentUI();
+            _plot.SetAlignmentMode(false);
+        }
+
+        public void NudgeArmedRun(int direction, bool coarse)
+        {
+            if (!_armedSlot.HasValue) return;
+            ApplyAlignmentDelta(
+                _armedSlot.Value,
+                direction * (coarse ? ALIGN_COARSE_MS : ALIGN_FINE_MS));
+        }
+
+        public void ResetArmedRun()
+        {
+            if (!_armedSlot.HasValue) return;
+            ResetShift(_armedSlot.Value);
+            UpdateAlignmentOffset();
+        }
+
+        public void AutoAlignArmedRun()
+        {
+            if (!_armedSlot.HasValue || !_runs.TryGetValue(_armedSlot.Value, out var run))
+                return;
+
+            double? offsetMs = AlignmentHelper.GetAutoOffsetMs(run);
+            if (!offsetMs.HasValue)
+            {
+                _view.ShowInfo(
+                    "Auto-align",
+                    "No clear launch point was found. The existing offset was left unchanged.");
+                return;
+            }
+
+            run.TimeShiftMs = offsetMs.Value;
+            Logger.Log(
+                $"Auto-align slot {_armedSlot.Value}: offset={run.TimeShiftMs:F1}ms");
+            PlotAllRuns();
+            UpdateAlignmentOffset();
         }
 
         public void AttachTuneToRun(int? slot)
@@ -389,6 +463,26 @@ namespace CastleOverlayV2
             run.TimeShiftMs = 0;
             Logger.Log($"⏱️ Run {slot} shift reset → 0 ms");
             PlotAllRuns();
+        }
+
+        private void OnAlignmentDragged(double deltaMs)
+        {
+            if (_armedSlot.HasValue)
+                ApplyAlignmentDelta(_armedSlot.Value, deltaMs);
+        }
+
+        private void ApplyAlignmentDelta(int slot, double deltaMs)
+        {
+            if (!_runs.TryGetValue(slot, out var run)) return;
+            run.TimeShiftMs += deltaMs;
+            PlotAllRuns();
+            UpdateAlignmentOffset();
+        }
+
+        private void UpdateAlignmentOffset()
+        {
+            if (_armedSlot.HasValue && _runs.TryGetValue(_armedSlot.Value, out var run))
+                _view.SetAlignmentOffsetUI(run.TimeShiftMs);
         }
 
         private double GetClickDeltaMs(int slot, Keys modifiers)
