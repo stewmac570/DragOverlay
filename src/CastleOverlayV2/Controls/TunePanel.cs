@@ -260,7 +260,12 @@ namespace CastleOverlayV2.Controls
             _curveLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
             _curveLayout.Controls.Add(_throttleCurve, 0, 0);
             _curveLayout.Controls.Add(_boostCurve, 0, 1);
-            _content.Controls.Add(_curveLayout);
+            // Curves live inside the same scrolling stack (fixed height) so the whole
+            // panel is one auto-sizing column that scrolls natively.
+            _curveLayout.AutoSize = false;
+            _curveLayout.Height = 430;
+            _curveLayout.Margin = new Padding(0, 12, 0, 4);
+            _layout.Controls.Add(_curveLayout);
 
             SetAvailableRuns(Array.Empty<int>(), preferredSlot: null);
             SetTune(null, null);
@@ -456,22 +461,16 @@ namespace CastleOverlayV2.Controls
             _content.SuspendLayout();
             _layout.SuspendLayout();
             _radioModeFields.SuspendLayout();
-            _curveLayout.SuspendLayout();
             try
             {
                 _content.ResetHorizontalScroll();
 
                 int innerLeft = _content.Padding.Left;
                 int innerTop = _content.Padding.Top;
-                int innerWidth = Math.Max(0, _content.Width - _content.Padding.Horizontal - 6);
-                int innerHeight = Math.Max(0, _content.ClientSize.Height - _content.Padding.Vertical);
-                int curveHeight = Math.Clamp(
-                    (int)Math.Round(innerHeight * 0.52),
-                    Math.Min(260, innerHeight),
-                    Math.Min(560, innerHeight));
-                int contentWidth = innerWidth;
-                _layout.Width = contentWidth;
+                // Leave room on the right for the scroll thumb so content never sits under it.
+                int contentWidth = Math.Max(0, _content.ClientSize.Width - _content.Padding.Horizontal - 14);
 
+                _layout.Width = contentWidth;
                 foreach (Control control in _layout.Controls)
                     control.Width = Math.Max(0, contentWidth - control.Margin.Horizontal);
 
@@ -480,31 +479,14 @@ namespace CastleOverlayV2.Controls
                     control.Width = Math.Max(0, contentWidth - control.Margin.Horizontal);
 
                 _layout.Location = new Point(innerLeft, innerTop);
-                int minimumContentHeight = _layout.Bottom + 10 + curveHeight + _content.Padding.Bottom;
-                int totalContentHeight = Math.Max(innerHeight + _content.Padding.Vertical, minimumContentHeight);
-                int curveTop = Math.Max(_layout.Bottom + 10, totalContentHeight - _content.Padding.Bottom - curveHeight);
-                _curveLayout.AutoSize = false;
-                _curveLayout.MinimumSize = Size.Empty;
-                _curveLayout.MaximumSize = Size.Empty;
-                _curveLayout.SetBounds(innerLeft, curveTop, innerWidth, curveHeight);
-                _throttleCurve.MinimumSize = Size.Empty;
-                _boostCurve.MinimumSize = Size.Empty;
-                _throttleCurve.SetBounds(
+
+                // One auto-sizing column — let AutoScroll derive the scroll range from it.
+                _content.AutoScrollMinSize = new Size(
                     0,
-                    0,
-                    innerWidth,
-                    Math.Max(0, curveHeight / 2 - 5));
-                _boostCurve.SetBounds(
-                    0,
-                    curveHeight / 2 + 5,
-                    innerWidth,
-                    Math.Max(0, curveHeight - curveHeight / 2 - 5));
-                _content.AutoScrollMinSize = new Size(1, totalContentHeight);
+                    _layout.Bottom + _content.Padding.Bottom);
             }
             finally
             {
-                _curveLayout.ResumeLayout(false);
-                _curveLayout.PerformLayout();
                 _radioModeFields.ResumeLayout(false);
                 _layout.ResumeLayout(false);
                 _content.ResumeLayout(true);
@@ -872,8 +854,8 @@ namespace CastleOverlayV2.Controls
         {
             private const int ScrollBarHorizontal = 0;
             private const int ScrollBarVertical = 1;
-            private const int TrackWidth = 3;
-            private const int TrackRightMargin = 2;
+            private const int TrackWidth = 10;
+            private const int TrackRightMargin = 3;
             private bool _draggingThumb;
             private bool _resettingHorizontalScroll;
             private int _dragStartY;
