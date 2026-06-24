@@ -48,8 +48,10 @@ namespace CastleOverlayV2.Controls
         private readonly Panel _expandedHeader; // expanded view: chevron at top
         private readonly FlowLayoutPanel _cardFlow;
         private readonly FlowLayoutPanel _dotFlow;
+        private readonly FlowLayoutPanel _offStrip;   // expanded view: dots for hidden channels
         private readonly Button _chevronStrip;
         private readonly Button _chevronExpanded;
+        private readonly Dictionary<string, ChannelDot> _offDots = new();
 
         public ChannelDrawer(List<string> channelNames, Dictionary<string, bool> initialStates)
         {
@@ -89,13 +91,30 @@ namespace CastleOverlayV2.Controls
             _expandedHeader = new Panel
             {
                 Dock = DockStyle.Top,
-                Height = 24,
+                Height = 32,
                 BackColor = SurfaceBar,
                 Padding = new Padding(0)
             };
             _chevronExpanded = MakeChevronButton(expandedNow: true);
             _chevronExpanded.Dock = DockStyle.Left;
+
+            // Hidden channels appear as dots here so they can be toggled back on
+            // without collapsing the whole drawer.
+            _offStrip = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                FlowDirection = FlowDirection.LeftToRight,
+                WrapContents = false,
+                AutoScroll = false,
+                BackColor = SurfaceBar,
+                // The Fill strip spans the whole width (under the chevron), so pad its
+                // content past the 32px chevron button; the chevron stays on top.
+                Padding = new Padding(40, 2, 4, 2),
+                Margin = new Padding(0)
+            };
+            _expandedHeader.Controls.Add(_offStrip);
             _expandedHeader.Controls.Add(_chevronExpanded);
+            _chevronExpanded.BringToFront();
 
             _cardFlow = new FlowLayoutPanel
             {
@@ -141,6 +160,7 @@ namespace CastleOverlayV2.Controls
             card.VisibilityChanged += (n, v) =>
             {
                 _dots[n].SetVisible(v);
+                SyncPresence(n, v);
                 ChannelVisibilityChanged?.Invoke(n, v);
             };
             card.RpmModeToggled += isFourPole => RpmModeChanged?.Invoke(isFourPole);
@@ -154,10 +174,46 @@ namespace CastleOverlayV2.Controls
             dot.Toggled += (n, v) =>
             {
                 _cards[n].SetVisible(v);
+                SyncPresence(n, v);
                 ChannelVisibilityChanged?.Invoke(n, v);
             };
             _dots[channelName] = dot;
             _dotFlow.Controls.Add(dot);
+
+            // Header dot, shown only while this channel is hidden; click re-enables it.
+            var offDot = new ChannelDot(channelName, initialVisible: false)
+            {
+                Height = 24,
+                Margin = new Padding(3, 2, 3, 2)
+            };
+            offDot.Toggled += (n, _) =>
+            {
+                _cards[n].SetVisible(true);
+                _dots[n].SetVisible(true);
+                SyncPresence(n, true);
+                ChannelVisibilityChanged?.Invoke(n, true);
+            };
+            _offDots[channelName] = offDot;
+            _offStrip.Controls.Add(offDot);
+
+            SyncPresence(channelName, initialVisible);
+        }
+
+        /// <summary>
+        /// A hidden channel's full card is removed from layout (Visible=false, so it
+        /// takes no space and the on-cards get the room); its dot shows in the header
+        /// strip instead. No in-place card resizing — that caused repaint glitches.
+        /// </summary>
+        private void SyncPresence(string channelName, bool visible)
+        {
+            if (_cards.TryGetValue(channelName, out var card))
+                card.Visible = visible;
+            if (_offDots.TryGetValue(channelName, out var offDot))
+            {
+                offDot.Visible = !visible;
+                if (!visible)
+                    offDot.SetVisible(false); // keep it drawn in the dim "off" state
+            }
         }
 
         /// <summary>
@@ -187,6 +243,7 @@ namespace CastleOverlayV2.Controls
                     card.SetVisible(vis);
                 if (_dots.TryGetValue(name, out var dot))
                     dot.SetVisible(vis);
+                SyncPresence(name, vis);
             }
         }
 
@@ -516,67 +573,44 @@ namespace CastleOverlayV2.Controls
 
             private void RebuildCursorRow()
             {
-                if (_lastCursor.Length > 0 &&
-                    _cursorLabels.Count == _lastCursor.Length + 1)
+                if (_lastCursor.Length == 0)
                 {
-                    for (int i = 0; i < _lastCursor.Length; i++)
-                    {
-                        string slotLabel = i switch
-                        {
-                            0 => "A",
-                            1 => "B",
-                            2 => "C",
-                            _ => $"{i + 1}"
-                        };
-                        string text = _lastCursor[i].HasValue
-                            ? $"{slotLabel}  {Format(ChannelName, _lastCursor[i]!.Value)}"
-                            : $"{slotLabel}  -";
-
-                        if (_cursorLabels[i].Text != text)
-                            _cursorLabels[i].Text = text;
-                    }
+                    foreach (var lbl in _cursorLabels.Values)
+                        _layout.Controls.Remove(lbl);
+                    _cursorLabels.Clear();
                     return;
                 }
 
-                // Remove old cursor labels; recreate.
-                foreach (var lbl in _cursorLabels.Values)
-                    _layout.Controls.Remove(lbl);
-                _cursorLabels.Clear();
-
-                if (_lastCursor.Length == 0) return;
-
-                // Header line
-                var head = new Label
-                {
-                    Text = "@cursor",
-                    AutoSize = true,
-                    ForeColor = TextDim,
-                    Font = new Font(SystemFonts.DefaultFont.FontFamily, 8.5f, FontStyle.Italic),
-                    Margin = new Padding(0, 6, 0, 0)
-                };
-                _cursorLabels[-1] = head;
-                head.Click += (_, _) => ToggleVisibility();
-                _layout.Controls.Add(head);
-
-                // Per-slot values (legacy 3-slot array — A/B/C labelling matches Run 1/2/3 conceptually).
-                for (int i = 0; i < _lastCursor.Length; i++)
-                {
-                    string slotLabel = i switch { 0 => "A", 1 => "B", 2 => "C", _ => $"{i + 1}" };
-                    string txt = _lastCursor[i].HasValue
-                        ? $"{slotLabel}  {Format(ChannelName, _lastCursor[i]!.Value)}"
-                        : $"{slotLabel}  —";
-                    var lbl = new Label
+                // Compact single-line @cursor: "@ A 65,650   B –   C –".
+                // (Was a 4-line stack — header + A/B/C — which dominated card height.)
+                string text = "@ " + string.Join(
+                    "   ",
+                    Enumerable.Range(0, _lastCursor.Length).Select(i =>
                     {
-                        Text = txt,
-                        AutoSize = true,
-                        ForeColor = TextPrimary,
-                        Font = new Font(SystemFonts.DefaultFont.FontFamily, 9f),
-                        Margin = new Padding(0, 0, 0, 0)
-                    };
-                    _cursorLabels[i] = lbl;
-                    lbl.Click += (_, _) => ToggleVisibility();
-                    _layout.Controls.Add(lbl);
+                        string slot = i switch { 0 => "A", 1 => "B", 2 => "C", _ => $"{i + 1}" };
+                        return _lastCursor[i].HasValue
+                            ? $"{slot} {Format(ChannelName, _lastCursor[i]!.Value)}"
+                            : $"{slot} –";
+                    }));
+
+                if (_cursorLabels.TryGetValue(0, out var existing))
+                {
+                    if (existing.Text != text)
+                        existing.Text = text;
+                    return;
                 }
+
+                var line = new Label
+                {
+                    Text = text,
+                    AutoSize = true,
+                    ForeColor = TextPrimary,
+                    Font = new Font(SystemFonts.DefaultFont.FontFamily, 8.5f),
+                    Margin = new Padding(0, 2, 0, 0)
+                };
+                line.Click += (_, _) => ToggleVisibility();
+                _cursorLabels[0] = line;
+                _layout.Controls.Add(line);
             }
         }
 
