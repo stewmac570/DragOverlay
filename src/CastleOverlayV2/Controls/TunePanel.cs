@@ -467,8 +467,8 @@ namespace CastleOverlayV2.Controls
 
                 int innerLeft = _content.Padding.Left;
                 int innerTop = _content.Padding.Top;
-                // Leave room on the right for the scroll thumb so content never sits under it.
-                int contentWidth = Math.Max(0, _content.ClientSize.Width - _content.Padding.Horizontal - 14);
+                // ClientSize already excludes the native scrollbar; small margin only.
+                int contentWidth = Math.Max(0, _content.ClientSize.Width - _content.Padding.Horizontal - 2);
 
                 _layout.Width = contentWidth;
                 foreach (Control control in _layout.Controls)
@@ -852,206 +852,33 @@ namespace CastleOverlayV2.Controls
 
         private sealed class UnifiedScrollPanel : Panel
         {
-            private const int ScrollBarHorizontal = 0;
-            private const int ScrollBarVertical = 1;
-            private const int TrackWidth = 10;
-            private const int TrackRightMargin = 3;
-            private bool _draggingThumb;
-            private bool _resettingHorizontalScroll;
-            private int _dragStartY;
-            private int _dragStartScroll;
-
             public UnifiedScrollPanel()
             {
-                DoubleBuffered = true;
-                SetStyle(ControlStyles.ResizeRedraw, true);
-                HorizontalScroll.Enabled = false;
-                HorizontalScroll.Visible = false;
-                Scroll += (_, e) =>
-                {
-                    if (e.ScrollOrientation == ScrollOrientation.HorizontalScroll)
-                        ResetHorizontalScroll();
-                    InvalidateScrollTrack();
-                };
+                AutoScroll = true;
             }
 
             public int VerticalScrollPosition => Math.Max(0, -AutoScrollPosition.Y);
 
-            public void BeginInteractiveResize()
-            {
-                ResetHorizontalScroll();
-                HideNativeScrollBar();
-            }
+            public void SetVerticalScroll(int position) =>
+                AutoScrollPosition = new Point(0, Math.Max(0, position));
 
-            public void EndInteractiveResize()
-            {
-                ResetHorizontalScroll();
-                HideNativeScrollBar();
-                Invalidate();
-            }
-
-            public void ResetHorizontalScroll()
-            {
-                if (_resettingHorizontalScroll || AutoScrollPosition.X == 0)
-                    return;
-
-                _resettingHorizontalScroll = true;
-                int vertical = VerticalScrollPosition;
-                try
-                {
-                    AutoScrollPosition = new Point(0, vertical);
-                }
-                finally
-                {
-                    _resettingHorizontalScroll = false;
-                }
-            }
-
-            public void SetVerticalScroll(int position)
-            {
-                int maximum = GetMaximumScroll();
-                AutoScrollPosition = new Point(0, Math.Clamp(position, 0, maximum));
-            }
-
-            public void RefreshScrollIndicator()
-            {
-                ResetHorizontalScroll();
-                HideNativeScrollBar();
-                InvalidateScrollTrack();
-            }
+            // The previous custom scrollbar fought WinForms (it hid the native bar via
+            // ShowScrollBar, which also stopped AutoScroll from moving the content and
+            // left ghost trails). Native AutoScroll handles wheel + drag + repaint
+            // reliably; these remain only so existing call sites keep compiling.
+            public void BeginInteractiveResize() { }
+            public void EndInteractiveResize() { }
+            public void ResetHorizontalScroll() { }
+            public void RefreshScrollIndicator() { }
 
             protected override void OnHandleCreated(EventArgs e)
             {
                 base.OnHandleCreated(e);
-                HideNativeScrollBar();
+                try { SetWindowTheme(Handle, "DarkMode_Explorer", null); } catch { }
             }
 
-            protected override void OnLayout(LayoutEventArgs levent)
-            {
-                base.OnLayout(levent);
-                ResetHorizontalScroll();
-                HideNativeScrollBar();
-                InvalidateScrollTrack();
-            }
-
-            protected override Point ScrollToControl(Control activeControl)
-            {
-                Point target = base.ScrollToControl(activeControl);
-                return new Point(0, target.Y);
-            }
-
-            protected override void OnPaint(PaintEventArgs e)
-            {
-                base.OnPaint(e);
-                Rectangle thumb = GetThumbRectangle();
-                if (thumb.IsEmpty)
-                    return;
-
-                using var trackBrush = new SolidBrush(Color.FromArgb(0x18, 0x1D, 0x25));
-                using var thumbBrush = new SolidBrush(Color.FromArgb(0x3B, 0x43, 0x50));
-                int trackX = ClientSize.Width - TrackWidth - TrackRightMargin;
-                e.Graphics.FillRectangle(trackBrush, trackX, 0, TrackWidth, ClientSize.Height);
-                e.Graphics.FillRectangle(thumbBrush, thumb);
-            }
-
-            protected override void OnMouseDown(MouseEventArgs e)
-            {
-                Rectangle thumb = GetThumbRectangle();
-                if (!thumb.IsEmpty && thumb.Contains(e.Location))
-                {
-                    _draggingThumb = true;
-                    _dragStartY = e.Y;
-                    _dragStartScroll = -AutoScrollPosition.Y;
-                    Capture = true;
-                    return;
-                }
-
-                base.OnMouseDown(e);
-            }
-
-            protected override void OnMouseMove(MouseEventArgs e)
-            {
-                if (!_draggingThumb)
-                {
-                    base.OnMouseMove(e);
-                    return;
-                }
-
-                Rectangle thumb = GetThumbRectangle();
-                int maximumScroll = GetMaximumScroll();
-                int travel = Math.Max(1, ClientSize.Height - thumb.Height);
-                int scroll = _dragStartScroll +
-                    (int)Math.Round((e.Y - _dragStartY) * maximumScroll / (double)travel);
-                AutoScrollPosition = new Point(0, Math.Clamp(scroll, 0, maximumScroll));
-                InvalidateScrollTrack();
-            }
-
-            protected override void OnMouseUp(MouseEventArgs e)
-            {
-                if (_draggingThumb)
-                {
-                    _draggingThumb = false;
-                    Capture = false;
-                }
-
-                base.OnMouseUp(e);
-            }
-
-            protected override void OnMouseWheel(MouseEventArgs e)
-            {
-                int maximumScroll = GetMaximumScroll();
-                int scroll = Math.Clamp(
-                    -AutoScrollPosition.Y - Math.Sign(e.Delta) * 56,
-                    0,
-                    maximumScroll);
-                AutoScrollPosition = new Point(0, scroll);
-                InvalidateScrollTrack();
-            }
-
-            private Rectangle GetThumbRectangle()
-            {
-                int contentHeight = DisplayRectangle.Height;
-                if (contentHeight <= ClientSize.Height || ClientSize.Height <= 0)
-                    return Rectangle.Empty;
-
-                int thumbHeight = Math.Max(
-                    28,
-                    (int)Math.Round(ClientSize.Height * ClientSize.Height / (double)contentHeight));
-                int maximumScroll = GetMaximumScroll();
-                int travel = Math.Max(0, ClientSize.Height - thumbHeight);
-                int thumbY = maximumScroll == 0
-                    ? 0
-                    : (int)Math.Round(-AutoScrollPosition.Y * travel / (double)maximumScroll);
-                return new Rectangle(
-                    ClientSize.Width - TrackWidth - TrackRightMargin,
-                    thumbY,
-                    TrackWidth,
-                    thumbHeight);
-            }
-
-            private int GetMaximumScroll() =>
-                Math.Max(0, DisplayRectangle.Height - ClientSize.Height);
-
-            private void HideNativeScrollBar()
-            {
-                if (IsHandleCreated)
-                {
-                    ShowScrollBar(Handle, ScrollBarHorizontal, false);
-                    ShowScrollBar(Handle, ScrollBarVertical, false);
-                }
-            }
-
-            private void InvalidateScrollTrack()
-            {
-                Invalidate(new Rectangle(
-                    Math.Max(0, ClientSize.Width - TrackWidth - TrackRightMargin),
-                    0,
-                    TrackWidth + TrackRightMargin,
-                    ClientSize.Height));
-            }
-
-            [System.Runtime.InteropServices.DllImport("user32.dll")]
-            private static extern bool ShowScrollBar(IntPtr hWnd, int wBar, bool bShow);
+            [System.Runtime.InteropServices.DllImport("uxtheme.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+            private static extern int SetWindowTheme(IntPtr hWnd, string? pszSubAppName, string? pszSubIdList);
         }
 
         private sealed class VerticalTextButton : Button
