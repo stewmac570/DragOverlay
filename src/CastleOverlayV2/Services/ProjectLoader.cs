@@ -178,6 +178,18 @@ namespace CastleOverlayV2.Services
                     run.SourcePath = localPath;
                     run.TimeShiftMs = entry.TimeShiftMs;
 
+                    // Restore the reversible manual trim (Castle runs). The CsvLoader already
+                    // captured the baseline; re-apply the saved window over it. Re-parsing uses
+                    // the same trimForDrag, so the baseline matches what was saved.
+                    if (entry.SourceType == ProjectSourceType.Castle &&
+                        (entry.TrimStartTime.HasValue || entry.TrimEndTime.HasValue))
+                    {
+                        run.CaptureTrimBaseline();
+                        run.TrimStartTime = entry.TrimStartTime;
+                        run.TrimEndTime = entry.TrimEndTime;
+                        run.ApplyManualTrim();
+                    }
+
                     // Optional tune (Castle only). Missing tune = warning, not failure.
                     if (entry.SourceType == ProjectSourceType.Castle && !string.IsNullOrWhiteSpace(entry.TunePath))
                     {

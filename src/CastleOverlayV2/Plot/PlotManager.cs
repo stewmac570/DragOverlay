@@ -85,6 +85,20 @@ namespace CastleOverlayV2.Plot
         public event Action<Dictionary<string, double?[]>> CursorMoved;
         public event Action<double>? AlignmentDragged;
 
+        // Manual trim (right-click menu). The double payload is the clicked time in plot
+        // coordinates (seconds); the presenter converts it to the armed run's own time.
+        public event Action<double>? TrimBeforeRequested;
+        public event Action<double>? TrimAfterRequested;
+        public event Action? TrimResetRequested;
+
+        // Right-click trim menu + state. Enabled only while a Castle run is armed.
+        private ContextMenuStrip? _trimMenu;
+        private ToolStripMenuItem? _trimBeforeItem;
+        private ToolStripMenuItem? _trimAfterItem;
+        private ToolStripMenuItem? _trimResetItem;
+        private bool _manualTrimAvailable;
+        private double _lastRightClickPlotX;
+
         private bool _isFourPoleMode = false;
 
         // Voltage smoothing (Settings dialog).
@@ -223,7 +237,44 @@ namespace CastleOverlayV2.Plot
             _plot.MouseMove += FormsPlot_MouseMove;
             _plot.MouseDown += FormsPlot_MouseDown;
             _plot.MouseUp += FormsPlot_MouseUp;
+
+            BuildTrimMenu();
+
             _plot.Refresh();
+        }
+
+        /// <summary>
+        /// Build the right-click manual-trim menu and suppress ScottPlot's default
+        /// right-click menu so the two don't both pop. Items are enabled only while a
+        /// Castle run is armed (see <see cref="SetManualTrimAvailable"/>).
+        /// </summary>
+        private void BuildTrimMenu()
+        {
+            // Remove ScottPlot's built-in right-click menu entries so it shows nothing;
+            // we drive our own ContextMenuStrip from FormsPlot_MouseUp instead.
+            try { _plot.Menu?.Clear(); } catch { /* menu API absent — harmless */ }
+
+            _trimMenu = new ContextMenuStrip();
+            _trimBeforeItem = new ToolStripMenuItem("Remove data before here",
+                null, (_, _) => TrimBeforeRequested?.Invoke(_lastRightClickPlotX));
+            _trimAfterItem = new ToolStripMenuItem("Remove data after here",
+                null, (_, _) => TrimAfterRequested?.Invoke(_lastRightClickPlotX));
+            _trimResetItem = new ToolStripMenuItem("Reset trim",
+                null, (_, _) => TrimResetRequested?.Invoke());
+
+            _trimMenu.Items.Add(_trimBeforeItem);
+            _trimMenu.Items.Add(_trimAfterItem);
+            _trimMenu.Items.Add(new ToolStripSeparator());
+            _trimMenu.Items.Add(_trimResetItem);
+        }
+
+        /// <summary>
+        /// Enable/disable the right-click trim actions. Called by the presenter when a run
+        /// is armed (true only for Castle runs) or disarmed.
+        /// </summary>
+        public void SetManualTrimAvailable(bool available)
+        {
+            _manualTrimAvailable = available;
         }
 
         /// <summary>
@@ -1050,9 +1101,29 @@ namespace CastleOverlayV2.Plot
 
         private void FormsPlot_MouseUp(object? sender, MouseEventArgs e)
         {
+            if (e.Button == MouseButtons.Right)
+            {
+                ShowTrimMenu(e.Location);
+                return;
+            }
+
             if (!_alignmentDragging || e.Button != MouseButtons.Left) return;
             _alignmentDragging = false;
             _plot.Capture = false;
+        }
+
+        private void ShowTrimMenu(System.Drawing.Point location)
+        {
+            if (_trimMenu == null) return;
+
+            // Record the click time (plot X, seconds) for the trim actions to consume.
+            _lastRightClickPlotX = _plot.Plot.GetCoordinates(new Pixel(location.X, location.Y)).X;
+
+            if (_trimBeforeItem != null) _trimBeforeItem.Enabled = _manualTrimAvailable;
+            if (_trimAfterItem != null) _trimAfterItem.Enabled = _manualTrimAvailable;
+            if (_trimResetItem != null) _trimResetItem.Enabled = _manualTrimAvailable;
+
+            _trimMenu.Show(_plot, location);
         }
 
         // ---------------- Helpers ----------------

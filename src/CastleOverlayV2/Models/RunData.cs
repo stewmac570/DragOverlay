@@ -1,4 +1,7 @@
 ﻿// File: src/CastleOverlayV2/Models/RunData.cs
+using System.Collections.Generic;
+using System.Linq;
+
 namespace CastleOverlayV2.Models
 {
     public class RunData
@@ -30,12 +33,54 @@ namespace CastleOverlayV2.Models
 
         public TuneSettings? Tune { get; set; }
 
+        // ── Reversible manual trim (Castle runs) ──────────────────────────────
+        // BaselineDataPoints holds the full post-load sample list (whatever auto-trim
+        // produced, or the full re-zeroed log when auto-trim was skipped). DataPoints is
+        // the displayed/working subset. Manual trim sets a time window over the baseline
+        // in the run's own (re-zeroed) time coordinate; null = no bound on that side.
+        // Reset clears the window and restores the baseline.
+        public List<DataPoint>? BaselineDataPoints { get; set; }
+        public double? TrimStartTime { get; set; }
+        public double? TrimEndTime { get; set; }
+
         public RunData()
         {
             DataPoints = new List<DataPoint>();
             Data = new Dictionary<string, List<DataPoint>>();
             IsRaceBox = false;
             TimeShiftMs = 0;
+        }
+
+        /// <summary>
+        /// Capture the current <see cref="DataPoints"/> as the immutable trim baseline,
+        /// if one hasn't been captured yet. Call once after load.
+        /// </summary>
+        public void CaptureTrimBaseline()
+        {
+            BaselineDataPoints ??= new List<DataPoint>(DataPoints);
+        }
+
+        /// <summary>
+        /// Recompute <see cref="DataPoints"/> from the baseline and the current trim window.
+        /// No-op for RaceBox runs or before a baseline exists. Inverted/empty windows that
+        /// would discard every sample are ignored (the request is treated as a no-op).
+        /// </summary>
+        public void ApplyManualTrim()
+        {
+            if (IsRaceBox || BaselineDataPoints == null)
+                return;
+
+            IEnumerable<DataPoint> kept = BaselineDataPoints;
+            if (TrimStartTime is double start)
+                kept = kept.Where(p => p.Time >= start);
+            if (TrimEndTime is double end)
+                kept = kept.Where(p => p.Time <= end);
+
+            var result = kept.ToList();
+            if (result.Count == 0)
+                return; // would empty the run — ignore the trim
+
+            DataPoints = result;
         }
     }
 }

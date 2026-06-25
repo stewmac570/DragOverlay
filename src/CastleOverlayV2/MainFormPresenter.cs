@@ -65,6 +65,9 @@ namespace CastleOverlayV2
             _drawer.ChannelFocused += OnChannelFocused;
             _plot.CursorMoved += OnCursorMoved;
             _plot.AlignmentDragged += OnAlignmentDragged;
+            _plot.TrimBeforeRequested += plotX => TrimArmedRun(plotX, before: true);
+            _plot.TrimAfterRequested += plotX => TrimArmedRun(plotX, before: false);
+            _plot.TrimResetRequested += ResetArmedRunTrim;
             _tunePanel.AttachTuneRequested += AttachTuneToRun;
             _tunePanel.RadioSettingsChanged += UpdateRadioSettings;
             _tunePanel.SelectedRunChanged += SelectTuneRun;
@@ -348,6 +351,8 @@ namespace CastleOverlayV2
             _view.SetSlotArmedUI(slot, true);
             _view.ShowAlignmentUI(run.FileName, run.TimeShiftMs);
             _plot.SetAlignmentMode(true);
+            // Manual trim is Castle-only (RaceBox uses a different data shape and isn't auto-trimmed).
+            _plot.SetManualTrimAvailable(!run.IsRaceBox);
         }
 
         public void DisarmAlignment()
@@ -358,6 +363,7 @@ namespace CastleOverlayV2
             _armedSlot = null;
             _view.HideAlignmentUI();
             _plot.SetAlignmentMode(false);
+            _plot.SetManualTrimAvailable(false);
         }
 
         public void NudgeArmedRun(int direction, bool coarse)
@@ -394,6 +400,53 @@ namespace CastleOverlayV2
                 $"Auto-align slot {_armedSlot.Value}: offset={run.TimeShiftMs:F1}ms");
             PlotAllRuns();
             UpdateAlignmentOffset();
+        }
+
+        /// <summary>
+        /// Manually trim the armed Castle run, removing samples before (or after) the
+        /// right-clicked time. Reversible — operates over the run's baseline and can be
+        /// undone with <see cref="ResetArmedRunTrim"/>.
+        /// </summary>
+        private void TrimArmedRun(double plotX, bool before)
+        {
+            if (!_armedSlot.HasValue || !_runs.TryGetValue(_armedSlot.Value, out var run))
+                return;
+            if (run.IsRaceBox)
+            {
+                _view.ShowInfo("Trim", "Manual trim is only available for Castle log runs.");
+                return;
+            }
+
+            run.CaptureTrimBaseline();
+
+            // Plot X is in display seconds; convert to the run's own (re-zeroed) time.
+            // The global Castle time shift is currently always 0, so only the per-run
+            // alignment offset needs removing.
+            double runTime = plotX - run.TimeShiftMs / 1000.0;
+
+            if (before)
+                run.TrimStartTime = runTime;
+            else
+                run.TrimEndTime = runTime;
+
+            run.ApplyManualTrim();
+            Logger.Log($"✂️ Manual trim slot {_armedSlot.Value}: {(before ? "before" : "after")} t={runTime:F3}s → {run.DataPoints.Count} pts");
+            PlotAllRuns();
+        }
+
+        /// <summary>Clear any manual trim on the armed run and restore its full baseline.</summary>
+        public void ResetArmedRunTrim()
+        {
+            if (!_armedSlot.HasValue || !_runs.TryGetValue(_armedSlot.Value, out var run))
+                return;
+            if (run.IsRaceBox || run.BaselineDataPoints == null)
+                return;
+
+            run.TrimStartTime = null;
+            run.TrimEndTime = null;
+            run.ApplyManualTrim();
+            Logger.Log($"✂️ Manual trim reset slot {_armedSlot.Value} → {run.DataPoints.Count} pts");
+            PlotAllRuns();
         }
 
         public void AttachTuneToRun(int? slot)
@@ -790,6 +843,8 @@ namespace CastleOverlayV2
                     SourcePath = sourceArchivePath,
                     IsVisible = _plot.GetRunVisibility(plotSlot),
                     TimeShiftMs = run.TimeShiftMs,
+                    TrimStartTime = run.TrimStartTime,
+                    TrimEndTime = run.TrimEndTime,
                     TunePath = tuneArchivePath,
                     RadioSettings = run.Tune?.Radio
                 });
