@@ -253,13 +253,20 @@ namespace CastleOverlayV2.Services
                 Logger.Log($"🧪 Sample Acceleration values: {string.Join(", ", accelVals)}");
             }
 
+            // Snapshot the loaded samples as the reversible manual-trim baseline. Whatever
+            // auto-trim produced (windowed) or the full re-zeroed log (auto-trim skipped)
+            // becomes the set that right-click trim and "Reset trim" operate over.
+            runData.CaptureTrimBaseline();
+
             log?.WriteLine($"=== CsvLoader.Load() EXIT — Rows: {runData.DataPoints.Count} ===");
             log?.Close();
 
             Logger.Log($"CsvLoader.Load() exit — Rows: {runData.DataPoints.Count}");
 
             return noDragPass
-                ? LoadResult<RunData>.SuccessWithWarning(runData, "DragOverlay", "No drag pass detected in this log.\nAuto-trim was skipped.")
+                ? LoadResult<RunData>.SuccessWithWarning(runData, "DragOverlay",
+                    "No drag pass detected in this log.\nAuto-trim was skipped.\n\n" +
+                    "Arm the run and right-click the plot to trim it manually.")
                 : LoadResult<RunData>.Success(runData);
         }
 

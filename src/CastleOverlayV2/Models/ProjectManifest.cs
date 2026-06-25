@@ -20,6 +20,13 @@ namespace CastleOverlayV2.Models
         public string SourcePath { get; set; } = "";
         public bool IsVisible { get; set; } = true;
         public double TimeShiftMs { get; set; }
+
+        // Reversible manual-trim window in the run's own (re-zeroed) time, seconds.
+        // Null = no bound on that side. Optional/additive — older projects omit these and
+        // load untrimmed (MissingMemberHandling.Ignore).
+        public double? TrimStartTime { get; set; }
+        public double? TrimEndTime { get; set; }
+
         public string? TunePath { get; set; }
         public RadioTuneSettings? RadioSettings { get; set; }
     }
