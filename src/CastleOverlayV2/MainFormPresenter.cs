@@ -573,8 +573,11 @@ namespace CastleOverlayV2
                     return;
                 }
 
-                var tune = castle == null ? null : AutoLoadResolver.Nearest(tuneDir, "*.dat", anchor.Value);
-                var raceBox = AutoLoadResolver.Nearest(raceBoxDir, "*.csv", anchor.Value);
+                // Only pair a tune / RaceBox log that was saved within 5 minutes of the Castle
+                // log — i.e. part of the same session, not a stray from another run.
+                var sessionWindow = TimeSpan.FromMinutes(5);
+                var tune = castle == null ? null : AutoLoadResolver.Nearest(tuneDir, "*.dat", anchor.Value, sessionWindow);
+                var raceBox = AutoLoadResolver.Nearest(raceBoxDir, "*.csv", anchor.Value, sessionWindow);
 
                 // Replace everything so the button reliably shows the latest pass.
                 for (int s = 1; s <= 6; s++)

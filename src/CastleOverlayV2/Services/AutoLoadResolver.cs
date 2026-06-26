@@ -28,13 +28,23 @@ namespace CastleOverlayV2.Services
         /// <paramref name="anchorUtc"/> (ties broken toward the newer file), or null when the
         /// folder is missing/blank or contains no match. Used to group the tune + RaceBox logs
         /// saved around the same time as the anchoring Castle log.
+        /// <para>
+        /// When <paramref name="within"/> is set, a match is only returned if it is within that
+        /// window of the anchor — so a stray file from a different session isn't pulled in.
+        /// </para>
         /// </summary>
-        public static FileInfo? Nearest(string? folder, string searchPattern, DateTime anchorUtc)
+        public static FileInfo? Nearest(string? folder, string searchPattern, DateTime anchorUtc, TimeSpan? within = null)
         {
-            return Enumerate(folder, searchPattern)
+            var best = Enumerate(folder, searchPattern)
                 .OrderBy(f => Math.Abs((f.LastWriteTimeUtc - anchorUtc).Ticks))
                 .ThenByDescending(f => f.LastWriteTimeUtc)
                 .FirstOrDefault();
+
+            if (best != null && within is TimeSpan window &&
+                (best.LastWriteTimeUtc - anchorUtc).Duration() > window)
+                return null;
+
+            return best;
         }
 
         private static IEnumerable<FileInfo> Enumerate(string? folder, string searchPattern)
