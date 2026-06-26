@@ -12,6 +12,7 @@ public sealed class FakeMainView : IMainView
     public string? TuneFileToReturn { get; set; }
     public string? ProjectOpenPathToReturn { get; set; }
     public string? ProjectSavePathToReturn { get; set; }
+    public string? FolderToReturn { get; set; }
 
     public readonly List<(string title, string message)> Errors = new();
     public readonly List<(string title, string message)> Infos = new();
@@ -33,6 +34,12 @@ public sealed class FakeMainView : IMainView
     public int SettingsShown;
     public string? PickProjectFileToOpen() => ProjectOpenPathToReturn;
     public string? PickProjectFileToSave() => ProjectSavePathToReturn;
+    public readonly List<(string title, string? initialDir)> FolderPicks = new();
+    public string? PickFolder(string title, string? initialDir)
+    {
+        FolderPicks.Add((title, initialDir));
+        return FolderToReturn;
+    }
 
     public void ShowError(string title, string message) => Errors.Add((title, message));
     public void ShowInfo(string title, string message) => Infos.Add((title, message));

@@ -15,7 +15,7 @@ namespace CastleOverlayV2.Models
 
         public bool EnableDebugLogging { get; set; } = false;
 
-        public string BuildNumber { get; set; } = "1.15";
+        public string BuildNumber { get; set; } = "1.16";
 
         // ---- Default open folders (Settings dialog) -----------------------
         public string CastleLogDirectory { get; set; } = "";
