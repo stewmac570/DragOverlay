@@ -109,6 +109,7 @@ namespace CastleOverlayV2
             _runStrip.DeleteRequested += slot => _presenter.DeleteRun(slot);
             _runStrip.ArmRequested += slot => _presenter.ToggleAlignmentArm(slot);
             _runStrip.SettingsRequested += ShowSettingsDialog;
+            _runStrip.AutoLoadRequested += () => _ = _presenter.AutoLoadAsync();
 
             _alignmentBar = new AlignmentBar();
             Controls.Add(_alignmentBar);
@@ -172,6 +173,15 @@ namespace CastleOverlayV2
 
         private static string ExistingDirOrEmpty(string? path) =>
             !string.IsNullOrWhiteSpace(path) && Directory.Exists(path) ? path : "";
+
+        public string? PickFolder(string title, string? initialDir)
+        {
+            using var dlg = new FolderBrowserDialog { Description = title, UseDescriptionForTitle = true };
+            string seed = ExistingDirOrEmpty(initialDir);
+            if (seed.Length > 0)
+                dlg.SelectedPath = seed;
+            return dlg.ShowDialog() == DialogResult.OK ? dlg.SelectedPath : null;
+        }
 
         public string? PickProjectFileToOpen()
         {
