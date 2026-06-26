@@ -13,6 +13,7 @@ namespace CastleOverlayV2
         string? PickTuneFile();
         string? PickProjectFileToOpen();
         string? PickProjectFileToSave();
+        string? PickFolder(string title, string? initialDir);
 
         // Dialogs
         void ShowError(string title, string message);

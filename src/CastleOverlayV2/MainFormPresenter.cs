@@ -105,6 +105,15 @@ namespace CastleOverlayV2
             string? path = _view.PickCastleCsvFile();
             if (path == null) return;
 
+            await LoadCastleRunFromPathAsync(slot, path);
+        }
+
+        /// <summary>
+        /// Load a Castle CSV at an explicit path into <paramref name="slot"/>, bypassing the
+        /// file dialog. Shared by the manual load button and Auto Load.
+        /// </summary>
+        private async Task LoadCastleRunFromPathAsync(int slot, string path)
+        {
             try
             {
                 var loader = new CsvLoader(_config);
@@ -161,11 +170,21 @@ namespace CastleOverlayV2
         // ============================================================
         public async Task LoadRaceBoxRunAsync(int uiSlot)
         {
-            int plotSlot = uiSlot + 3;
-            Logger.Log($"LoadRaceBoxRunAsync(UI {uiSlot} → plot slot {plotSlot}) started");
-
             string? path = _view.PickRaceBoxCsvFile();
             if (path == null) return;
+
+            await LoadRaceBoxRunFromPathAsync(uiSlot, path);
+        }
+
+        /// <summary>
+        /// Load a RaceBox CSV at an explicit path into RaceBox <paramref name="uiSlot"/> (plot
+        /// slot = uiSlot + 3), bypassing the file dialog. Shared by the manual load button and
+        /// Auto Load.
+        /// </summary>
+        private async Task LoadRaceBoxRunFromPathAsync(int uiSlot, string path)
+        {
+            int plotSlot = uiSlot + 3;
+            Logger.Log($"LoadRaceBoxRunAsync(UI {uiSlot} → plot slot {plotSlot}) started");
 
             try
             {
@@ -490,6 +509,115 @@ namespace CastleOverlayV2
                 Logger.Log($"Previewed tune without a loaded run: {Path.GetFileName(path)}");
                 _tunePanel.SetTune(null, result.Value);
             }
+        }
+
+        /// <summary>
+        /// Attach a Castle tune at an explicit path to the run in <paramref name="slot"/>,
+        /// bypassing the file dialog. Used by Auto Load. A parse failure is logged and skipped
+        /// (the run still loads without a tune) rather than aborting.
+        /// </summary>
+        private void AttachTuneFromPath(int slot, string path)
+        {
+            if (!_runs.TryGetValue(slot, out var run) || run.IsRaceBox)
+                return;
+
+            var result = new CastleTuneLoader().Load(path);
+            if (!result.Ok)
+            {
+                Logger.Log($"Auto Load: tune parse failed for {Path.GetFileName(path)}: {result.Message}");
+                return;
+            }
+
+            result.Value!.SourcePath = path;
+            var previousRadio = run.Tune?.Radio.Clone();
+            run.Tune = result.Value!;
+            if (previousRadio != null)
+                run.Tune.Radio = previousRadio;
+
+            _selectedTuneSlot = slot;
+            Logger.Log($"Auto Load: attached tune to Run {slot}: {Path.GetFileName(path)}");
+            RefreshTunePanelRuns();
+        }
+
+        /// <summary>
+        /// Load the most recent session in one click: the newest Castle log (Run 1), plus the
+        /// tune and RaceBox log whose save-times are nearest that log (attached / RaceBox 1).
+        /// Folders come from config; a blank/missing one prompts a folder picker that is then
+        /// remembered. Replaces whatever is currently loaded.
+        /// </summary>
+        public async Task AutoLoadAsync()
+        {
+            try
+            {
+                var cfg = _config.Config;
+                bool cfgChanged = false;
+
+                string? castleDir = EnsureFolder(cfg.CastleLogDirectory,
+                    "Select the Castle log folder", d => { cfg.CastleLogDirectory = d; cfgChanged = true; });
+                string? tuneDir = EnsureFolder(cfg.TuneDirectory,
+                    "Select the Castle tune folder", d => { cfg.TuneDirectory = d; cfgChanged = true; });
+                string? raceBoxDir = EnsureFolder(cfg.RaceBoxLogDirectory,
+                    "Select the RaceBox log folder", d => { cfg.RaceBoxLogDirectory = d; cfgChanged = true; });
+
+                if (cfgChanged)
+                    _config.Save();
+
+                var castle = AutoLoadResolver.Newest(castleDir, "*.csv");
+                DateTime? anchor = castle?.LastWriteTimeUtc
+                    ?? AutoLoadResolver.Newest(raceBoxDir, "*.csv")?.LastWriteTimeUtc;
+
+                if (anchor == null)
+                {
+                    _view.ShowInfo("Auto Load",
+                        "No Castle or RaceBox log files were found in the configured folders.");
+                    return;
+                }
+
+                // Only pair a tune / RaceBox log that was saved within 5 minutes of the Castle
+                // log — i.e. part of the same session, not a stray from another run.
+                var sessionWindow = TimeSpan.FromMinutes(5);
+                var tune = castle == null ? null : AutoLoadResolver.Nearest(tuneDir, "*.dat", anchor.Value, sessionWindow);
+                var raceBox = AutoLoadResolver.Nearest(raceBoxDir, "*.csv", anchor.Value, sessionWindow);
+
+                // Replace everything so the button reliably shows the latest pass.
+                for (int s = 1; s <= 6; s++)
+                    DeleteRun(s);
+
+                if (castle != null)
+                {
+                    await LoadCastleRunFromPathAsync(1, castle.FullName);
+                    if (tune != null && _runs.ContainsKey(1))
+                        AttachTuneFromPath(1, tune.FullName);
+                }
+
+                if (raceBox != null)
+                    await LoadRaceBoxRunFromPathAsync(1, raceBox.FullName);
+
+                Logger.Log($"Auto Load: castle={castle?.Name ?? "—"} tune={tune?.Name ?? "—"} " +
+                           $"racebox={raceBox?.Name ?? "—"} anchor={anchor:u}");
+            }
+            catch (Exception ex)
+            {
+                Logger.Log($"ERROR in AutoLoad: {ex.Message}");
+                _view.ShowError("Auto Load", "An error occurred during Auto Load.\n\n" + ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Return an existing folder, or prompt the user to pick one (remembered via
+        /// <paramref name="onPicked"/>). Null if there's no usable folder.
+        /// </summary>
+        private string? EnsureFolder(string? current, string title, Action<string> onPicked)
+        {
+            if (!string.IsNullOrWhiteSpace(current) && Directory.Exists(current))
+                return current;
+
+            string? picked = _view.PickFolder(title, current);
+            if (string.IsNullOrWhiteSpace(picked) || !Directory.Exists(picked))
+                return null;
+
+            onPicked(picked);
+            return picked;
         }
 
         public void UpdateRadioSettings(int slot, RadioTuneSettings settings)

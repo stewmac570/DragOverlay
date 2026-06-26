@@ -32,6 +32,7 @@ namespace CastleOverlayV2.Controls
         public event Action<int>? DeleteRequested; // slot 1..6
         public event Action<int>? ArmRequested;    // slot 1..6 (click on chip body)
         public event Action? SettingsRequested;    // gear button
+        public event Action? AutoLoadRequested;    // auto-load button
 
         // ---- State ----------------------------------------------------------
         private readonly SlotChip[] _chips = new SlotChip[7]; // index 1..6
@@ -70,6 +71,29 @@ namespace CastleOverlayV2.Controls
             gear.Click += (_, _) => SettingsRequested?.Invoke();
             _toolTip.SetToolTip(gear, "Settings");
             Controls.Add(gear);
+
+            // Auto Load button — docks Right, added after the gear so it sits to its left.
+            var autoLoad = new Button
+            {
+                Text = "⤓ Auto",
+                Dock = DockStyle.Right,
+                Width = 72,
+                FlatStyle = FlatStyle.Flat,
+                BackColor = SurfaceCard,
+                ForeColor = TextAccent,
+                Margin = new Padding(0),
+                Padding = new Padding(0),
+                Font = new Font(SystemFonts.DefaultFont.FontFamily, 9f, FontStyle.Bold),
+                TabStop = false,
+                UseVisualStyleBackColor = false
+            };
+            autoLoad.FlatAppearance.BorderColor = BorderDef;
+            autoLoad.FlatAppearance.BorderSize = 1;
+            autoLoad.FlatAppearance.MouseOverBackColor = SurfaceBar;
+            autoLoad.FlatAppearance.MouseDownBackColor = SurfaceBar;
+            autoLoad.Click += (_, _) => AutoLoadRequested?.Invoke();
+            _toolTip.SetToolTip(autoLoad, "Load the most recent log + tune + RaceBox");
+            Controls.Add(autoLoad);
 
             _flow = new FlowLayoutPanel
             {
