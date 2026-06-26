@@ -77,5 +77,6 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: DragOverlay v${{ steps.ver.outputs.version }}
           files: installer-out/DragOverlay-Setup-v${{ steps.ver.outputs.version }}.exe
+          body_path: Docs/RELEASE_NOTES.md
           generate_release_notes: true
           fail_on_unmatched_files: true
