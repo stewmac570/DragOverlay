@@ -1,4 +1,7 @@
+using CastleOverlayV2.Models;
 using CastleOverlayV2.Services;
+using System.Reflection;
+using System.Runtime.CompilerServices;
 
 namespace CastleOverlayV2.Tests
 {
@@ -15,8 +18,11 @@ namespace CastleOverlayV2.Tests
 
             try
             {
-                var configService = new ConfigService();
-                configService.Config.EnableDebugLogging = true;
+                var configService = (ConfigService)RuntimeHelpers.GetUninitializedObject(
+                    typeof(ConfigService));
+                typeof(ConfigService)
+                    .GetField("_config", BindingFlags.Instance | BindingFlags.NonPublic)!
+                    .SetValue(configService, new Config { EnableDebugLogging = true });
                 var loader = new CsvLoader(configService);
                 string missingCsv = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.csv");
 
