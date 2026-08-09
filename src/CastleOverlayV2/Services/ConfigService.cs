@@ -22,14 +22,21 @@ namespace CastleOverlayV2.Services
         /// <summary>
         /// Initializes the ConfigService with the default config file path.
         /// </summary>
-        public ConfigService()
+        public ConfigService(string? configFilePath = null)
         {
-            string appDataPath = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "DragOverlay");
+            if (configFilePath is null)
+            {
+                string appDataPath = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                    "DragOverlay");
 
-            Directory.CreateDirectory(appDataPath);
-            _configFilePath = Path.Combine(appDataPath, "config.json");
+                Directory.CreateDirectory(appDataPath);
+                _configFilePath = Path.Combine(appDataPath, "config.json");
+            }
+            else
+            {
+                _configFilePath = configFilePath;
+            }
 
             Load();
         }
@@ -71,14 +78,38 @@ namespace CastleOverlayV2.Services
             string json = JsonConvert.SerializeObject(_config, Formatting.Indented);
             string directory = Path.GetDirectoryName(_configFilePath);
 
-            if (!Directory.Exists(directory))
+            try
             {
-                Directory.CreateDirectory(directory);
+                if (!Directory.Exists(directory))
+                {
+                    Directory.CreateDirectory(directory);
+                }
+
+                string tempPath = _configFilePath + ".tmp";
+                File.WriteAllText(tempPath, json);
+
+                if (File.Exists(_configFilePath))
+                    File.Replace(tempPath, _configFilePath, destinationBackupFileName: null);
+                else
+                    File.Move(tempPath, _configFilePath);
             }
+            catch (Exception ex)
+            {
+                if (Logger.IsEnabled)
+                    Logger.Log($"Failed to save config: {ex.Message}");
 
-            File.WriteAllText(_configFilePath, json);
+                try
+                {
+                    string tempPath = _configFilePath + ".tmp";
+                    if (File.Exists(tempPath))
+                        File.Delete(tempPath);
+                }
+                catch
+                {
+                    // Best-effort cleanup.
+                }
+            }
         }
-
         /// <summary>
         /// Updates the ON/OFF state for a specific channel, then saves.
         /// </summary>
