@@ -54,7 +54,9 @@ BBRC Stock Data Logger).
   sidebar grouped by source (ESC, GPS, Mini Logger), each row showing the
   cursor value for each loaded run. Each row has a tick box (show on chart),
   a colour box (click to change the channel colour) and a B button (draw that
-  channel's lines bold). This replaces the bottom channel drawer and
+  channel's lines bold), and a ↕ button that opens line size: a Height
+  slider (how much of the chart height the channel uses) and a Position
+  slider (bottom to top), with Reset to full. Sliders, not min/max numbers. This replaces the bottom channel drawer and
   stat cards. Chart fills the rest.
 
 ## Open questions

@@ -34,6 +34,8 @@ CHANNELS = [
 ]
 VISIBLE = {"RPM", "Throttle %", "Current", "Voltage"}
 BOLD = {"RPM"}
+# Channel -> (bottom, top) share of the chart height it is squeezed into.
+SCALE = {"Current": (0.0, 0.45)}
 GPS = [("RaceBox Speed", "#FFA033"), ("RaceBox Distance", "#8CCB35"), ("RaceBox G-Force X", "#33E6E6")]
 LOGGER = [("Logger Throttle %", "#FFE066"), ("Logger RPM", "#F29E86"), ("Logger Wheel Speed", "#FF8FB1")]
 
@@ -171,8 +173,9 @@ def logs_page():
         vals = "".join(f'<div class="vc">{fmt.format(value_at(r, key, CURSOR_T))}</div>' for r in runs)
         rows += (f'<div class="row{"" if on else " off"}"><span class="cb">{"✔" if on else ""}</span>'
                  f'<span class="sw" style="background:{color}"></span><span class="bb{" on" if name in BOLD else ""}">B</span>'
+                 f'<span class="bb{" on" if name in SCALE else ""}">↕</span>'
                  f'<span class="nm">{name}</span>{vals}</div>')
-    gps_rows = "".join(f'<div class="row off dis"><span class="cb"></span><span class="sw" style="background:{c}"></span><span class="bb">B</span>'
+    gps_rows = "".join(f'<div class="row off dis"><span class="cb"></span><span class="sw" style="background:{c}"></span><span class="bb">B</span><span class="bb">↕</span>'
                        f'<span class="nm">{n.replace("RaceBox ", "")}</span><div class="vc">-</div><div class="vc">-</div><div class="vc">-</div></div>'
                        for n, c in GPS)
 
@@ -212,7 +215,8 @@ def logs_page():
             lo = 0
         span = (hi - lo) or 1
         for i, run in enumerate(runs):
-            pts = [(X(r["t"]), cy + ch - 10 - (r[key] - lo) / span * (ch - 30)) for r in run]
+            b0, b1 = SCALE.get(name, (0.0, 1.0))
+            pts = [(X(r["t"]), cy + ch - 10 - (b0 + (r[key] - lo) / span * (b1 - b0)) * (ch - 30)) for r in run]
             svg.append(polyline(pts, color, DASH[i], 3.6 if name in BOLD else 1.8))
         if name == "RPM":  # the focused channel owns the visible axis
             for k in range(6):
@@ -238,6 +242,13 @@ def logs_page():
 .sw {{ width: 14px; height: 14px; border-radius: 2px; outline: 1px solid #5C6573; outline-offset: 1px; }}
 .bb {{ width: 20px; height: 18px; border: 1px solid #3A4250; border-radius: 3px; font: 700 11px 'Segoe UI'; text-align: center; line-height: 16px; color: #5C6573; }}
 .bb.on {{ background: #2D6CB5; border-color: #2D6CB5; color: #fff; }}
+.pop {{ position: absolute; z-index: 9; background: #1B212B; border: 1px solid #3A4250; border-radius: 6px; padding: 12px 14px; width: 290px; box-shadow: 0 6px 18px rgba(0,0,0,.6); }}
+.pop h4 {{ font-size: 13px; margin-bottom: 10px; display: flex; gap: 8px; align-items: center; }}
+.pop .r {{ display: flex; align-items: center; gap: 10px; margin: 8px 0; color: #9AA3B2; }}
+.pop .r span:first-child {{ width: 62px; }}
+.trk {{ flex: 1; height: 4px; background: #333B47; border-radius: 2px; position: relative; }}
+.trk i {{ position: absolute; top: -5px; width: 14px; height: 14px; border-radius: 7px; background: #9AC7F2; }}
+.trk b {{ position: absolute; top: 0; left: 0; height: 4px; background: #2D6CB5; border-radius: 2px; }}
 .nm {{ flex: 1; white-space: nowrap; }}
 .vc {{ width: 70px; text-align: right; font-variant-numeric: tabular-nums; display: flex; justify-content: flex-end; align-items: center; gap: 4px; }}
 """
@@ -245,6 +256,13 @@ def logs_page():
 <div class="note" style="left:40px; top:600px">Each channel row: tick = on chart, colour box = pick a colour, B = bold line (RPM is bold here). Each run's value at the cursor sits on the row.</div>
 <div class="note" style="left:40px; top:720px">Groups fold away. GPS and Mini Logger channels appear here when their log is loaded.</div>
 <div class="note" style="left:1540px; top:700px">Chart gets the full width and height. Tune lives on its own tab.</div>
+<div class="pop" style="left:{side_w + 14}px; top:196px">
+ <h4><span class="sw" style="background:#2ED957"></span>Current: line size</h4>
+ <div class="r"><span>Height</span><div class="trk"><b style="width:45%"></b><i style="left:42%"></i></div><span>45%</span></div>
+ <div class="r"><span>Position</span><div class="trk"><i style="left:0%"></i></div><span>Bottom</span></div>
+ <div class="r" style="justify-content:flex-end"><span class="btn" style="width:auto">Reset to full</span></div>
+</div>
+<div class="note" style="left:{side_w + 320}px; top:196px; max-width:330px">↕ on a row opens line size. Here Current is squeezed into the bottom 45% so it stops crossing RPM.</div>
 """
     body = (top_bar("Logs") + run_strip() +
             f'<div class="main">{sidebar}{notes}</div>'
