@@ -37,6 +37,10 @@ BBRC Stock Data Logger).
    - A settings table with one column per run (Run 1, 2, 3) and one row per
      setting: throttle curve points, radio settings, boost, turbo, max power,
      drag brake, sample rate, firmware.
+   - The table includes the radio throttle speed settings for each run:
+     radio mode, and for points 1, 2 and 3 the point position (points 1 and
+     2), turn speed and return speed. These are typed in per run, not read
+     from the .dat file, and are saved with the project.
    - Rows where the runs differ are highlighted, with an option to show only
      the rows that differ.
    - Throttle curve and boost-by-throttle curve are overlaid, one line per run,

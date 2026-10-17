@@ -251,7 +251,21 @@ def logs_page():
 
 # ---------------------------------------------------------------- tune page
 
+# Radio throttle speed is typed in per run (it is not in the .dat file).
+# Values below are made up for the mockup.
+RADIO_KEYS = ["Radio mode", "Point 1 position", "Point 1 turn speed", "Point 1 return speed",
+              "Point 2 position", "Point 2 turn speed", "Point 2 return speed",
+              "Point 3 turn speed", "Point 3 return speed"]
+RADIO_VALUES = [
+    ["3 points", "30%", "60%", "100%", "70%", "80%", "100%", "100%", "100%"],
+    ["3 points", "30%", "50%", "100%", "70%", "80%", "100%", "100%", "100%"],
+    ["3 points", "25%", "50%", "100%", "70%", "90%", "100%", "100%", "100%"],
+]
+for _i, _t in enumerate(tunes):
+    _t.update(zip(RADIO_KEYS, RADIO_VALUES[_i]))
+
 TUNE_ROWS = [
+    ("Radio throttle speed (typed in, saved with the project)", RADIO_KEYS),
     ("Boost", ["Boost Mode Enable", "Boost Timing Mode", "Boost Timing Amount",
                "Boost RPM Activation Range - Start RPM", "Boost RPM Activation Range - End RPM",
                "Boost Throttle Activation Range - Start RPM", "Boost Throttle Activation Range - End RPM"]),
@@ -284,7 +298,8 @@ def tune_page():
             cells = ""
             for i, v in enumerate(vals):
                 changed = diff and v != vals[0]
-                cells += f'<td class="{"chg" if changed else ""}">{html.escape(v)}</td>'
+                cls = ("chg " if changed else "") + ("ed" if k in RADIO_KEYS else "")
+                cells += f'<td class="{cls}"><span>{html.escape(v)}</span></td>'
             body += f'<tr class="{"diff" if diff else ""}"><td class="k">{"● " if diff else ""}{html.escape(NICE.get(k, k))}</td>{cells}</tr>'
 
     # Curve charts on the right
@@ -319,16 +334,19 @@ def tune_page():
 table { width: 100%; border-collapse: collapse; background: #161B23; border: 1px solid #292F39; }
 th { text-align: left; padding: 8px 12px; background: #1B212B; font-weight: 600; border-bottom: 1px solid #292F39; }
 th:first-child { width: 300px; }
-td { padding: 0 12px; height: 27px; border-bottom: 1px solid #1B212B; font-variant-numeric: tabular-nums; }
+td { padding: 0 12px; height: 22px; font-size: 12px; border-bottom: 1px solid #1B212B; font-variant-numeric: tabular-nums; }
 td.k { color: #9AA3B2; }
 tr.g td { background: #1B212B; font-weight: 600; color: #E6E9EF; height: 30px; }
 tr.diff td { background: #221D10; }
 tr.diff td.k { color: #F5C542; }
 td.chg { color: #F5C542; font-weight: 600; }
+td.ed span { display: inline-block; min-width: 90px; padding: 0 6px; border: 1px solid #3A4250; border-radius: 3px; background: #0E1218; }
+.left { overflow: hidden; }
 """
     notes = """
 <div class="note" style="left:1380px; top:16px">Curves from every run's tune on one chart, same line styles as the logs.</div>
 <div class="note" style="left:490px; top:8px; max-width:420px">Rows that differ are highlighted. Values that changed from Run 1 are yellow.</div>
+<div class="note" style="left:1240px; top:70px; max-width:640px">Radio rows are boxes you type into, per run. Saved with the project. Values here are made up.</div>
 """
     page = f"""
 <div class="main">
