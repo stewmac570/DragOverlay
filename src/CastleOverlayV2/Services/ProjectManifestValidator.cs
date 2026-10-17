@@ -87,9 +87,10 @@ namespace CastleOverlayV2.Services
             if (run.UiSlot is < 1 or > 3)
                 errors.Add($"{prefix}.UiSlot must be between 1 and 3.");
 
-            int expectedPlotSlot = run.SourceType == ProjectSourceType.RaceBox
-                ? run.UiSlot + 3
-                : run.UiSlot;
+            // RaceBox and Mini Logger runs share the RaceBox slots (plot slot = UI slot + 3).
+            int expectedPlotSlot = run.SourceType == ProjectSourceType.Castle
+                ? run.UiSlot
+                : run.UiSlot + 3;
             if (run.PlotSlot != expectedPlotSlot)
             {
                 errors.Add(
@@ -102,7 +103,7 @@ namespace CastleOverlayV2.Services
                 errors.Add($"{prefix}.SourcePath must be a safe package-relative path using forward slashes.");
             if (!string.IsNullOrWhiteSpace(run.TunePath) && !IsSafePackagePath(run.TunePath))
                 errors.Add($"{prefix}.TunePath must be a safe package-relative path using forward slashes.");
-            if (run.SourceType == ProjectSourceType.RaceBox && !string.IsNullOrWhiteSpace(run.TunePath))
+            if (run.SourceType != ProjectSourceType.Castle && !string.IsNullOrWhiteSpace(run.TunePath))
                 errors.Add($"{prefix}.TunePath is only valid for Castle runs.");
             if (double.IsNaN(run.TimeShiftMs) || double.IsInfinity(run.TimeShiftMs))
                 errors.Add($"{prefix}.TimeShiftMs must be a finite number.");

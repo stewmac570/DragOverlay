@@ -23,6 +23,12 @@ namespace CastleOverlayV2.Models
         // ✅ Used to distinguish Castle vs RaceBox
         public bool IsRaceBox { get; set; }
 
+        // Mini Logger runs (rc-logger, 1000 Hz) also use .Data and live in the RaceBox slots.
+        public bool IsMiniLogger { get; set; }
+
+        // True for any run whose real values live in .Data rather than .DataPoints.
+        public bool HasChannelData => IsRaceBox || IsMiniLogger;
+
         public List<double>? SplitTimes { get; set; }
 
         // ✅ User-friendly split labels from CSV (e.g., "66 feet", "132 feet")
@@ -67,7 +73,7 @@ namespace CastleOverlayV2.Models
         /// </summary>
         public void ApplyManualTrim()
         {
-            if (IsRaceBox || BaselineDataPoints == null)
+            if (HasChannelData || BaselineDataPoints == null)
                 return;
 
             IEnumerable<DataPoint> kept = BaselineDataPoints;

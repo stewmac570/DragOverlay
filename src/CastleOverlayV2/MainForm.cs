@@ -153,7 +153,7 @@ namespace CastleOverlayV2
         {
             using var ofd = new OpenFileDialog
             {
-                Title = "Select RaceBox CSV file",
+                Title = "Select RaceBox or Mini Logger CSV file",
                 Filter = "CSV files (*.csv)|*.csv|All files (*.*)|*.*",
                 InitialDirectory = ExistingDirOrEmpty(_configService.Config.RaceBoxLogDirectory)
             };
@@ -222,8 +222,8 @@ namespace CastleOverlayV2
             MessageBox.Show(message, title, MessageBoxButtons.OK, MessageBoxIcon.Information);
 
         /// <summary>A run was successfully loaded into <paramref name="slot"/>. Updates the run-strip chip.</summary>
-        public void SetSlotLoadedUI(int slot, string fullPath, bool isVisible) =>
-            _runStrip.SetSlotLoaded(slot, fullPath, isVisible);
+        public void SetSlotLoadedUI(int slot, string fullPath, bool isVisible, string? sourceTag = null) =>
+            _runStrip.SetSlotLoaded(slot, fullPath, isVisible, sourceTag);
 
         /// <summary>Reset a slot's chip back to the empty (Load …) state.</summary>
         public void ResetSlotUI(int slot) => _runStrip.SetSlotEmpty(slot);

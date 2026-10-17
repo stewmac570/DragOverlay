@@ -183,6 +183,13 @@ namespace CastleOverlayV2
         /// </summary>
         private async Task LoadRaceBoxRunFromPathAsync(int uiSlot, string path)
         {
+            // The RaceBox slots also take Mini Logger runs; route by the file's header.
+            if (MiniLoggerLoader.IsMiniLoggerCsv(path))
+            {
+                await LoadMiniLoggerRunFromPathAsync(uiSlot, path);
+                return;
+            }
+
             int plotSlot = uiSlot + 3;
             Logger.Log($"LoadRaceBoxRunAsync(UI {uiSlot} → plot slot {plotSlot}) started");
 
@@ -267,6 +274,80 @@ namespace CastleOverlayV2
 
             _view.UpdateRunTypeLockState();
             RefreshTunePanelRuns();
+        }
+
+        /// <summary>
+        /// Load a Mini Logger CSV into RaceBox <paramref name="uiSlot"/> (plot slot = uiSlot + 3)
+        /// and shift it so its throttle step lines up with the first loaded Castle run's.
+        /// </summary>
+        private async Task LoadMiniLoggerRunFromPathAsync(int uiSlot, string path)
+        {
+            int plotSlot = uiSlot + 3;
+            Logger.Log($"LoadMiniLoggerRunAsync(UI {uiSlot} → plot slot {plotSlot}) started");
+
+            try
+            {
+                var result = await Task.Run(() => MiniLoggerLoader.Load(path));
+                if (!result.Ok)
+                {
+                    Logger.Log($"[Presenter] Mini Logger load failed for slot {uiSlot}: {result.Message}");
+                    ShowResultMessage(result);
+                    return;
+                }
+
+                var run = result.Value!;
+                double? offsetMs = AlignmentHelper.GetMiniLoggerOffsetMs(run, ReferenceCastleRun());
+                run.TimeShiftMs = offsetMs ?? 0;
+                Logger.Log($"Mini Logger slot {uiSlot}: throttle-align offset={run.TimeShiftMs:F1}ms");
+
+                _runs[plotSlot] = run;
+                _plot.SetRun(plotSlot, run);
+                _plot.SetRunVisibility(plotSlot, true);
+
+                EnsureMiniLoggerChannelsInToggleBar();
+                PlotAllRuns();
+
+                _view.SetSlotLoadedUI(plotSlot, path, true, MiniLoggerTag);
+            }
+            catch (Exception ex)
+            {
+                Logger.Log($"ERROR in Mini Logger {uiSlot}: {ex.Message}");
+                _view.ShowError("Error", "An error occurred while loading the file.\n\n" + ex.Message);
+            }
+
+            _view.UpdateRunTypeLockState();
+            RefreshTunePanelRuns();
+        }
+
+        private const string MiniLoggerTag = "LOG";
+
+        /// <summary>The Castle run Mini Logger runs line up with: the lowest loaded Castle slot.</summary>
+        private RunData? ReferenceCastleRun() =>
+            _runs.Where(kv => kv.Key <= 3 && !kv.Value.HasChannelData)
+                 .OrderBy(kv => kv.Key)
+                 .Select(kv => kv.Value)
+                 .FirstOrDefault();
+
+        private void EnsureMiniLoggerChannelsInToggleBar()
+        {
+            var states = _drawer.GetChannelStates();
+            var saved = _config.Config.ChannelVisibility;
+            bool added = false;
+            foreach (var ch in MiniLoggerLoader.Channels)
+            {
+                if (states.ContainsKey(ch)) continue;
+                // rev/s is the same trace as Wheel Speed (mph), so it starts hidden.
+                bool visible = saved != null && saved.TryGetValue(ch, out var v)
+                    ? v
+                    : ch != MiniLoggerLoader.WheelRevsChannel;
+                _drawer.AddChannel(ch, visible);
+                added = true;
+            }
+            if (added)
+            {
+                _drawer.PerformLayout();
+                _drawer.Refresh();
+            }
         }
 
         private void EnsureRaceBoxChannelsInToggleBar()
@@ -371,7 +452,7 @@ namespace CastleOverlayV2
             _view.ShowAlignmentUI(run.FileName, run.TimeShiftMs);
             _plot.SetAlignmentMode(true);
             // Manual trim is Castle-only (RaceBox uses a different data shape and isn't auto-trimmed).
-            _plot.SetManualTrimAvailable(!run.IsRaceBox);
+            _plot.SetManualTrimAvailable(!run.HasChannelData);
         }
 
         public void DisarmAlignment()
@@ -405,7 +486,9 @@ namespace CastleOverlayV2
             if (!_armedSlot.HasValue || !_runs.TryGetValue(_armedSlot.Value, out var run))
                 return;
 
-            double? offsetMs = AlignmentHelper.GetAutoOffsetMs(run);
+            double? offsetMs = run.IsMiniLogger
+                ? AlignmentHelper.GetMiniLoggerOffsetMs(run, ReferenceCastleRun())
+                : AlignmentHelper.GetAutoOffsetMs(run);
             if (!offsetMs.HasValue)
             {
                 _view.ShowInfo(
@@ -430,7 +513,7 @@ namespace CastleOverlayV2
         {
             if (!_armedSlot.HasValue || !_runs.TryGetValue(_armedSlot.Value, out var run))
                 return;
-            if (run.IsRaceBox)
+            if (run.HasChannelData)
             {
                 _view.ShowInfo("Trim", "Manual trim is only available for Castle log runs.");
                 return;
@@ -458,7 +541,7 @@ namespace CastleOverlayV2
         {
             if (!_armedSlot.HasValue || !_runs.TryGetValue(_armedSlot.Value, out var run))
                 return;
-            if (run.IsRaceBox || run.BaselineDataPoints == null)
+            if (run.HasChannelData || run.BaselineDataPoints == null)
                 return;
 
             run.TrimStartTime = null;
@@ -472,7 +555,7 @@ namespace CastleOverlayV2
         {
             RunData? run = null;
             if (slot.HasValue &&
-                (!_runs.TryGetValue(slot.Value, out run) || run.IsRaceBox))
+                (!_runs.TryGetValue(slot.Value, out run) || run.HasChannelData))
             {
                 _view.ShowInfo("Attach Tune", "Tune files can only be attached to Castle log runs.");
                 RefreshTunePanelRuns();
@@ -518,7 +601,7 @@ namespace CastleOverlayV2
         /// </summary>
         private void AttachTuneFromPath(int slot, string path)
         {
-            if (!_runs.TryGetValue(slot, out var run) || run.IsRaceBox)
+            if (!_runs.TryGetValue(slot, out var run) || run.HasChannelData)
                 return;
 
             var result = new CastleTuneLoader().Load(path);
@@ -622,7 +705,7 @@ namespace CastleOverlayV2
 
         public void UpdateRadioSettings(int slot, RadioTuneSettings settings)
         {
-            if (!_runs.TryGetValue(slot, out var run) || run.IsRaceBox)
+            if (!_runs.TryGetValue(slot, out var run) || run.HasChannelData)
                 return;
 
             run.Tune ??= new TuneSettings();
@@ -799,7 +882,7 @@ namespace CastleOverlayV2
             double max = double.NegativeInfinity;
             foreach (var (_, run) in _runs)
             {
-                if (run.IsRaceBox || run.DataPoints == null) continue;
+                if (run.HasChannelData || run.DataPoints == null) continue;
                 foreach (var dp in run.DataPoints)
                 {
                     if (dp.Voltage <= 0) continue;
@@ -825,6 +908,8 @@ namespace CastleOverlayV2
             "RPM", "Throttle %", "Voltage", "Current", "Ripple", "PowerOut",
             "ESC Temp", "MotorTemp", "MotorTiming", "Acceleration",
             "RaceBox Speed", "RaceBox Distance", "RaceBox G-Force X",
+            MiniLoggerLoader.ThrottleChannel, MiniLoggerLoader.RpmChannel,
+            MiniLoggerLoader.WheelSpeedChannel, MiniLoggerLoader.WheelRevsChannel,
         };
 
         private void PushAllStatsToDrawer()
@@ -841,7 +926,9 @@ namespace CastleOverlayV2
             var list = new List<ChannelRunStats>();
             foreach (var (slot, run) in _runs)
             {
-                string label = slot <= 3 ? $"Run {slot}" : $"RB {slot - 3}";
+                string label = slot <= 3 ? $"Run {slot}"
+                    : run.IsMiniLogger ? $"Log {slot - 3}"
+                    : $"RB {slot - 3}";
                 if (!TryExtractChannelValues(run, channelLabel, out var values) || values.Count == 0)
                     continue;
 
@@ -863,7 +950,7 @@ namespace CastleOverlayV2
         private bool TryExtractChannelValues(RunData run, string channelLabel, out List<double> values)
         {
             values = new List<double>();
-            if (run.IsRaceBox)
+            if (run.HasChannelData)
             {
                 if (run.Data.TryGetValue(channelLabel, out var pts))
                 {
@@ -945,12 +1032,20 @@ namespace CastleOverlayV2
             {
                 bool isRaceBox = plotSlot >= 4;
                 int uiSlot = isRaceBox ? plotSlot - 3 : plotSlot;
-                string sourceLabel = isRaceBox ? "racebox" : "castle";
+                var sourceType = run.IsMiniLogger ? ProjectSourceType.MiniLogger
+                    : isRaceBox ? ProjectSourceType.RaceBox
+                    : ProjectSourceType.Castle;
+                string sourceLabel = sourceType switch
+                {
+                    ProjectSourceType.MiniLogger => "minilogger",
+                    ProjectSourceType.RaceBox => "racebox",
+                    _ => "castle"
+                };
 
                 if (string.IsNullOrWhiteSpace(run.SourcePath))
                 {
                     return LoadResult<ProjectSnapshot>.Error("Save Project",
-                        $"Run {uiSlot} ({(isRaceBox ? "RaceBox" : "Castle")}) has no on-disk source path. " +
+                        $"Run {uiSlot} ({sourceType}) has no on-disk source path. " +
                         "Re-load the file before saving the project.");
                 }
 
@@ -964,7 +1059,7 @@ namespace CastleOverlayV2
 
                 manifest.Runs.Add(new ProjectRunEntry
                 {
-                    SourceType = isRaceBox ? ProjectSourceType.RaceBox : ProjectSourceType.Castle,
+                    SourceType = sourceType,
                     UiSlot = uiSlot,
                     PlotSlot = plotSlot,
                     DisplayFileName = run.FileName ?? string.Empty,
@@ -1057,10 +1152,13 @@ namespace CastleOverlayV2
                     .FirstOrDefault(r => r.PlotSlot == plotSlot)?.IsVisible ?? true;
                 _plot.SetRunVisibility(plotSlot, isVisible);
 
-                _view.SetSlotLoadedUI(plotSlot, run.SourcePath ?? run.FileName ?? "", isVisible);
+                _view.SetSlotLoadedUI(plotSlot, run.SourcePath ?? run.FileName ?? "", isVisible,
+                    run.IsMiniLogger ? MiniLoggerTag : null);
             }
 
             EnsureRaceBoxChannelsInToggleBar();
+            if (restored.RunsBySlot.Values.Any(r => r.IsMiniLogger))
+                EnsureMiniLoggerChannelsInToggleBar();
             PlotAllRuns();
             _plot.SetupAllAxes();
             _plot.RefreshPlot();

@@ -40,6 +40,7 @@ namespace CastleOverlayV2.Models
     public enum ProjectSourceType
     {
         Castle,
-        RaceBox
+        RaceBox,
+        MiniLogger
     }
 }
