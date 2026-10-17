@@ -41,9 +41,8 @@ BBRC Stock Data Logger).
      the rows that differ.
    - Throttle curve and boost-by-throttle curve are overlaid, one line per run,
      in the same run colours and line styles as the Logs page.
-4. **Tunes are also viewable from the Logs page.** Stewart needs to see the
-   tune while reading a log, for example the throttle curve against the
-   throttle trace.
+4. **No tune content on the Logs page.** Tune curves are not shown under the
+   chart. Tunes are viewed on the Tune tab only.
 
 ## Proposed, not yet agreed
 
@@ -51,12 +50,9 @@ BBRC Stock Data Logger).
   sidebar grouped by source (ESC, GPS, Mini Logger), each row showing the
   cursor value for each loaded run. This replaces the bottom channel drawer and
   stat cards. Chart fills the rest.
-- **How the tune shows on the Logs page.** Options: a collapsible panel that
-  shows the overlaid curves only, or the Tune page split beside the chart.
 
 ## Open questions
 
-- How the tune shows on the Logs page (see above).
 - Whether the peak-value summary row is wanted.
 - Whether the chart should support stacked panes (one pane per channel group).
 

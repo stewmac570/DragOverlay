@@ -186,8 +186,7 @@ def logs_page():
     # Chart geometry
     cx, cy = side_w + 60, 84 + 20
     cw = 1920 - cx - 30
-    tune_h = 230
-    ch = 1080 - cy - 40 - tune_h - 20
+    ch = 1080 - cy - 50
 
     def X(t):
         return cx + (t - T_MIN) / (T_MAX - T_MIN) * cw
@@ -222,28 +221,6 @@ def logs_page():
     xc = X(CURSOR_T)
     svg.append(f'<line x1="{xc}" y1="{cy}" x2="{xc}" y2="{cy + ch}" stroke="#F5C542" stroke-width="1.5"/>')
 
-    # Fold-away tune curves panel
-    ty = cy + ch + 50
-    svg.append(f'<rect x="{side_w + 10}" y="{ty}" width="{1920 - side_w - 20}" height="{tune_h}" fill="#161B23" stroke="#292F39" rx="4"/>')
-    svg.append(f'<text x="{side_w + 24}" y="{ty + 24}" fill="#E6E9EF" font-size="14" font-weight="600">▾ Tune curves</text>')
-    svg.append(f'<text x="{side_w + 140}" y="{ty + 24}" fill="#9AA3B2" font-size="12">fold away to give the chart the full height · full detail on the Tune tab</text>')
-    pw = (1920 - side_w - 80) / 2
-    for j, (title, key, col) in enumerate([("Throttle curve", "Forward Curve 65535", "#F0F0F0"),
-                                            ("Boost by throttle", "Boost By Throttle Table 65535", "#FFA033")]):
-        px = side_w + 30 + j * (pw + 20)
-        py, ph = ty + 40, tune_h - 64
-        svg.append(f'<rect x="{px}" y="{py}" width="{pw}" height="{ph}" fill="#0E1218" stroke="#292F39"/>')
-        svg.append(f'<text x="{px + 8}" y="{py + 16}" fill="#9AA3B2" font-size="12">{title}</text>')
-        svg.append(f'<text x="{px + pw / 2}" y="{py + ph + 16}" fill="#5C6573" font-size="11" text-anchor="middle">throttle %</text>')
-        for i, tn in enumerate(tunes):
-            pts = [(px + x / 100 * pw, py + ph - 6 - y / 100 * (ph - 26)) for x, y in curve(tn[key])]
-            svg.append(polyline(pts, col, DASH[i], 1.6))
-        if len({tn[key] for tn in tunes}) == 1:
-            svg.append(f'<text x="{px + pw - 10}" y="{py + 16}" fill="#9AA3B2" font-size="12" text-anchor="end">same in all 3 tunes</text>')
-        thr_now = value_at(runs[0], "thr", CURSOR_T)
-        mx = px + thr_now / 100 * pw
-        svg.append(f'<line x1="{mx}" y1="{py}" x2="{mx}" y2="{py + ph}" stroke="#F5C542" stroke-width="1.5"/>')
-
     css = CSS + f"""
 .main {{ flex: 1; position: relative; }}
 .side {{ position: absolute; left: 0; top: 0; bottom: 0; width: {side_w}px; background: #161B23; border-right: 1px solid #292F39; overflow: hidden; }}
@@ -263,8 +240,7 @@ def logs_page():
     notes = f"""
 <div class="note" style="left:40px; top:600px">Channels move to a left list. Tick = on chart. Each run's value at the cursor sits on the row.</div>
 <div class="note" style="left:40px; top:690px">Groups fold away. GPS and Mini Logger channels appear here when their log is loaded.</div>
-<div class="note" style="left:1540px; top:560px">Chart gets the full width. No Tune panel on the right.</div>
-<div class="note" style="left:1100px; top:{ty - 84 + 4}px; max-width:520px">Tune curves, all runs overlaid. Yellow line = throttle at the cursor.</div>
+<div class="note" style="left:1540px; top:700px">Chart gets the full width and height. Tune lives on its own tab.</div>
 """
     body = (top_bar("Logs") + run_strip() +
             f'<div class="main">{sidebar}{notes}</div>'
