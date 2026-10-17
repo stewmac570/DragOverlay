@@ -42,6 +42,7 @@ namespace CastleOverlayV2.Controls
         private readonly Dictionary<string, ChannelCard> _cards = new();
         private readonly Dictionary<string, ChannelDot> _dots = new();
         private bool _racBoxSeparatorAdded; // visual gap between Castle and RaceBox channels
+        private bool _loggerSeparatorAdded; // visual gap before the Mini Logger channels
 
         // ---- Layout containers ---------------------------------------------
         private readonly Panel _stripRow;       // collapsed view: chevron + dots
@@ -154,6 +155,12 @@ namespace CastleOverlayV2.Controls
             {
                 AddSourceGroupSeparator();
                 _racBoxSeparatorAdded = true;
+            }
+            bool isLogger = channelName.StartsWith("Logger", StringComparison.Ordinal);
+            if (isLogger && !_loggerSeparatorAdded)
+            {
+                AddSourceGroupSeparator();
+                _loggerSeparatorAdded = true;
             }
 
             var card = new ChannelCard(channelName, initialVisible);
@@ -361,6 +368,10 @@ namespace CastleOverlayV2.Controls
                 "RaceBox Speed" => v.ToString("F1"),
                 "RaceBox Distance" => v.ToString("F0"),
                 "RaceBox G-Force X" => v.ToString("F2"),
+                "Logger Throttle %" => v.ToString("F0"),
+                "Logger RPM" => v.ToString("N0"),
+                "Logger Wheel Speed" => v.ToString("F1"),
+                "Logger Wheel rev/s" => v.ToString("F1"),
                 _ => v.ToString("F2"),
             };
         }
@@ -680,6 +691,9 @@ namespace CastleOverlayV2.Controls
                 "RaceBox Speed" => "GPS Speed",
                 "RaceBox Distance" => "GPS Distance",
                 "RaceBox G-Force X" => "GPS G-Force",
+                "Logger Throttle %" => "Logger Throttle",
+                "Logger Wheel Speed" => "Wheel Speed",
+                "Logger Wheel rev/s" => "Wheel rev/s",
                 _ => channelName
             };
 

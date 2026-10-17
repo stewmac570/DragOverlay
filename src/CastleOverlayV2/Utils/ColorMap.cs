@@ -31,6 +31,13 @@ namespace CastleOverlayV2.Utils
             { "RaceBox Speed", new ScottPlot.Color(0xFF, 0xA0, 0x33) },     // #FFA033  brighter orange
             { "RaceBox Distance", new ScottPlot.Color(0x8C, 0xCB, 0x35) },  // #8CCB35  brighter green
             { "RaceBox G-Force X", new ScottPlot.Color(0x33, 0xE6, 0xE6) }, // #33E6E6  brighter turquoise
+
+            // Mini Logger channels — throttle and RPM share the Castle axes, so they need
+            // hues that read apart from the Castle white throttle and rust RPM.
+            { "Logger Throttle %", new ScottPlot.Color(0xFF, 0xE0, 0x66) },  // #FFE066  yellow
+            { "Logger RPM", new ScottPlot.Color(0xF2, 0x9E, 0x86) },         // #F29E86  light rust
+            { "Logger Wheel Speed", new ScottPlot.Color(0xFF, 0x8F, 0xB1) }, // #FF8FB1  pink
+            { "Logger Wheel rev/s", new ScottPlot.Color(0xFF, 0x8F, 0xB1) }, // same quantity as Wheel Speed
         };
 
         public static ScottPlot.Color GetColor(string channelName)

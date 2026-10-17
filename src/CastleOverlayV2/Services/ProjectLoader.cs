@@ -139,6 +139,17 @@ namespace CastleOverlayV2.Services
                         }
                         run = loadResult.Value!;
                     }
+                    else if (entry.SourceType == ProjectSourceType.MiniLogger)
+                    {
+                        var loadResult = MiniLoggerLoader.Load(localPath);
+                        if (!loadResult.Ok)
+                        {
+                            TryDeleteTempDir(tempDir);
+                            return LoadResult<RestoredProject>.Error("Open Project",
+                                $"Failed to parse Mini Logger run for slot {entry.UiSlot}:\n{loadResult.Message}");
+                        }
+                        run = loadResult.Value!;
+                    }
                     else
                     {
                         var headerResult = RaceBoxLoader.LoadHeaderOnly(localPath);

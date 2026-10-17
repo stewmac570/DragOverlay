@@ -80,6 +80,7 @@ namespace CastleOverlayV2.Plot
         private IYAxis raceBoxSpeedAxis;
         private IYAxis raceBoxGxAxis;
         private IYAxis raceBoxDistanceAxis;
+        private IYAxis wheelRevsAxis;
 
         // Events
         public event Action<Dictionary<string, double?[]>> CursorMoved;
@@ -500,7 +501,7 @@ namespace CastleOverlayV2.Plot
                 int slot = kvp.Key;
                 RunData run = kvp.Value;
                 if (run == null) continue;
-                if (run.IsRaceBox) continue;
+                if (run.HasChannelData) continue;
                 if (run.DataPoints == null || run.DataPoints.Count == 0) continue;
 
                 double shiftSec = (run.TimeShiftMs / 1000.0) + _castleTimeShift;
@@ -549,14 +550,17 @@ namespace CastleOverlayV2.Plot
                 }
             }
 
-            // Plot RaceBox
+            // Plot RaceBox + Mini Logger (both share the RaceBox slots 4..6)
             foreach (var kvp in runsBySlot)
             {
                 int slot = kvp.Key;
                 RunData run = kvp.Value;
-                if (run == null || !run.IsRaceBox) continue;
+                if (run == null || !run.HasChannelData) continue;
 
-                PlotRaceBoxRun(slot, run);
+                if (run.IsMiniLogger)
+                    PlotMiniLoggerRun(slot, run);
+                else
+                    PlotRaceBoxRun(slot, run);
 
                 if (run.SplitTimes?.Count > 0)
                     AddRaceBoxSplitLines(slot, run.SplitTimes, run.SplitLabels, includeZero: true);
@@ -710,6 +714,14 @@ namespace CastleOverlayV2.Plot
                 HideAxis(raceBoxDistanceAxis);
             }
 
+            // Mini Logger wheel rev/s (its other channels share the Castle/RaceBox axes)
+            if (wheelRevsAxis is null)
+            {
+                wheelRevsAxis = _plot.Plot.Axes.AddRightAxis();
+                wheelRevsAxis.Label.Text = "Wheel (rev/s)";
+                HideAxis(wheelRevsAxis);
+            }
+
             // Show the focused channel's axis with its hue; keep the rest hidden.
             ApplyFocusToAxes();
 
@@ -727,7 +739,7 @@ namespace CastleOverlayV2.Plot
             foreach (var axis in new IAxis?[] {
                 throttleAxis, rpmAxis, voltageAxis, currentAxis, rippleAxis, powerAxis,
                 escTempAxis, motorTempAxis, motorTimingAxis, accelAxis,
-                raceBoxSpeedAxis, raceBoxGxAxis, raceBoxDistanceAxis })
+                raceBoxSpeedAxis, raceBoxGxAxis, raceBoxDistanceAxis, wheelRevsAxis })
             {
                 if (axis is not null) HideAxis(axis);
             }
@@ -761,6 +773,10 @@ namespace CastleOverlayV2.Plot
             "RaceBox Speed" => raceBoxSpeedAxis,
             "RaceBox Distance" => raceBoxDistanceAxis,
             "RaceBox G-Force X" => raceBoxGxAxis,
+            MiniLoggerLoader.ThrottleChannel => throttleAxis,
+            MiniLoggerLoader.RpmChannel => rpmAxis,
+            MiniLoggerLoader.WheelSpeedChannel => raceBoxSpeedAxis,
+            MiniLoggerLoader.WheelRevsChannel => wheelRevsAxis,
             _ => null
         };
 
@@ -774,7 +790,7 @@ namespace CastleOverlayV2.Plot
             {
                 throttleAxis, rpmAxis, voltageAxis, currentAxis, rippleAxis, powerAxis,
                 escTempAxis, motorTempAxis, motorTimingAxis, accelAxis,
-                raceBoxSpeedAxis, raceBoxGxAxis, raceBoxDistanceAxis, _splitLabelAxis
+                raceBoxSpeedAxis, raceBoxGxAxis, raceBoxDistanceAxis, wheelRevsAxis, _splitLabelAxis
             }.Where(a => a is not null)!);
 
             var toRemove = new List<IAxisRule>();
@@ -790,6 +806,9 @@ namespace CastleOverlayV2.Plot
                 _plot.Plot.Axes.Rules.Add(new LockedVertical(raceBoxGxAxis, -5, 7));
             if (raceBoxDistanceAxis is not null)
                 _plot.Plot.Axes.Rules.Add(new LockedVertical(raceBoxDistanceAxis, 0, 1000));
+            // Same top as the speed axis in mph, so rev/s and mph traces sit on the same line.
+            if (wheelRevsAxis is not null)
+                _plot.Plot.Axes.Rules.Add(new LockedVertical(wheelRevsAxis, 0, 110 / MiniLoggerLoader.MphPerRevPerSec));
             if (_splitLabelAxis is not null)
                 _plot.Plot.Axes.Rules.Add(new LockedVertical(_splitLabelAxis, 0.0, 1.0));
 
@@ -910,6 +929,40 @@ namespace CastleOverlayV2.Plot
                     "RaceBox Distance" => raceBoxDistanceAxis,
                     _ => raceBoxGxAxis,
                 };
+
+                bool chOn = _channelVisibility.TryGetValue(ch, out var vis) ? vis : true;
+                bool runOn = _runVisibility.TryGetValue(slot, out var rvis) ? rvis : true;
+                s.IsVisible = chOn && runOn;
+
+                _scatters.Add(s);
+                _rawYMap[s] = ys;
+                _scatterSlotMap[s] = slot;
+            }
+        }
+
+        // ---------------- Mini Logger ----------------
+
+        private void PlotMiniLoggerRun(int slot, RunData run)
+        {
+            if (run == null || !run.IsMiniLogger) return;
+
+            double shiftSec = run.TimeShiftMs / 1000.0;
+            foreach (var ch in MiniLoggerLoader.Channels)
+            {
+                if (!run.Data.TryGetValue(ch, out var pts) || pts.Count < 2)
+                    continue;
+
+                double[] xs = pts.Select(p => p.Time + shiftSec).ToArray();
+                double[] ys = pts.Select(p => p.Y).ToArray();
+
+                var s = _plot.Plot.Add.Scatter(xs, ys);
+                s.LegendText = ch;
+                s.Color = GetTraceColor(ch);
+                s.LinePattern = LineStyleHelper.GetLinePattern(slot - 1);
+                s.LineWidth = WidthFor(ch);
+                s.MarkerSize = 0; // line-only — markers are noise (spec §6.3)
+                s.Axes.XAxis = _plot.Plot.Axes.Bottom;
+                s.Axes.YAxis = (IYAxis)AxisFor(ch)!;
 
                 bool chOn = _channelVisibility.TryGetValue(ch, out var vis) ? vis : true;
                 bool runOn = _runVisibility.TryGetValue(slot, out var rvis) ? rvis : true;
@@ -1159,7 +1212,7 @@ namespace CastleOverlayV2.Plot
                 _plot.Plot.Axes.Left,
                 throttleAxis, rpmAxis, voltageAxis, currentAxis, rippleAxis, powerAxis,
                 escTempAxis, motorTempAxis, motorTimingAxis, accelAxis,
-                raceBoxSpeedAxis, raceBoxGxAxis, raceBoxDistanceAxis
+                raceBoxSpeedAxis, raceBoxGxAxis, raceBoxDistanceAxis, wheelRevsAxis
             }.Where(a => a != null).ToList();
 
             foreach (var axis in allAxes)
@@ -1239,7 +1292,7 @@ namespace CastleOverlayV2.Plot
                 var run = kvp.Value;
                 if (run == null) continue;
 
-                double shiftSec = (run.TimeShiftMs / 1000.0) + (run.IsRaceBox ? 0.0 : _castleTimeShift);
+                double shiftSec = (run.TimeShiftMs / 1000.0) + (run.HasChannelData ? 0.0 : _castleTimeShift);
 
                 if (!run.IsRaceBox)
                 {

@@ -20,7 +20,7 @@ namespace CastleOverlayV2
         void ShowInfo(string title, string message);
 
         // Slot UI
-        void SetSlotLoadedUI(int slot, string fullPath, bool isVisible);
+        void SetSlotLoadedUI(int slot, string fullPath, bool isVisible, string? sourceTag = null);
         void ResetSlotUI(int slot);
         void SetSlotToggleText(int slot, bool isVisible);
         void SetSlotArmedUI(int slot, bool armed);

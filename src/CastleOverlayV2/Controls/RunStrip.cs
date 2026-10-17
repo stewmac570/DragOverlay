@@ -113,7 +113,7 @@ namespace CastleOverlayV2.Controls
                 bool isCastle = capturedSlot <= 3;
                 string emptyLabel = isCastle
                     ? $"Load Castle {capturedSlot}"
-                    : $"Load RaceBox {capturedSlot - 3}";
+                    : $"Load RaceBox / Logger {capturedSlot - 3}";
                 string sourceTag = isCastle ? "ESC" : "GPS";
 
                 var chip = new SlotChip(capturedSlot, emptyLabel, sourceTag, _toolTip);
@@ -128,8 +128,8 @@ namespace CastleOverlayV2.Controls
 
         // ---- Public API -----------------------------------------------------
         public void SetSlotEmpty(int slot) => _chips[slot].SetEmpty();
-        public void SetSlotLoaded(int slot, string fullPath, bool isVisible) =>
-            _chips[slot].SetLoaded(fullPath, isVisible);
+        public void SetSlotLoaded(int slot, string fullPath, bool isVisible, string? sourceTag = null) =>
+            _chips[slot].SetLoaded(fullPath, isVisible, sourceTag);
         public void SetSlotToggleState(int slot, bool isVisible) =>
             _chips[slot].SetToggleState(isVisible);
         public void SetSlotVisible(int slot, bool visible) => _chips[slot].Visible = visible;
@@ -155,6 +155,7 @@ namespace CastleOverlayV2.Controls
             private readonly Button _deleteBtn;
             private readonly ToolTip _toolTip;
             private readonly string _emptyLabel;
+            private readonly string _defaultTag;
             private bool _isVisible = true;
             private bool _isLoaded;
             private bool _isArmed;
@@ -164,6 +165,7 @@ namespace CastleOverlayV2.Controls
                 Slot = slot;
                 _toolTip = toolTip;
                 _emptyLabel = emptyLabel;
+                _defaultTag = sourceTag;
 
                 Width = 188;
                 Height = 32;
@@ -292,14 +294,16 @@ namespace CastleOverlayV2.Controls
                 _isArmed = false;
                 _toolTip.SetToolTip(_nameLbl, string.Empty);
                 _nameLbl.Text = string.Empty;
+                _tagLbl.Text = _defaultTag;
                 ApplyLoadedState();
                 UpdateArmedAppearance();
             }
 
-            public void SetLoaded(string fullPath, bool isVisible)
+            public void SetLoaded(string fullPath, bool isVisible, string? sourceTag = null)
             {
                 _isLoaded = true;
                 _isVisible = isVisible;
+                _tagLbl.Text = sourceTag ?? _defaultTag;
                 _nameLbl.Text = Truncate(Path.GetFileName(fullPath) ?? string.Empty, 22);
                 _toolTip.SetToolTip(_nameLbl, fullPath);
                 UpdateEyeAppearance();
