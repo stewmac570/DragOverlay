@@ -37,26 +37,30 @@ BBRC Stock Data Logger).
    - A settings table with one column per run (Run 1, 2, 3) and one row per
      setting: throttle curve points, radio settings, boost, turbo, max power,
      drag brake, sample rate, firmware.
+   - The table includes the radio throttle speed settings for each run:
+     radio mode, and for points 1, 2 and 3 the point position (points 1 and
+     2) and speed. Return speed is not shown. These are typed in per run, not read
+     from the .dat file, and are saved with the project.
    - Rows where the runs differ are highlighted, with an option to show only
      the rows that differ.
    - Throttle curve and boost-by-throttle curve are overlaid, one line per run,
      in the same run colours and line styles as the Logs page.
-4. **Tunes are also viewable from the Logs page.** Stewart needs to see the
-   tune while reading a log, for example the throttle curve against the
-   throttle trace.
+4. **No tune content on the Logs page.** Tune curves are not shown under the
+   chart. Tunes are viewed on the Tune tab only.
 
 ## Proposed, not yet agreed
 
 - **Logs page layout (FuelTech model).** Thin run strip on top. Left channel
   sidebar grouped by source (ESC, GPS, Mini Logger), each row showing the
-  cursor value for each loaded run. This replaces the bottom channel drawer and
+  cursor value for each loaded run. Each row has a tick box (show on chart),
+  a colour box (click to change the channel colour) and a B button (draw that
+  channel's lines bold), and a ↕ button that opens line size: a Height
+  slider (how much of the chart height the channel uses) and a Position
+  slider (bottom to top), with Reset to full. Sliders, not min/max numbers. This replaces the bottom channel drawer and
   stat cards. Chart fills the rest.
-- **How the tune shows on the Logs page.** Options: a collapsible panel that
-  shows the overlaid curves only, or the Tune page split beside the chart.
 
 ## Open questions
 
-- How the tune shows on the Logs page (see above).
 - Whether the peak-value summary row is wanted.
 - Whether the chart should support stacked panes (one pane per channel group).
 
