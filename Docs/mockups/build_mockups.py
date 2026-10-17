@@ -275,13 +275,12 @@ def logs_page():
 
 # Radio throttle speed is typed in per run (it is not in the .dat file).
 # Values below are made up for the mockup.
-RADIO_KEYS = ["Radio mode", "Point 1 position", "Point 1 turn speed", "Point 1 return speed",
-              "Point 2 position", "Point 2 turn speed", "Point 2 return speed",
-              "Point 3 turn speed", "Point 3 return speed"]
+RADIO_KEYS = ["Radio mode", "Point 1 position", "Point 1 speed",
+              "Point 2 position", "Point 2 speed", "Point 3 speed"]
 RADIO_VALUES = [
-    ["3 points", "30%", "60%", "100%", "70%", "80%", "100%", "100%", "100%"],
-    ["3 points", "30%", "50%", "100%", "70%", "80%", "100%", "100%", "100%"],
-    ["3 points", "25%", "50%", "100%", "70%", "90%", "100%", "100%", "100%"],
+    ["3 points", "30%", "60%", "70%", "80%", "100%"],
+    ["3 points", "30%", "50%", "70%", "80%", "100%"],
+    ["3 points", "25%", "50%", "70%", "90%", "100%"],
 ]
 for _i, _t in enumerate(tunes):
     _t.update(zip(RADIO_KEYS, RADIO_VALUES[_i]))
