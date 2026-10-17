@@ -52,7 +52,9 @@ BBRC Stock Data Logger).
 
 - **Logs page layout (FuelTech model).** Thin run strip on top. Left channel
   sidebar grouped by source (ESC, GPS, Mini Logger), each row showing the
-  cursor value for each loaded run. This replaces the bottom channel drawer and
+  cursor value for each loaded run. Each row has a tick box (show on chart),
+  a colour box (click to change the channel colour) and a B button (draw that
+  channel's lines bold). This replaces the bottom channel drawer and
   stat cards. Chart fills the rest.
 
 ## Open questions

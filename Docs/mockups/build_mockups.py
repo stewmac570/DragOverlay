@@ -33,6 +33,7 @@ CHANNELS = [
     ("Acceleration", "#6FA1FF", "acc", "{:.2f} g"),
 ]
 VISIBLE = {"RPM", "Throttle %", "Current", "Voltage"}
+BOLD = {"RPM"}
 GPS = [("RaceBox Speed", "#FFA033"), ("RaceBox Distance", "#8CCB35"), ("RaceBox G-Force X", "#33E6E6")]
 LOGGER = [("Logger Throttle %", "#FFE066"), ("Logger RPM", "#F29E86"), ("Logger Wheel Speed", "#FF8FB1")]
 
@@ -161,7 +162,7 @@ def polyline(points, color, dash, width=1.8, opacity=1.0):
 # ---------------------------------------------------------------- logs page
 
 def logs_page():
-    side_w = 380
+    side_w = 420
     # Sidebar rows
     hdr = "".join(f'<div class="vc">{linesample(i, w=22)} R{i + 1}</div>' for i in range(3))
     rows = ""
@@ -169,8 +170,9 @@ def logs_page():
         on = name in VISIBLE
         vals = "".join(f'<div class="vc">{fmt.format(value_at(r, key, CURSOR_T))}</div>' for r in runs)
         rows += (f'<div class="row{"" if on else " off"}"><span class="cb">{"✔" if on else ""}</span>'
-                 f'<span class="sw" style="background:{color}"></span><span class="nm">{name}</span>{vals}</div>')
-    gps_rows = "".join(f'<div class="row off dis"><span class="cb"></span><span class="sw" style="background:{c}"></span>'
+                 f'<span class="sw" style="background:{color}"></span><span class="bb{" on" if name in BOLD else ""}">B</span>'
+                 f'<span class="nm">{name}</span>{vals}</div>')
+    gps_rows = "".join(f'<div class="row off dis"><span class="cb"></span><span class="sw" style="background:{c}"></span><span class="bb">B</span>'
                        f'<span class="nm">{n.replace("RaceBox ", "")}</span><div class="vc">-</div><div class="vc">-</div><div class="vc">-</div></div>'
                        for n, c in GPS)
 
@@ -211,7 +213,7 @@ def logs_page():
         span = (hi - lo) or 1
         for i, run in enumerate(runs):
             pts = [(X(r["t"]), cy + ch - 10 - (r[key] - lo) / span * (ch - 30)) for r in run]
-            svg.append(polyline(pts, color, DASH[i]))
+            svg.append(polyline(pts, color, DASH[i], 3.6 if name in BOLD else 1.8))
         if name == "RPM":  # the focused channel owns the visible axis
             for k in range(6):
                 val = lo + span * k / 5
@@ -233,13 +235,15 @@ def logs_page():
 .row.off .nm, .row.off .vc {{ color: #5C6573; }}
 .row.dis {{ opacity: .55; }}
 .cb {{ width: 16px; height: 16px; border: 1px solid #5C6573; border-radius: 3px; font-size: 11px; line-height: 14px; text-align: center; color: #9AC7F2; }}
-.sw {{ width: 12px; height: 12px; border-radius: 2px; }}
-.nm {{ flex: 1; }}
+.sw {{ width: 14px; height: 14px; border-radius: 2px; outline: 1px solid #5C6573; outline-offset: 1px; }}
+.bb {{ width: 20px; height: 18px; border: 1px solid #3A4250; border-radius: 3px; font: 700 11px 'Segoe UI'; text-align: center; line-height: 16px; color: #5C6573; }}
+.bb.on {{ background: #2D6CB5; border-color: #2D6CB5; color: #fff; }}
+.nm {{ flex: 1; white-space: nowrap; }}
 .vc {{ width: 70px; text-align: right; font-variant-numeric: tabular-nums; display: flex; justify-content: flex-end; align-items: center; gap: 4px; }}
 """
     notes = f"""
-<div class="note" style="left:40px; top:600px">Channels move to a left list. Tick = on chart. Each run's value at the cursor sits on the row.</div>
-<div class="note" style="left:40px; top:690px">Groups fold away. GPS and Mini Logger channels appear here when their log is loaded.</div>
+<div class="note" style="left:40px; top:600px">Each channel row: tick = on chart, colour box = pick a colour, B = bold line (RPM is bold here). Each run's value at the cursor sits on the row.</div>
+<div class="note" style="left:40px; top:720px">Groups fold away. GPS and Mini Logger channels appear here when their log is loaded.</div>
 <div class="note" style="left:1540px; top:700px">Chart gets the full width and height. Tune lives on its own tab.</div>
 """
     body = (top_bar("Logs") + run_strip() +
