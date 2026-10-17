@@ -53,14 +53,16 @@ namespace CastleOverlayV2.Services
             }
             // ------------------------------------------------------------------
 
-            // Castle radio endpoints (ms). Defaults if not found in header.
-            var cal = new ThrottleCal
+            try
             {
-                MinMs = 1.048,   // Full Reverse
-                NeutralMs = 1.500,
-                MaxMs = 1.910    // Full Forward
-            };
-            double sampleIntervalSeconds = 0.05;
+                // Castle radio endpoints (ms). Defaults if not found in header.
+                var cal = new ThrottleCal
+                {
+                    MinMs = 1.048,   // Full Reverse
+                    NeutralMs = 1.500,
+                    MaxMs = 1.910    // Full Forward
+                };
+                double sampleIntervalSeconds = 0.05;
 
             using (var reader = new StreamReader(filePath))
             {
@@ -124,7 +126,6 @@ namespace CastleOverlayV2.Services
                     {
                         Logger.Log("[CsvLoader] Required column 'Power-Out' not found — aborting load.");
                         log?.WriteLine("[CsvLoader] Required column 'Power-Out' not found.");
-                        log?.Close();
                         return LoadResult<RunData>.Error(
                             "Import Failed",
                             "This file is missing a required column: 'Power-Out'.\n\nIt may not be a valid Castle ESC log.");
@@ -259,8 +260,6 @@ namespace CastleOverlayV2.Services
             runData.CaptureTrimBaseline();
 
             log?.WriteLine($"=== CsvLoader.Load() EXIT — Rows: {runData.DataPoints.Count} ===");
-            log?.Close();
-
             Logger.Log($"CsvLoader.Load() exit — Rows: {runData.DataPoints.Count}");
 
             return noDragPass
@@ -268,6 +267,11 @@ namespace CastleOverlayV2.Services
                     "No drag pass detected in this log.\nAuto-trim was skipped.\n\n" +
                     "Arm the run and right-click the plot to trim it manually.")
                 : LoadResult<RunData>.Success(runData);
+            }
+            finally
+            {
+                log?.Dispose();
+            }
         }
 
         private sealed class ThrottleCal
