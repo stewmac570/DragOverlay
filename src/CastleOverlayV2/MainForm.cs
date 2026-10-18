@@ -120,14 +120,14 @@ namespace CastleOverlayV2
             _topBar.SaveProjectRequested += () => _presenter.SaveProject();
             _topBar.SettingsRequested += ShowSettingsDialog;
 
-            // Logs page: alignment bar (top), channel drawer (bottom), plot (fill).
-            // WinForms docks from the back of the z-order, so the fill control sits at
-            // index 0 to be laid out last.
+            // Logs page: channel list (left), alignment bar (top, over the plot only),
+            // plot (fill). WinForms docks from the back of the z-order, so the fill
+            // control sits at index 0 to be laid out last.
             _logsPage = new Panel { Dock = DockStyle.Fill, BackColor = surfaceWindow };
             Controls.Remove(mainContainer);
             _logsPage.Controls.Add(mainContainer);
-            _logsPage.Controls.Add(_channelDrawer);
             _logsPage.Controls.Add(_alignmentBar);
+            _logsPage.Controls.Add(_channelDrawer);
 
             // Tune page: the tune panel fills it.
             _tunePage = new Panel { Dock = DockStyle.Fill, BackColor = surfaceWindow, Visible = false };

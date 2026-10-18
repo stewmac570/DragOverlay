@@ -1,355 +1,340 @@
 // File: src/CastleOverlayV2/Controls/ChannelDrawer.cs
 using CastleOverlayV2.Models;
-using CastleOverlayV2.Services;
 using CastleOverlayV2.Utils;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Linq;
 using System.Windows.Forms;
 
 namespace CastleOverlayV2.Controls
 {
     /// <summary>
-    /// Collapsible channel drawer (Docs/DragOverlay_UI_Spec.md §6.4, §6.5).
-    /// Two states:
-    ///   - Collapsed: a thin row with a chevron handle + one coloured dot per channel.
-    ///   - Expanded:  a wrapping grid of stat cards (●, name, eye toggle, per-run max/avg, @cursor).
-    /// Replaces the legacy ChannelToggleBar — same public surface for visibility events.
+    /// Channel list down the left of the Logs page (Docs/UI_Layout_Plan.md).
+    /// One row per channel, grouped by source (ESC, GPS, Mini Logger). Each row has:
+    ///   tick (show on chart) · colour box (pick a colour) · B (bold lines) ·
+    ///   ↕ (line size) · name (click to give it the visible Y axis) · value at the
+    ///   cursor for runs 1, 2 and 3. Hovering a row shows each run's max and average.
     /// </summary>
     public class ChannelDrawer : UserControl
     {
-        // ---- Theme tokens (Spec §5) -----------------------------------------
-        private static readonly Color SurfacePanel    = Color.FromArgb(0x16, 0x1B, 0x23);
-        private static readonly Color SurfaceBar      = Color.FromArgb(0x1B, 0x21, 0x2B);
-        private static readonly Color SurfaceCard     = Color.FromArgb(0x1A, 0x1F, 0x27);
-        private static readonly Color SurfaceCardFocus= Color.FromArgb(0x17, 0x22, 0x30);
-        private static readonly Color TextPrimary     = Color.FromArgb(0xE6, 0xE9, 0xEF);
-        private static readonly Color TextAccent      = Color.FromArgb(0x9A, 0xC7, 0xF2);
-        private static readonly Color TextSecond      = Color.FromArgb(0x9A, 0xA3, 0xB2);
-        private static readonly Color TextDim         = Color.FromArgb(0x5C, 0x65, 0x73);
-        private static readonly Color BorderDef       = Color.FromArgb(0x29, 0x2F, 0x39);
-        private static readonly Color BorderFocus     = Color.FromArgb(0x2C, 0x5A, 0x86);
+        // ---- Theme tokens ---------------------------------------------------
+        private static readonly Color SurfacePanel = Color.FromArgb(0x16, 0x1B, 0x23);
+        private static readonly Color SurfaceBar = Color.FromArgb(0x1B, 0x21, 0x2B);
+        private static readonly Color SurfaceRowFocus = Color.FromArgb(0x17, 0x22, 0x30);
+        private static readonly Color TextPrimary = Color.FromArgb(0xE6, 0xE9, 0xEF);
+        private static readonly Color TextAccent = Color.FromArgb(0x9A, 0xC7, 0xF2);
+        private static readonly Color TextSecond = Color.FromArgb(0x9A, 0xA3, 0xB2);
+        private static readonly Color TextDim = Color.FromArgb(0x5C, 0x65, 0x73);
+        private static readonly Color BorderDef = Color.FromArgb(0x29, 0x2F, 0x39);
+        private static readonly Color BorderControl = Color.FromArgb(0x3A, 0x42, 0x50);
+        private static readonly Color AccentBlue = Color.FromArgb(0x2D, 0x6C, 0xB5);
 
-        // ---- Public surface (matches old ChannelToggleBar) ------------------
+        private const int PanelWidth = 400;
+        private const int RowHeight = 30;
+        private const int ValueColumnWidth = 66;
+
+        // ---- Public surface ---------------------------------------------------
         public event Action<string, bool>? ChannelVisibilityChanged;
         public event Action<bool>? RpmModeChanged;
         public event Action<string>? ChannelFocused;
+        /// <summary>Colour picked for a channel; null means back to the default colour.</summary>
+        public event Action<string, Color?>? ChannelColorChanged;
+        public event Action<string, bool>? ChannelBoldChanged;
+        /// <summary>Line size changed: channel, height (0.1..1), position (0 bottom..1 top).</summary>
+        public event Action<string, double, double>? ChannelBandChanged;
 
         // ---- State ----------------------------------------------------------
-        private bool _expanded = false;
         private string _focusedChannel = "RPM"; // matches PlotManager's initial focus
-        private readonly Dictionary<string, ChannelCard> _cards = new();
-        private readonly Dictionary<string, ChannelDot> _dots = new();
-        private bool _racBoxSeparatorAdded; // visual gap between Castle and RaceBox channels
-        private bool _loggerSeparatorAdded; // visual gap before the Mini Logger channels
+        private bool _isFourPole;
+        private readonly Dictionary<string, ChannelRow> _rows = new();
+        private readonly Dictionary<ChannelGroup, GroupHeader> _groups = new();
+        private readonly Dictionary<string, Color> _colors = new(StringComparer.OrdinalIgnoreCase);
+        private readonly HashSet<string> _bold = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, (double Height, double Position)> _bands = new(StringComparer.OrdinalIgnoreCase);
 
-        // ---- Layout containers ---------------------------------------------
-        private readonly Panel _stripRow;       // collapsed view: chevron + dots
-        private readonly Panel _expandedHeader; // expanded view: chevron at top
-        private readonly FlowLayoutPanel _cardFlow;
-        private readonly FlowLayoutPanel _dotFlow;
-        private readonly FlowLayoutPanel _offStrip;   // expanded view: dots for hidden channels
-        private readonly Button _chevronStrip;
-        private readonly Button _chevronExpanded;
-        private readonly Dictionary<string, ChannelDot> _offDots = new();
+        private readonly Panel _scroll;
+        private readonly FlowLayoutPanel _list;
+        private readonly Button _poleButton;
+        private readonly RunColumnHeader _columns;
+        private readonly ToolTip _toolTip;
 
         public ChannelDrawer(List<string> channelNames, Dictionary<string, bool> initialStates)
         {
-            Dock = DockStyle.Bottom;
-            AutoSize = true;
-            AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            Dock = DockStyle.Left;
+            Width = PanelWidth;
             BackColor = SurfacePanel;
             ForeColor = TextPrimary;
-            Padding = new Padding(0);
+            Padding = new Padding(0, 0, 1, 0); // 1px gap shows the border line on the right
 
-            // --- Collapsed strip ---
-            _stripRow = new Panel
-            {
-                Dock = DockStyle.Bottom,
-                Height = 32,
-                BackColor = SurfacePanel,
-                Padding = new Padding(0)
-            };
-            _chevronStrip = MakeChevronButton(expandedNow: false);
-            _chevronStrip.Dock = DockStyle.Left;
+            _toolTip = new ToolTip { AutoPopDelay = 15000, InitialDelay = 500, ReshowDelay = 200, ShowAlways = true };
 
-            _dotFlow = new FlowLayoutPanel
+            _scroll = new Panel
             {
                 Dock = DockStyle.Fill,
-                FlowDirection = FlowDirection.LeftToRight,
-                WrapContents = false,
                 AutoScroll = true,
-                BackColor = SurfacePanel,
-                Padding = new Padding(36, 4, 4, 4),
-                Margin = new Padding(0)
+                BackColor = SurfacePanel
             };
-            _stripRow.Controls.Add(_dotFlow);
-            _stripRow.Controls.Add(_chevronStrip);
-            _chevronStrip.BringToFront();
-
-            // --- Expanded panel: header bar + wrapping card flow ---
-            _expandedHeader = new Panel
+            _list = new FlowLayoutPanel
             {
-                Dock = DockStyle.Top,
-                Height = 32,
-                BackColor = SurfaceBar,
-                Padding = new Padding(0)
-            };
-            _chevronExpanded = MakeChevronButton(expandedNow: true);
-            _chevronExpanded.Dock = DockStyle.Left;
-
-            // Hidden channels appear as dots here so they can be toggled back on
-            // without collapsing the whole drawer.
-            _offStrip = new FlowLayoutPanel
-            {
-                Dock = DockStyle.Fill,
-                FlowDirection = FlowDirection.LeftToRight,
+                FlowDirection = FlowDirection.TopDown,
                 WrapContents = false,
-                AutoScroll = false,
-                BackColor = SurfaceBar,
-                // The Fill strip spans the whole width (under the chevron), so pad its
-                // content past the 32px chevron button; the chevron stays on top.
-                Padding = new Padding(40, 2, 4, 2),
-                Margin = new Padding(0)
-            };
-            _expandedHeader.Controls.Add(_offStrip);
-            _expandedHeader.Controls.Add(_chevronExpanded);
-            _chevronExpanded.BringToFront();
-
-            _cardFlow = new FlowLayoutPanel
-            {
-                Dock = DockStyle.Top,
                 AutoSize = true,
                 AutoSizeMode = AutoSizeMode.GrowAndShrink,
-                FlowDirection = FlowDirection.LeftToRight,
-                WrapContents = true,
                 BackColor = SurfacePanel,
-                Padding = new Padding(8)
+                Margin = new Padding(0),
+                Padding = new Padding(0),
+                Location = new Point(0, 0)
             };
+            _scroll.Controls.Add(_list);
+            _scroll.Resize += (_, _) => SizeRows();
+            Controls.Add(_scroll);
+
+            // Column header: run line styles above the three value columns.
+            _columns = new RunColumnHeader { Dock = DockStyle.Top, Height = 24 };
+            Controls.Add(_columns);
+
+            // Title bar: "Channels" + RPM pole toggle.
+            var title = new Panel { Dock = DockStyle.Top, Height = 36, BackColor = SurfacePanel };
+            var titleLbl = new Label
+            {
+                Text = "Channels",
+                AutoSize = false,
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleLeft,
+                Padding = new Padding(10, 0, 0, 0),
+                ForeColor = TextPrimary,
+                Font = new Font(SystemFonts.DefaultFont.FontFamily, 10f, FontStyle.Bold)
+            };
+            _poleButton = new Button
+            {
+                Dock = DockStyle.Right,
+                Width = 104,
+                FlatStyle = FlatStyle.Flat,
+                BackColor = SurfaceBar,
+                ForeColor = TextSecond,
+                TabStop = false,
+                UseVisualStyleBackColor = false
+            };
+            _poleButton.FlatAppearance.BorderColor = BorderDef;
+            _poleButton.Click += (_, _) =>
+            {
+                SetRpmMode(!_isFourPole);
+                RpmModeChanged?.Invoke(_isFourPole);
+            };
+            _toolTip.SetToolTip(_poleButton, "Motor poles for the RPM channel (4 pole halves the value)");
+            title.Controls.Add(titleLbl);
+            title.Controls.Add(_poleButton);
+            Controls.Add(title);
+            SetRpmMode(false);
 
             foreach (var ch in channelNames)
             {
                 bool visible = initialStates.TryGetValue(ch, out var v) && v;
                 AddChannel(ch, visible);
             }
-
-            // Build the initial view (expanded by default) — controls are added in
-            // ApplyExpandedState, not here, so the swap is consistent on every toggle.
-            ApplyExpandedState();
         }
 
         // ============================================================
-        // Public API (kept compatible with the old ChannelToggleBar)
+        // Public API
         // ============================================================
-
-        public bool IsExpanded => _expanded;
 
         public void AddChannel(string channelName, bool initialVisible)
         {
-            if (_cards.ContainsKey(channelName)) return;
+            if (_rows.ContainsKey(channelName)) return;
 
-            // Group RaceBox channels visually after Castle (spec §6.4).
-            bool isRaceBox = channelName.StartsWith("RaceBox", StringComparison.Ordinal);
-            if (isRaceBox && !_racBoxSeparatorAdded)
+            var group = GroupOf(channelName);
+            if (!_groups.TryGetValue(group, out var header))
             {
-                AddSourceGroupSeparator();
-                _racBoxSeparatorAdded = true;
-            }
-            bool isLogger = channelName.StartsWith("Logger", StringComparison.Ordinal);
-            if (isLogger && !_loggerSeparatorAdded)
-            {
-                AddSourceGroupSeparator();
-                _loggerSeparatorAdded = true;
+                header = new GroupHeader(GroupTitle(group));
+                header.Click += (_, _) => ToggleGroup(group);
+                _groups[group] = header;
             }
 
-            var card = new ChannelCard(channelName, initialVisible);
-            card.VisibilityChanged += (n, v) =>
+            var row = new ChannelRow(channelName, initialVisible, _toolTip);
+            row.SetColor(ColorFor(channelName));
+            row.SetBold(_bold.Contains(channelName));
+            row.SetBandActive(_bands.ContainsKey(channelName));
+            row.SetFocused(channelName == _focusedChannel);
+            row.VisibilityToggled += (n, v) => ChannelVisibilityChanged?.Invoke(n, v);
+            row.NameClicked += n => ChannelFocused?.Invoke(n);
+            row.ColorClicked += PickColor;
+            row.ColorResetClicked += n =>
             {
-                _dots[n].SetVisible(v);
-                SyncPresence(n, v);
-                ChannelVisibilityChanged?.Invoke(n, v);
+                _colors.Remove(n);
+                _rows[n].SetColor(ColorFor(n));
+                ChannelColorChanged?.Invoke(n, null);
             };
-            card.RpmModeToggled += isFourPole => RpmModeChanged?.Invoke(isFourPole);
-            card.Focused += n => ChannelFocused?.Invoke(n);
-            _cards[channelName] = card;
-            _cardFlow.Controls.Add(card);
-            if (channelName == _focusedChannel)
-                card.SetFocused(true);
+            row.BoldClicked += n =>
+            {
+                bool bold = !_bold.Contains(n);
+                if (bold) _bold.Add(n); else _bold.Remove(n);
+                _rows[n].SetBold(bold);
+                ChannelBoldChanged?.Invoke(n, bold);
+            };
+            row.BandClicked += ShowBandPopup;
+            _rows[channelName] = row;
 
-            var dot = new ChannelDot(channelName, initialVisible);
-            dot.Toggled += (n, v) =>
-            {
-                _cards[n].SetVisible(v);
-                SyncPresence(n, v);
-                ChannelVisibilityChanged?.Invoke(n, v);
-            };
-            _dots[channelName] = dot;
-            _dotFlow.Controls.Add(dot);
-
-            // Header dot, shown only while this channel is hidden; click re-enables it.
-            var offDot = new ChannelDot(channelName, initialVisible: false)
-            {
-                Height = 24,
-                Margin = new Padding(3, 2, 3, 2)
-            };
-            offDot.Toggled += (n, _) =>
-            {
-                _cards[n].SetVisible(true);
-                _dots[n].SetVisible(true);
-                SyncPresence(n, true);
-                ChannelVisibilityChanged?.Invoke(n, true);
-            };
-            _offDots[channelName] = offDot;
-            _offStrip.Controls.Add(offDot);
-
-            SyncPresence(channelName, initialVisible);
+            RebuildList();
         }
 
-        /// <summary>
-        /// A hidden channel's full card is removed from layout (Visible=false, so it
-        /// takes no space and the on-cards get the room); its dot shows in the header
-        /// strip instead. No in-place card resizing — that caused repaint glitches.
-        /// </summary>
-        private void SyncPresence(string channelName, bool visible)
-        {
-            if (_cards.TryGetValue(channelName, out var card))
-                card.Visible = visible;
-            if (_offDots.TryGetValue(channelName, out var offDot))
-            {
-                offDot.Visible = !visible;
-                if (!visible)
-                    offDot.SetVisible(false); // keep it drawn in the dim "off" state
-            }
-        }
-
-        /// <summary>
-        /// Mark <paramref name="channelName"/> as the focused card. Idempotent.
-        /// </summary>
+        /// <summary>Mark <paramref name="channelName"/> as the channel that owns the Y axis.</summary>
         public void SetFocusedChannel(string channelName)
         {
             if (_focusedChannel == channelName) return;
-            string previous = _focusedChannel;
+            if (_rows.TryGetValue(_focusedChannel, out var prev)) prev.SetFocused(false);
             _focusedChannel = channelName;
-
-            if (_cards.TryGetValue(previous, out var prev))
-                prev.SetFocused(false);
-            if (_cards.TryGetValue(channelName, out var next))
-                next.SetFocused(true);
+            if (_rows.TryGetValue(channelName, out var next)) next.SetFocused(true);
         }
 
-        /// <summary>
-        /// Apply visibility states from a project (issue #87 restore path). Only channels
-        /// already present in the drawer are updated; unknown keys are ignored safely.
-        /// </summary>
+        /// <summary>Apply visibility states from a project. Unknown channels are ignored.</summary>
         public void ApplyChannelVisibility(IReadOnlyDictionary<string, bool> visibility)
         {
             foreach (var (name, vis) in visibility)
-            {
-                if (_cards.TryGetValue(name, out var card))
-                    card.SetVisible(vis);
-                if (_dots.TryGetValue(name, out var dot))
-                    dot.SetVisible(vis);
-                SyncPresence(name, vis);
-            }
+                if (_rows.TryGetValue(name, out var row))
+                    row.SetChannelVisible(vis);
         }
 
         public Dictionary<string, bool> GetChannelStates() =>
-            _cards.ToDictionary(kv => kv.Key, kv => kv.Value.IsChannelVisible);
+            _rows.ToDictionary(kv => kv.Key, kv => kv.Value.IsChannelVisible);
 
-        /// <summary>Update per-run max/avg numbers on a channel card. No-op if the card doesn't exist.</summary>
+        /// <summary>Per-run max/avg for a channel, shown in the row's hover tip.</summary>
         public void UpdateChannelStats(string channelName, IReadOnlyList<ChannelRunStats> stats)
         {
-            if (_cards.TryGetValue(channelName, out var card))
-                card.SetStats(stats);
+            if (_rows.TryGetValue(channelName, out var row))
+                row.SetStats(stats.Select(s =>
+                    $"{s.DisplayLabel}:  max {Format(channelName, s.Max)}   avg {Format(channelName, s.Avg)}"));
         }
 
-        /// <summary>Update per-slot @cursor values on every card.</summary>
+        /// <summary>Per-run values at the cursor. Index 0..2 = run 1..3 (or GPS/Logger 1..3).</summary>
         public void UpdateCursorValues(Dictionary<string, double?[]> values)
         {
-            if (!_expanded) return;
-
             foreach (var (name, vals) in values)
-                if (_cards.TryGetValue(name, out var card))
-                    card.SetCursorValues(vals);
+                if (_rows.TryGetValue(name, out var row))
+                    row.SetValues(vals.Select(v => v.HasValue ? Format(name, v.Value) : "–").ToArray());
         }
 
-        public void ToggleExpanded()
+        public void SetRpmMode(bool isFourPole)
         {
-            _expanded = !_expanded;
-            ApplyExpandedState();
+            _isFourPole = isFourPole;
+            _poleButton.Text = isFourPole ? "RPM: 4 pole" : "RPM: 2 pole";
+        }
+
+        /// <summary>Saved colour / bold / line size choices. Also applied to channels added later.</summary>
+        public void ApplyDisplaySettings(
+            IReadOnlyDictionary<string, Color> colors,
+            IEnumerable<string> boldChannels,
+            IReadOnlyDictionary<string, (double Height, double Position)> bands)
+        {
+            foreach (var (name, color) in colors) _colors[name] = color;
+            foreach (var name in boldChannels) _bold.Add(name);
+            foreach (var (name, band) in bands) _bands[name] = band;
+
+            foreach (var (name, row) in _rows)
+            {
+                row.SetColor(ColorFor(name));
+                row.SetBold(_bold.Contains(name));
+                row.SetBandActive(_bands.ContainsKey(name));
+            }
         }
 
         // ============================================================
         // Helpers
         // ============================================================
 
-        private void ApplyExpandedState()
+        private enum ChannelGroup { Esc, Gps, Logger }
+
+        private static ChannelGroup GroupOf(string channelName) =>
+            channelName.StartsWith("RaceBox", StringComparison.Ordinal) ? ChannelGroup.Gps
+            : channelName.StartsWith("Logger", StringComparison.Ordinal) ? ChannelGroup.Logger
+            : ChannelGroup.Esc;
+
+        private static string GroupTitle(ChannelGroup group) => group switch
         {
-            SuspendLayout();
-            Controls.Clear();
-            if (_expanded)
+            ChannelGroup.Gps => "GPS (RaceBox)",
+            ChannelGroup.Logger => "Mini Logger",
+            _ => "ESC (Castle)"
+        };
+
+        private void ToggleGroup(ChannelGroup group)
+        {
+            var header = _groups[group];
+            header.Expanded = !header.Expanded;
+            RebuildList();
+        }
+
+        private void RebuildList()
+        {
+            _list.SuspendLayout();
+            _list.Controls.Clear();
+            foreach (var group in new[] { ChannelGroup.Esc, ChannelGroup.Gps, ChannelGroup.Logger })
             {
-                // Card flow first (Dock = Top, AutoSize), then header on top of it.
-                Controls.Add(_cardFlow);
-                Controls.Add(_expandedHeader);
+                if (!_groups.TryGetValue(group, out var header)) continue;
+                var rows = _rows.Values.Where(r => GroupOf(r.ChannelName) == group).ToList();
+                header.SetCount(rows.Count);
+                _list.Controls.Add(header);
+                if (!header.Expanded) continue;
+                foreach (var row in rows)
+                    _list.Controls.Add(row);
             }
-            else
-            {
-                Controls.Add(_stripRow);
-            }
-            ResumeLayout(performLayout: true);
-            PerformLayout();
+            _list.ResumeLayout(true);
+            SizeRows();
         }
 
-        /// <summary>
-        /// Insert a slim vertical separator into both the card grid and the dot strip so the
-        /// RaceBox channels read as a set distinct from the Castle channels.
-        /// </summary>
-        private void AddSourceGroupSeparator()
+        private void SizeRows()
         {
-            var cardSep = new Panel
-            {
-                Width = 2,
-                Height = 80,
-                BackColor = BorderDef,
-                Margin = new Padding(8, 6, 8, 6)
-            };
-            _cardFlow.Controls.Add(cardSep);
-
-            var dotSep = new Panel
-            {
-                Width = 2,
-                Height = 18,
-                BackColor = BorderDef,
-                Margin = new Padding(8, 7, 8, 7)
-            };
-            _dotFlow.Controls.Add(dotSep);
+            int width = _scroll.ClientSize.Width;
+            foreach (Control c in _list.Controls)
+                c.Width = width;
+            // Line the column headings up with the values, scrollbar or not.
+            if (_columns != null) _columns.RightInset = _scroll.Width - width;
         }
 
-        private Button MakeChevronButton(bool expandedNow)
+        private Color ColorFor(string channelName)
         {
-            var b = new Button
-            {
-                Width = 32,
-                Text = expandedNow ? "▼" : "▶",
-                FlatStyle = FlatStyle.Flat,
-                BackColor = SurfaceBar,
-                ForeColor = TextSecond,
-                Margin = new Padding(0),
-                Padding = new Padding(0),
-                TabStop = false
-            };
-            b.FlatAppearance.BorderSize = 0;
-            b.Click += (_, _) => ToggleExpanded();
-            return b;
+            if (_colors.TryGetValue(channelName, out var c)) return c;
+            var sc = ChannelColorMap.GetColor(channelName);
+            return Color.FromArgb(sc.R, sc.G, sc.B);
         }
 
-        private static Color ChannelHueColor(string channelName)
+        private void PickColor(string channelName)
         {
-            var c = ChannelColorMap.GetColor(channelName);
-            return Color.FromArgb(c.R, c.G, c.B);
+            using var dlg = new ColorDialog { Color = ColorFor(channelName), FullOpen = true, AnyColor = true };
+            if (dlg.ShowDialog(FindForm()) != DialogResult.OK) return;
+            _colors[channelName] = dlg.Color;
+            _rows[channelName].SetColor(dlg.Color);
+            ChannelColorChanged?.Invoke(channelName, dlg.Color);
         }
+
+        private void ShowBandPopup(string channelName, Control anchor)
+        {
+            var (height, position) = _bands.TryGetValue(channelName, out var b) ? b : (1.0, 0.0);
+            var popup = new BandPopup(DisplayName(channelName), ColorFor(channelName), height, position);
+            popup.BandChanged += (h, p) =>
+            {
+                if (h >= 1.0) _bands.Remove(channelName);
+                else _bands[channelName] = (h, p);
+                _rows[channelName].SetBandActive(h < 1.0);
+                ChannelBandChanged?.Invoke(channelName, h, p);
+            };
+            popup.Show(anchor, new Point(anchor.Width + 4, 0));
+        }
+
+        internal static string DisplayName(string channelName) => channelName switch
+        {
+            "PowerOut" => "Power Out",
+            "MotorTemp" => "Motor Temp",
+            "MotorTiming" => "Motor Timing",
+            "RaceBox Speed" => "Speed",
+            "RaceBox Distance" => "Distance",
+            "RaceBox G-Force X" => "G-Force X",
+            "Logger Throttle %" => "Throttle %",
+            "Logger RPM" => "RPM",
+            "Logger Wheel Speed" => "Wheel Speed",
+            "Logger Wheel rev/s" => "Wheel rev/s",
+            _ => channelName
+        };
 
         private static string Format(string channelName, double v)
         {
@@ -377,341 +362,460 @@ namespace CastleOverlayV2.Controls
         }
 
         // ============================================================
-        // Nested: ChannelCard (expanded view)
+        // Nested: run column header (line style per run above the value columns)
         // ============================================================
-        private class ChannelCard : Panel
+        private sealed class RunColumnHeader : Control
+        {
+            private int _rightInset;
+
+            /// <summary>Width taken on the right by the list's scrollbar, if shown.</summary>
+            public int RightInset
+            {
+                get => _rightInset;
+                set { if (_rightInset != value) { _rightInset = value; Invalidate(); } }
+            }
+
+            public RunColumnHeader()
+            {
+                SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint, true);
+                BackColor = SurfacePanel;
+            }
+
+            protected override void OnPaint(PaintEventArgs e)
+            {
+                e.Graphics.Clear(BackColor);
+                e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                using var font = new Font(SystemFonts.DefaultFont.FontFamily, 8.5f);
+                for (int i = 0; i < 3; i++)
+                {
+                    int right = Width - _rightInset - 6 - (2 - i) * ValueColumnWidth;
+                    int left = right - ValueColumnWidth + 8;
+                    using var pen = new Pen(TextSecond, 2f) { DashStyle = RunDash(i) };
+                    e.Graphics.DrawLine(pen, left + 8, Height / 2, left + 34, Height / 2);
+                    TextRenderer.DrawText(e.Graphics, $"{i + 1}", font,
+                        new Rectangle(left + 36, 0, right - left - 36, Height), TextSecond,
+                        TextFormatFlags.VerticalCenter | TextFormatFlags.Right);
+                }
+                TextRenderer.DrawText(e.Graphics, "Value at cursor  ·  run", font,
+                    new Rectangle(10, 0, 160, Height), TextDim, TextFormatFlags.VerticalCenter | TextFormatFlags.Left);
+                using var border = new Pen(BorderDef);
+                e.Graphics.DrawLine(border, 0, Height - 1, Width, Height - 1);
+            }
+
+            private static DashStyle RunDash(int index) => index switch
+            {
+                1 => DashStyle.Dash,
+                2 => DashStyle.Dot,
+                _ => DashStyle.Solid
+            };
+        }
+
+        // ============================================================
+        // Nested: group header
+        // ============================================================
+        private sealed class GroupHeader : Label
+        {
+            private readonly string _title;
+            private int _count;
+            private bool _expanded = true;
+
+            public bool Expanded
+            {
+                get => _expanded;
+                set { _expanded = value; UpdateText(); }
+            }
+
+            public GroupHeader(string title)
+            {
+                _title = title;
+                AutoSize = false;
+                Height = 30;
+                Margin = new Padding(0);
+                Padding = new Padding(8, 0, 0, 0);
+                TextAlign = ContentAlignment.MiddleLeft;
+                BackColor = SurfaceBar;
+                ForeColor = TextPrimary;
+                Font = new Font(SystemFonts.DefaultFont.FontFamily, 9f, FontStyle.Bold);
+                Cursor = Cursors.Hand;
+                UpdateText();
+            }
+
+            public void SetCount(int count)
+            {
+                _count = count;
+                UpdateText();
+            }
+
+            private void UpdateText() =>
+                Text = $"{(_expanded ? "▾" : "▸")}  {_title}   ({_count})";
+        }
+
+        // ============================================================
+        // Nested: one channel row
+        // ============================================================
+        private sealed class ChannelRow : Panel
         {
             public string ChannelName { get; }
             public bool IsChannelVisible { get; private set; }
-            public bool IsFocused { get; private set; }
 
-            public event Action<string, bool>? VisibilityChanged;
-            public event Action<bool>? RpmModeToggled;
-            public event Action<string>? Focused;
+            public event Action<string, bool>? VisibilityToggled;
+            public event Action<string>? NameClicked;
+            public event Action<string>? ColorClicked;
+            public event Action<string>? ColorResetClicked;
+            public event Action<string>? BoldClicked;
+            public event Action<string, Control>? BandClicked;
 
-            private readonly TableLayoutPanel _layout;
-            private readonly Label _nameLbl;
-            private readonly Button _eyeBtn;
-            private readonly Button? _rpmModeBtn;
-            private bool _isFourPole;
+            private readonly SmallToggle _tick;
+            private readonly Swatch _swatch;
+            private readonly SmallToggle _bold;
+            private readonly SmallToggle _band;
+            private readonly Label _name;
+            private readonly Label[] _values = new Label[3];
+            private readonly ToolTip _toolTip;
+            private bool _focused;
 
-            // Stats + cursor labels per slot. The cardlets are added as the slots first appear.
-            private readonly Dictionary<int, Label> _statLabels = new();
-            private readonly Dictionary<int, Label> _cursorLabels = new();
-            private double?[] _lastCursor = Array.Empty<double?>();
-            private IReadOnlyList<ChannelRunStats> _lastStats = Array.Empty<ChannelRunStats>();
-
-            public ChannelCard(string channelName, bool initialVisible)
+            public ChannelRow(string channelName, bool initialVisible, ToolTip toolTip)
             {
                 ChannelName = channelName;
                 IsChannelVisible = initialVisible;
+                _toolTip = toolTip;
 
-                Width = 168;
-                AutoSize = true;
-                AutoSizeMode = AutoSizeMode.GrowOnly;
-                MinimumSize = new Size(168, 72);
-                MaximumSize = new Size(168, 0);
-                BackColor = SurfaceCard;
-                ForeColor = TextPrimary;
-                Padding = new Padding(8, 6, 8, 6);
-                Margin = new Padding(4);
-                BorderStyle = BorderStyle.FixedSingle;
+                Height = RowHeight;
+                Margin = new Padding(0);
+                BackColor = SurfacePanel;
 
-                _layout = new TableLayoutPanel
+                _tick = new SmallToggle("✔", showTextWhenOff: false);
+                _tick.Click += (_, _) =>
                 {
-                    Dock = DockStyle.Top,
-                    AutoSize = true,
-                    AutoSizeMode = AutoSizeMode.GrowAndShrink,
-                    MinimumSize = new Size(150, 0),
-                    MaximumSize = new Size(150, 0),
-                    ColumnCount = 1,
-                    Margin = new Padding(0),
-                    Padding = new Padding(0)
+                    SetChannelVisible(!IsChannelVisible);
+                    VisibilityToggled?.Invoke(ChannelName, IsChannelVisible);
                 };
+                toolTip.SetToolTip(_tick, "Show on the chart");
 
-                // --- Header row (dot + name + eye toggle) ---
-                var header = new TableLayoutPanel
+                _swatch = new Swatch();
+                _swatch.MouseUp += (_, e) =>
                 {
-                    Dock = DockStyle.Top,
-                    Width = 150,
-                    MinimumSize = new Size(150, 24),
-                    MaximumSize = new Size(150, 0),
-                    ColumnCount = 3,
-                    RowCount = 1,
-                    Margin = new Padding(0),
-                    Padding = new Padding(0),
-                    AutoSize = true
+                    if (e.Button == MouseButtons.Right) ColorResetClicked?.Invoke(ChannelName);
+                    else if (e.Button == MouseButtons.Left) ColorClicked?.Invoke(ChannelName);
                 };
-                header.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 14));
-                header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-                header.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 28));
+                toolTip.SetToolTip(_swatch, "Click to pick a colour. Right-click for the default colour.");
 
-                var dot = new Panel
+                _bold = new SmallToggle("B", showTextWhenOff: true);
+                _bold.Click += (_, _) => BoldClicked?.Invoke(ChannelName);
+                toolTip.SetToolTip(_bold, "Bold line");
+
+                _band = new SmallToggle("↕", showTextWhenOff: true);
+                _band.Click += (_, _) => BandClicked?.Invoke(ChannelName, _band);
+                toolTip.SetToolTip(_band, "Line size: squeeze this channel into part of the chart");
+
+                _name = new Label
                 {
-                    Width = 10,
-                    Height = 10,
-                    Margin = new Padding(0, 6, 0, 0),
-                    BackColor = ChannelHueColor(channelName)
+                    Text = DisplayName(channelName),
+                    AutoSize = false,
+                    AutoEllipsis = true,
+                    TextAlign = ContentAlignment.MiddleLeft,
+                    Font = new Font(SystemFonts.DefaultFont.FontFamily, 9f),
+                    Cursor = Cursors.Hand
                 };
-                header.Controls.Add(dot, 0, 0);
-                dot.Click += (_, _) => ToggleVisibility();
+                _name.Click += (_, _) => NameClicked?.Invoke(ChannelName);
 
-                _nameLbl = new Label
+                for (int i = 0; i < 3; i++)
                 {
-                    Text = channelName,
-                    AutoSize = true,
-                    ForeColor = TextPrimary,
-                    Font = new Font(SystemFonts.DefaultFont.FontFamily, 9.5f, FontStyle.Bold),
-                    Margin = new Padding(2, 4, 0, 0)
-                };
-                header.Controls.Add(_nameLbl, 1, 0);
-
-                _eyeBtn = new Button
-                {
-                    Text = initialVisible ? "●" : "○",
-                    Width = 24,
-                    Height = 20,
-                    FlatStyle = FlatStyle.Flat,
-                    BackColor = SurfaceCard,
-                    ForeColor = initialVisible ? ChannelHueColor(channelName) : TextDim,
-                    Margin = new Padding(0, 2, 0, 0),
-                    TabStop = false
-                };
-                _eyeBtn.FlatAppearance.BorderSize = 0;
-                _eyeBtn.Click += (_, _) => ToggleVisibility();
-                header.Controls.Add(_eyeBtn, 2, 0);
-                header.Click += (_, _) => ToggleVisibility();
-
-                _layout.Controls.Add(header);
-
-                // --- RPM 2P/4P toggle on the RPM card only ---
-                if (channelName == "RPM")
-                {
-                    _rpmModeBtn = new Button
+                    _values[i] = new Label
                     {
-                        Text = "2 Pole",
-                        AutoSize = true,
-                        FlatStyle = FlatStyle.Flat,
-                        BackColor = SurfaceBar,
-                        ForeColor = TextSecond,
-                        Margin = new Padding(0, 4, 0, 0),
-                        TabStop = false
+                        Text = "",
+                        AutoSize = false,
+                        TextAlign = ContentAlignment.MiddleRight,
+                        Font = new Font(SystemFonts.DefaultFont.FontFamily, 9f)
                     };
-                    _rpmModeBtn.FlatAppearance.BorderColor = BorderDef;
-                    _rpmModeBtn.Click += (_, _) =>
-                    {
-                        _isFourPole = !_isFourPole;
-                        _rpmModeBtn.Text = _isFourPole ? "4 Pole" : "2 Pole";
-                        RpmModeToggled?.Invoke(_isFourPole);
-                    };
-                    _layout.Controls.Add(_rpmModeBtn);
+                    Controls.Add(_values[i]);
                 }
 
-                Controls.Add(_layout);
-                UpdateEyeAppearance();
+                Controls.Add(_tick);
+                Controls.Add(_swatch);
+                Controls.Add(_bold);
+                Controls.Add(_band);
+                Controls.Add(_name);
 
-                // Card body (and the name label) → click focuses this channel.
-                // The eye button and RPM-mode button keep their own click handlers
-                // (they do NOT propagate to the body click).
-                this.Click += (_, _) => ToggleVisibility();
-                _nameLbl.Click += (_, _) => ToggleVisibility();
-                _layout.Click += (_, _) => ToggleVisibility();
+                SetStats(Array.Empty<string>());
+                ApplyVisibleState();
+            }
+
+            protected override void OnLayout(LayoutEventArgs levent)
+            {
+                base.OnLayout(levent);
+                if (_name == null || _values[2] == null) return; // laid out mid-constructor, before every child exists
+                int y = (Height - 20) / 2;
+                _tick.SetBounds(10, y + 1, 18, 18);
+                _swatch.SetBounds(34, y + 2, 16, 16);
+                _bold.SetBounds(56, y, 22, 20);
+                _band.SetBounds(82, y, 22, 20);
+
+                int right = Width - 6;
+                for (int i = 2; i >= 0; i--)
+                {
+                    _values[i].SetBounds(right - ValueColumnWidth, 0, ValueColumnWidth, Height);
+                    right -= ValueColumnWidth;
+                }
+                _name.SetBounds(110, 0, Math.Max(0, right - 112), Height);
+            }
+
+            protected override void OnPaint(PaintEventArgs e)
+            {
+                base.OnPaint(e);
+                using var pen = new Pen(SurfaceBar);
+                e.Graphics.DrawLine(pen, 0, Height - 1, Width, Height - 1);
+            }
+
+            public void SetChannelVisible(bool visible)
+            {
+                IsChannelVisible = visible;
+                ApplyVisibleState();
             }
 
             public void SetFocused(bool focused)
             {
-                if (IsFocused == focused) return;
-                IsFocused = focused;
-                BackColor = focused ? SurfaceCardFocus : SurfaceCard;
-                _nameLbl.ForeColor = focused ? TextAccent : TextPrimary;
+                _focused = focused;
+                BackColor = focused ? SurfaceRowFocus : SurfacePanel;
+                _name.Font = new Font(SystemFonts.DefaultFont.FontFamily, 9f, focused ? FontStyle.Bold : FontStyle.Regular);
+                ApplyVisibleState();
             }
 
-            public void SetVisible(bool visible)
-            {
-                if (IsChannelVisible == visible) return;
-                IsChannelVisible = visible;
-                UpdateEyeAppearance();
-            }
+            public void SetColor(Color color) => _swatch.SwatchColor = color;
+            public void SetBold(bool bold) => _bold.On = bold;
+            public void SetBandActive(bool active) => _band.On = active;
 
-            private void ToggleVisibility()
+            public void SetValues(string[] values)
             {
-                IsChannelVisible = !IsChannelVisible;
-                UpdateEyeAppearance();
-                VisibilityChanged?.Invoke(ChannelName, IsChannelVisible);
-            }
-
-            private void UpdateEyeAppearance()
-            {
-                _eyeBtn.Text = IsChannelVisible ? "●" : "○";
-                _eyeBtn.ForeColor = IsChannelVisible ? ChannelHueColor(ChannelName) : TextDim;
-            }
-
-            public void SetStats(IReadOnlyList<ChannelRunStats> stats)
-            {
-                _lastStats = stats;
-                RebuildStatRows();
-            }
-
-            public void SetCursorValues(double?[] values)
-            {
-                _lastCursor = values;
-                RebuildCursorRow();
-            }
-
-            private void RebuildStatRows()
-            {
-                // Remove old stat rows; recreate based on current _lastStats.
-                foreach (var lbl in _statLabels.Values)
-                    _layout.Controls.Remove(lbl);
-                _statLabels.Clear();
-
-                foreach (var s in _lastStats)
+                for (int i = 0; i < 3; i++)
                 {
-                    string txt = $"{s.DisplayLabel}  max {Format(ChannelName, s.Max)}  · avg {Format(ChannelName, s.Avg)}";
-                    var lbl = new Label
-                    {
-                        Text = txt,
-                        AutoSize = true,
-                        ForeColor = TextSecond,
-                        Font = new Font(SystemFonts.DefaultFont.FontFamily, 8.5f),
-                        Margin = new Padding(0, 2, 0, 0)
-                    };
-                    _statLabels[s.Slot] = lbl;
-                    lbl.Click += (_, _) => ToggleVisibility();
-                    _layout.Controls.Add(lbl);
+                    string text = i < values.Length ? values[i] : "";
+                    if (_values[i].Text != text)
+                        _values[i].Text = text;
                 }
             }
 
-            private void RebuildCursorRow()
+            public void SetStats(IEnumerable<string> lines)
             {
-                if (_lastCursor.Length == 0)
-                {
-                    foreach (var lbl in _cursorLabels.Values)
-                        _layout.Controls.Remove(lbl);
-                    _cursorLabels.Clear();
-                    return;
-                }
+                string tip = DisplayName(ChannelName) + "  (click the name to put its scale on the chart)";
+                var list = lines.ToList();
+                if (list.Count > 0)
+                    tip += Environment.NewLine + string.Join(Environment.NewLine, list);
+                _toolTip.SetToolTip(_name, tip);
+                foreach (var v in _values) _toolTip.SetToolTip(v, tip);
+            }
 
-                // Compact single-line @cursor: "@ A 65,650   B –   C –".
-                // (Was a 4-line stack — header + A/B/C — which dominated card height.)
-                string text = "@ " + string.Join(
-                    "   ",
-                    Enumerable.Range(0, _lastCursor.Length).Select(i =>
-                    {
-                        string slot = i switch { 0 => "A", 1 => "B", 2 => "C", _ => $"{i + 1}" };
-                        return _lastCursor[i].HasValue
-                            ? $"{slot} {Format(ChannelName, _lastCursor[i]!.Value)}"
-                            : $"{slot} –";
-                    }));
-
-                if (_cursorLabels.TryGetValue(0, out var existing))
-                {
-                    if (existing.Text != text)
-                        existing.Text = text;
-                    return;
-                }
-
-                var line = new Label
-                {
-                    Text = text,
-                    AutoSize = true,
-                    ForeColor = TextPrimary,
-                    Font = new Font(SystemFonts.DefaultFont.FontFamily, 8.5f),
-                    Margin = new Padding(0, 2, 0, 0)
-                };
-                line.Click += (_, _) => ToggleVisibility();
-                _cursorLabels[0] = line;
-                _layout.Controls.Add(line);
+            private void ApplyVisibleState()
+            {
+                _tick.On = IsChannelVisible;
+                _name.ForeColor = !IsChannelVisible ? TextDim : _focused ? TextAccent : TextPrimary;
+                foreach (var v in _values)
+                    v.ForeColor = IsChannelVisible ? TextPrimary : TextDim;
             }
         }
 
         // ============================================================
-        // Nested: ChannelDot (collapsed view)
+        // Nested: small square toggle (tick, B, ↕)
         // ============================================================
-        private class ChannelDot : Button
+        private sealed class SmallToggle : Control
         {
-            public string ChannelName { get; }
-            public bool IsChannelVisible { get; private set; }
+            private readonly bool _showTextWhenOff;
+            private bool _on;
 
-            public event Action<string, bool>? Toggled;
-
-            public ChannelDot(string channelName, bool initialVisible)
+            public bool On
             {
-                ChannelName = channelName;
-                IsChannelVisible = initialVisible;
+                get => _on;
+                set { _on = value; Invalidate(); }
+            }
 
-                AutoSize = false;
-                Width = ButtonWidth(channelName);
-                Height = 24;
-                FlatStyle = FlatStyle.Flat;
-                Margin = new Padding(2, 4, 2, 4);
-                TabStop = false;
-                Text = DisplayLabel(channelName);
-                Font = new Font(SystemFonts.DefaultFont.FontFamily, 8f, FontStyle.Bold);
-                FlatAppearance.BorderColor = BorderDef;
-                FlatAppearance.BorderSize = 1;
+            public SmallToggle(string text, bool showTextWhenOff)
+            {
+                Text = text;
+                _showTextWhenOff = showTextWhenOff;
+                SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer |
+                         ControlStyles.UserPaint | ControlStyles.SupportsTransparentBackColor, true);
+                SetStyle(ControlStyles.Selectable, false);
+                BackColor = Color.Transparent;
+                Cursor = Cursors.Hand;
+                Font = new Font(SystemFonts.DefaultFont.FontFamily, 8.5f, FontStyle.Bold);
+            }
 
-                ApplyVisualState();
-                Click += (_, _) =>
+            protected override void OnPaint(PaintEventArgs e)
+            {
+                e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                var rect = new Rectangle(0, 0, Width - 1, Height - 1);
+                using var path = RoundedRect(rect, 3);
+                if (_on && _showTextWhenOff)
                 {
-                    IsChannelVisible = !IsChannelVisible;
-                    ApplyVisualState();
-                    Toggled?.Invoke(ChannelName, IsChannelVisible);
+                    using var fill = new SolidBrush(AccentBlue);
+                    e.Graphics.FillPath(fill, path);
+                }
+                using (var pen = new Pen(_on && _showTextWhenOff ? AccentBlue : BorderControl))
+                    e.Graphics.DrawPath(pen, path);
+
+                if (_on || _showTextWhenOff)
+                {
+                    Color fg = _on ? (_showTextWhenOff ? Color.White : TextAccent) : TextDim;
+                    TextRenderer.DrawText(e.Graphics, Text, Font, ClientRectangle, fg,
+                        TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+                }
+            }
+        }
+
+        // ============================================================
+        // Nested: colour box
+        // ============================================================
+        private sealed class Swatch : Control
+        {
+            private Color _color = Color.Gray;
+
+            public Color SwatchColor
+            {
+                get => _color;
+                set { _color = value; Invalidate(); }
+            }
+
+            public Swatch()
+            {
+                SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer |
+                         ControlStyles.UserPaint | ControlStyles.SupportsTransparentBackColor, true);
+                SetStyle(ControlStyles.Selectable, false);
+                BackColor = Color.Transparent;
+                Cursor = Cursors.Hand;
+            }
+
+            protected override void OnPaint(PaintEventArgs e)
+            {
+                using var fill = new SolidBrush(_color);
+                e.Graphics.FillRectangle(fill, 2, 2, Width - 4, Height - 4);
+                using var pen = new Pen(TextDim);
+                e.Graphics.DrawRectangle(pen, 0, 0, Width - 1, Height - 1);
+            }
+        }
+
+        private static GraphicsPath RoundedRect(Rectangle r, int radius)
+        {
+            int d = radius * 2;
+            var path = new GraphicsPath();
+            path.AddArc(r.X, r.Y, d, d, 180, 90);
+            path.AddArc(r.Right - d, r.Y, d, d, 270, 90);
+            path.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
+            path.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
+            path.CloseFigure();
+            return path;
+        }
+
+        // ============================================================
+        // Nested: line size popup (Height + Position sliders)
+        // ============================================================
+        private sealed class BandPopup : ToolStripDropDown
+        {
+            public event Action<double, double>? BandChanged;
+
+            private readonly TrackBar _height;
+            private readonly TrackBar _position;
+            private readonly Label _heightValue;
+            private readonly Label _positionValue;
+
+            public BandPopup(string channelTitle, Color channelColor, double height, double position)
+            {
+                var panel = new Panel { Width = 300, Height = 150, BackColor = SurfaceBar, ForeColor = TextPrimary };
+
+                var title = new Label
+                {
+                    Text = $"{channelTitle}: line size",
+                    AutoSize = false,
+                    Bounds = new Rectangle(34, 8, 250, 22),
+                    Font = new Font(SystemFonts.DefaultFont.FontFamily, 9.5f, FontStyle.Bold),
+                    ForeColor = TextPrimary
                 };
-            }
+                var swatch = new Panel { Bounds = new Rectangle(12, 12, 14, 14), BackColor = channelColor };
 
-            public void SetVisible(bool visible)
-            {
-                if (IsChannelVisible == visible) return;
-                IsChannelVisible = visible;
-                ApplyVisualState();
-            }
+                _height = MakeSlider(10, 100, (int)Math.Round(height * 100), new Rectangle(76, 36, 160, 30));
+                _position = MakeSlider(0, 100, (int)Math.Round(position * 100), new Rectangle(76, 72, 160, 30));
+                _heightValue = MakeValueLabel(new Rectangle(238, 38, 56, 22));
+                _positionValue = MakeValueLabel(new Rectangle(238, 74, 56, 22));
 
-            private void ApplyVisualState()
-            {
-                if (IsChannelVisible)
+                var reset = new Button
                 {
-                    BackColor = ChannelHueColor(ChannelName);
-                    ForeColor = UseLightTextOn(BackColor) ? Color.White : Color.Black;
-                }
-                else
+                    Text = "Reset to full",
+                    Bounds = new Rectangle(188, 112, 100, 28),
+                    FlatStyle = FlatStyle.Flat,
+                    BackColor = SurfacePanel,
+                    ForeColor = TextPrimary,
+                    UseVisualStyleBackColor = false
+                };
+                reset.FlatAppearance.BorderColor = BorderControl;
+                reset.Click += (_, _) =>
                 {
-                    BackColor = SurfacePanel;
-                    ForeColor = TextDim;
-                }
+                    _height.Value = 100;
+                    _position.Value = 0;
+                };
+
+                panel.Controls.Add(swatch);
+                panel.Controls.Add(title);
+                panel.Controls.Add(MakeCaption("Height", new Rectangle(12, 40, 64, 22)));
+                panel.Controls.Add(MakeCaption("Position", new Rectangle(12, 76, 64, 22)));
+                panel.Controls.Add(_height);
+                panel.Controls.Add(_position);
+                panel.Controls.Add(_heightValue);
+                panel.Controls.Add(_positionValue);
+                panel.Controls.Add(reset);
+
+                _height.ValueChanged += (_, _) => Changed();
+                _position.ValueChanged += (_, _) => Changed();
+                UpdateLabels();
+
+                Padding = new Padding(1);
+                BackColor = BorderControl;
+                Items.Add(new ToolStripControlHost(panel) { Margin = Padding.Empty, Padding = Padding.Empty, AutoSize = false, Size = panel.Size });
             }
 
-            private static string DisplayLabel(string channelName) => channelName switch
+            private void Changed()
             {
-                "RPM" => "RPM",
-                "Throttle %" => "Throttle",
-                "PowerOut" => "Power Out",
-                "MotorTemp" => "Motor Temp",
-                "MotorTiming" => "Timing",
-                "RaceBox Speed" => "GPS Speed",
-                "RaceBox Distance" => "GPS Distance",
-                "RaceBox G-Force X" => "GPS G-Force",
-                "Logger Throttle %" => "Logger Throttle",
-                "Logger Wheel Speed" => "Wheel Speed",
-                "Logger Wheel rev/s" => "Wheel rev/s",
-                _ => channelName
+                UpdateLabels();
+                BandChanged?.Invoke(_height.Value / 100.0, _position.Value / 100.0);
+            }
+
+            private void UpdateLabels()
+            {
+                _heightValue.Text = $"{_height.Value}%";
+                _position.Enabled = _height.Value < 100;
+                _positionValue.Text = _height.Value >= 100 ? "–"
+                    : _position.Value <= 5 ? "Bottom"
+                    : _position.Value >= 95 ? "Top"
+                    : _position.Value is >= 45 and <= 55 ? "Middle"
+                    : $"{_position.Value}%";
+            }
+
+            private static TrackBar MakeSlider(int min, int max, int value, Rectangle bounds) => new()
+            {
+                Minimum = min,
+                Maximum = max,
+                Value = Math.Clamp(value, min, max),
+                TickStyle = TickStyle.None,
+                SmallChange = 5,
+                LargeChange = 10,
+                Bounds = bounds,
+                BackColor = SurfaceBar
             };
 
-            private static int ButtonWidth(string channelName)
+            private static Label MakeCaption(string text, Rectangle bounds) => new()
             {
-                string text = DisplayLabel(channelName);
-                using var font = new Font(
-                    SystemFonts.DefaultFont.FontFamily,
-                    8f,
-                    FontStyle.Bold);
-                return Math.Max(48, TextRenderer.MeasureText(text, font).Width + 18);
-            }
+                Text = text,
+                AutoSize = false,
+                Bounds = bounds,
+                ForeColor = TextSecond,
+                TextAlign = ContentAlignment.MiddleLeft
+            };
 
-            private static bool UseLightTextOn(Color bg)
+            private static Label MakeValueLabel(Rectangle bounds) => new()
             {
-                int brightness = (bg.R * 299 + bg.G * 587 + bg.B * 114) / 1000;
-                return brightness < 130;
-            }
+                AutoSize = false,
+                Bounds = bounds,
+                ForeColor = TextPrimary,
+                TextAlign = ContentAlignment.MiddleLeft
+            };
         }
     }
 }

@@ -5,6 +5,7 @@ using CastleOverlayV2.Plot;
 using CastleOverlayV2.Services;
 using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -63,6 +64,11 @@ namespace CastleOverlayV2
             _drawer.ChannelVisibilityChanged += OnChannelVisibilityChanged;
             _drawer.RpmModeChanged += OnRpmModeChanged;
             _drawer.ChannelFocused += OnChannelFocused;
+            _drawer.ChannelColorChanged += OnChannelColorChanged;
+            _drawer.ChannelBoldChanged += OnChannelBoldChanged;
+            _drawer.ChannelBandChanged += OnChannelBandChanged;
+            _drawer.SetRpmMode(_isFourPoleMode);
+            ApplySavedChannelDisplay();
             _plot.CursorMoved += OnCursorMoved;
             _plot.AlignmentDragged += OnAlignmentDragged;
             _plot.TrimBeforeRequested += plotX => TrimArmedRun(plotX, before: true);
@@ -816,6 +822,64 @@ namespace CastleOverlayV2
             // SetChannelVisibility updates per-scatter IsVisible and refreshes; no full replot needed.
             _plot.SetChannelVisibility(channelName, isVisible);
             _config.SetChannelVisibility(channelName, isVisible);
+        }
+
+        /// <summary>Restore saved colour / bold / line size choices to the channel list and plot.</summary>
+        private void ApplySavedChannelDisplay()
+        {
+            var cfg = _config.Config;
+            var colors = new Dictionary<string, Color>();
+            foreach (var (name, hex) in cfg.ChannelColors ?? new())
+            {
+                try { colors[name] = ColorTranslator.FromHtml(hex); }
+                catch (Exception) { /* unreadable colour in config: keep the default */ }
+            }
+            var bold = cfg.BoldChannels ?? new();
+            var bands = (cfg.ChannelBands ?? new())
+                .Where(kv => kv.Value != null)
+                .ToDictionary(kv => kv.Key, kv => (kv.Value.Height, kv.Value.Position));
+
+            _drawer.ApplyDisplaySettings(colors, bold, bands);
+            foreach (var (name, color) in colors) _plot.SetChannelColor(name, color);
+            foreach (var name in bold) _plot.SetChannelBold(name, true);
+            foreach (var (name, band) in bands) _plot.SetChannelBand(name, band.Height, band.Position);
+        }
+
+        private void OnChannelColorChanged(string channelName, Color? color)
+        {
+            _plot.SetChannelColor(channelName, color);
+            _config.SetChannelColor(channelName, color is { } c ? ColorTranslator.ToHtml(Color.FromArgb(c.R, c.G, c.B)) : null);
+        }
+
+        private void OnChannelBoldChanged(string channelName, bool bold)
+        {
+            _plot.SetChannelBold(channelName, bold);
+            _config.SetChannelBold(channelName, bold);
+        }
+
+        // Slider drags fire many changes; the plot follows each one, the config file is
+        // written once the slider settles.
+        private System.Windows.Forms.Timer? _bandSaveTimer;
+        private readonly Dictionary<string, (double Height, double Position)> _pendingBandSaves = new();
+
+        private void OnChannelBandChanged(string channelName, double height, double position)
+        {
+            _plot.SetChannelBand(channelName, height, position);
+            _pendingBandSaves[channelName] = (height, position);
+
+            if (_bandSaveTimer == null)
+            {
+                _bandSaveTimer = new System.Windows.Forms.Timer { Interval = 500 };
+                _bandSaveTimer.Tick += (_, _) =>
+                {
+                    _bandSaveTimer!.Stop();
+                    foreach (var (name, band) in _pendingBandSaves)
+                        _config.SetChannelBand(name, band.Height, band.Position);
+                    _pendingBandSaves.Clear();
+                };
+            }
+            _bandSaveTimer.Stop();
+            _bandSaveTimer.Start();
         }
 
         private void OnRpmModeChanged(bool isFourPole)
