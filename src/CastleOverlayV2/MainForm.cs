@@ -21,6 +21,9 @@ namespace CastleOverlayV2
         private RunStrip _runStrip;
         private AlignmentBar _alignmentBar;
         private TunePanel _tunePanel;
+        private TopBar _topBar;
+        private Panel _logsPage;
+        private Panel _tunePage;
         private MainFormPresenter _presenter;
 
         public MainForm(ConfigService configService)
@@ -69,10 +72,7 @@ namespace CastleOverlayV2
             _plotManager.SetInitialChannelVisibility(initialStates);
 
             _channelDrawer = new ChannelDrawer(channelNames, initialStates);
-            Controls.Add(_channelDrawer);
-
             _tunePanel = new TunePanel();
-            Controls.Add(_tunePanel);
 
             // Inject any extra known channels found in config but missing from the default list.
             var allowed = new HashSet<string>(channelNames, StringComparer.OrdinalIgnoreCase);
@@ -85,21 +85,12 @@ namespace CastleOverlayV2
 
             _plotManager.ResetEmptyPlot();
 
-            // Phase 4: the legacy top button panel is replaced by the new RunStrip
-            // (chip-per-slot). The Designer-named buttons inside still exist but are
-            // hidden via topButtonPanel.Visible = false; the runTypeSwitch (Drag/Speed
-            // pill) lives in headerRow's column 1 and stays visible.
+            // The legacy Designer button panel stays hidden; the RunStrip replaces it.
             topButtonPanel.Visible = false;
-            // Dark-theme every container the Designer leaves at default light gray, so
-            // there are no white strips behind the run strip, plot, or pill.
-            var surfaceBar    = Color.FromArgb(0x1B, 0x21, 0x2B);
             var surfaceWindow = Color.FromArgb(0x13, 0x17, 0x1E);
             mainContainer.BackColor = surfaceWindow;
-            headerRow.BackColor = surfaceBar;
-            topButtonPanel.BackColor = surfaceBar;
 
             _runStrip = new RunStrip();
-            Controls.Add(_runStrip); // Dock = Top
             _runStrip.LoadRequested += slot =>
             {
                 if (slot <= 3) _ = _presenter.LoadCastleRunAsync(slot);
@@ -108,11 +99,8 @@ namespace CastleOverlayV2
             _runStrip.ToggleRequested += slot => _presenter.ToggleRun(slot);
             _runStrip.DeleteRequested += slot => _presenter.DeleteRun(slot);
             _runStrip.ArmRequested += slot => _presenter.ToggleAlignmentArm(slot);
-            _runStrip.SettingsRequested += ShowSettingsDialog;
-            _runStrip.AutoLoadRequested += () => _ = _presenter.AutoLoadAsync();
 
             _alignmentBar = new AlignmentBar();
-            Controls.Add(_alignmentBar);
             _alignmentBar.AutoRequested += () => _presenter.AutoAlignArmedRun();
             _alignmentBar.FineNudgeRequested += direction =>
                 _presenter.NudgeArmedRun(direction, coarse: false);
@@ -121,8 +109,34 @@ namespace CastleOverlayV2
             _alignmentBar.ResetRequested += () => _presenter.ResetArmedRun();
             _alignmentBar.CloseRequested += () => _presenter.DisarmAlignment();
 
-            Controls.SetChildIndex(_runStrip, 0);
-            Controls.SetChildIndex(_alignmentBar, 1);
+            // Top bar: page tabs + app-wide actions. The Drag/Speed pill moves here
+            // from the Designer header row, which is then empty and hidden.
+            _topBar = new TopBar();
+            _topBar.HostRunTypeSwitch(runTypeSwitch);
+            headerRow.Visible = false;
+            _topBar.PageSelected += ShowPage;
+            _topBar.AutoLoadRequested += () => _ = _presenter.AutoLoadAsync();
+            _topBar.OpenProjectRequested += () => _presenter.OpenProject();
+            _topBar.SaveProjectRequested += () => _presenter.SaveProject();
+            _topBar.SettingsRequested += ShowSettingsDialog;
+
+            // Logs page: alignment bar (top), channel drawer (bottom), plot (fill).
+            // WinForms docks from the back of the z-order, so the fill control sits at
+            // index 0 to be laid out last.
+            _logsPage = new Panel { Dock = DockStyle.Fill, BackColor = surfaceWindow };
+            Controls.Remove(mainContainer);
+            _logsPage.Controls.Add(mainContainer);
+            _logsPage.Controls.Add(_channelDrawer);
+            _logsPage.Controls.Add(_alignmentBar);
+
+            // Tune page: the tune panel fills it.
+            _tunePage = new Panel { Dock = DockStyle.Fill, BackColor = surfaceWindow, Visible = false };
+            _tunePage.Controls.Add(_tunePanel);
+
+            Controls.Add(_logsPage);
+            Controls.Add(_tunePage);
+            Controls.Add(_runStrip);
+            Controls.Add(_topBar);
 
             // Presenter owns all run state + business logic. It subscribes to plot/toggle events.
             _presenter = new MainFormPresenter(this, _configService, _plotManager, _channelDrawer, _tunePanel);
@@ -213,6 +227,18 @@ namespace CastleOverlayV2
                 _plotManager?.SetVoltageSmoothing(
                     _configService.Config.VoltageSmoothingEnabled,
                     _configService.Config.VoltageSmoothingWindow);
+        }
+
+        public void SetSaveProjectEnabled(bool enabled) => _topBar.SetSaveProjectEnabled(enabled);
+
+        private void ShowPage(AppPage page)
+        {
+            // Alignment nudges use the arrow keys, which the Tune page needs for its fields.
+            if (page != AppPage.Logs && _presenter.IsAlignmentArmed)
+                _presenter.DisarmAlignment();
+
+            _logsPage.Visible = page == AppPage.Logs;
+            _tunePage.Visible = page == AppPage.Tune;
         }
 
         public void ShowError(string title, string message) =>

@@ -71,23 +71,22 @@ namespace CastleOverlayV2
             _tunePanel.AttachTuneRequested += AttachTuneToRun;
             _tunePanel.RadioSettingsChanged += UpdateRadioSettings;
             _tunePanel.SelectedRunChanged += SelectTuneRun;
-            _tunePanel.OpenProjectRequested += OnOpenProjectRequested;
-            _tunePanel.SaveProjectRequested += OnSaveProjectRequested;
 
             RefreshTunePanelRuns();
-            _tunePanel.SetSaveProjectEnabled(IsAnyRunLoaded);
         }
 
-        private void OnOpenProjectRequested()
+        /// <summary>Top bar "Open project": pick a package and restore it.</summary>
+        public void OpenProject()
         {
             string? path = _view.PickProjectFileToOpen();
             if (path == null) return;
             var result = OpenProjectFrom(path);
             if (!result.Ok) ShowResultMessage(result);
-            _tunePanel.SetSaveProjectEnabled(IsAnyRunLoaded);
+            RefreshProjectButtonsState();
         }
 
-        private void OnSaveProjectRequested()
+        /// <summary>Top bar "Save project": pick a destination and save the session.</summary>
+        public void SaveProject()
         {
             string? path = _view.PickProjectFileToSave();
             if (path == null) return;
@@ -720,7 +719,7 @@ namespace CastleOverlayV2
         }
 
         private void RefreshProjectButtonsState() =>
-            _tunePanel.SetSaveProjectEnabled(IsAnyRunLoaded);
+            _view.SetSaveProjectEnabled(IsAnyRunLoaded);
 
         private void RefreshTunePanelRuns()
         {

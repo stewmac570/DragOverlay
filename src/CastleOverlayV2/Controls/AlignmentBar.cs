@@ -88,7 +88,6 @@ namespace CastleOverlayV2.Controls
             _title.Text = $"aligning: {fileName}";
             SetOffset(offsetMs);
             Visible = true;
-            BringToFront();
         }
 
         public void SetOffset(double offsetMs)

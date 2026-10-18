@@ -4,14 +4,9 @@ namespace CastleOverlayV2.Controls
 {
     public sealed class TunePanel : UserControl
     {
-        private const int ExpandedWidth = 460;
-        private const int CollapsedWidth = 36;
-        private const int MinimumExpandedWidth = 340;
-        private const int MaximumExpandedWidth = 760;
-        private const int ResizeGripWidth = 6;
+        // The Tune page fills the window; keep the settings column a readable width.
+        private const int MaxContentWidth = 560;
 
-        private readonly Panel _resizeGrip;
-        private readonly VerticalTextButton _collapseButton;
         private readonly UnifiedScrollPanel _content;
         private readonly FlowLayoutPanel _layout;
         private readonly TableLayoutPanel _curveLayout;
@@ -36,67 +31,19 @@ namespace CastleOverlayV2.Controls
         private readonly TuneCurvePreview _boostCurve;
 
         private readonly Dictionary<int, string> _availableRuns = new();
-        private bool _isCollapsed;
         private bool _isUpdating;
-        private bool _isResizing;
         private bool _performingLayout;
         private string _radioSpeedType = "Normal";
-        private int _resizeStartMouseX;
-        private int _resizeStartWidth;
-        private int _lastExpandedWidth = ExpandedWidth;
 
         public event Action<int?>? AttachTuneRequested;
         public event Action<int, RadioTuneSettings>? RadioSettingsChanged;
         public event Action<int>? SelectedRunChanged;
-        public event Action? OpenProjectRequested;
-        public event Action? SaveProjectRequested;
-
-        private Button? _openProjectButton;
-        private Button? _saveProjectButton;
-
-        public void SetSaveProjectEnabled(bool enabled)
-        {
-            if (_saveProjectButton != null) _saveProjectButton.Enabled = enabled;
-        }
 
         public TunePanel()
         {
-            Dock = DockStyle.Right;
-            Width = ExpandedWidth;
-            MinimumSize = new Size(CollapsedWidth, 0);
+            Dock = DockStyle.Fill;
             BackColor = Color.FromArgb(0x13, 0x17, 0x1E);
             ForeColor = Color.FromArgb(0xE6, 0xE9, 0xEF);
-
-            _resizeGrip = new Panel
-            {
-                Dock = DockStyle.None,
-                Width = ResizeGripWidth,
-                Cursor = Cursors.VSplit,
-                BackColor = Color.FromArgb(0x2C, 0x5A, 0x86)
-            };
-            _resizeGrip.MouseDown += ResizeGrip_MouseDown;
-            _resizeGrip.MouseMove += ResizeGrip_MouseMove;
-            _resizeGrip.MouseUp += ResizeGrip_MouseUp;
-            _resizeGrip.MouseCaptureChanged += (_, _) =>
-            {
-                if (_isResizing && !_resizeGrip.Capture)
-                    CompletePanelResize();
-            };
-            Controls.Add(_resizeGrip);
-
-            _collapseButton = new VerticalTextButton
-            {
-                Dock = DockStyle.None,
-                Width = CollapsedWidth,
-                Text = "Tune",
-                Arrow = "‹",
-                FlatStyle = FlatStyle.Flat,
-                BackColor = Color.FromArgb(0x1D, 0x23, 0x2D),
-                ForeColor = ForeColor
-            };
-            _collapseButton.FlatAppearance.BorderColor = Color.FromArgb(0x33, 0x3B, 0x48);
-            _collapseButton.Click += (_, _) => ToggleCollapsed();
-            Controls.Add(_collapseButton);
 
             _content = new UnifiedScrollPanel
             {
@@ -116,35 +63,9 @@ namespace CastleOverlayV2.Controls
                 BackColor = BackColor
             };
             _content.Controls.Add(_layout);
-            _content.Resize += (_, _) =>
-            {
-                if (!_isResizing)
-                    ResizeContent();
-            };
+            _content.Resize += (_, _) => ResizeContent();
 
             _layout.Controls.Add(CreateTitle("Tune"));
-
-            var projectRow = new TableLayoutPanel
-            {
-                ColumnCount = 2,
-                RowCount = 1,
-                Width = 360,
-                Height = 34,
-                Margin = new Padding(0, 4, 0, 6),
-                BackColor = BackColor
-            };
-            projectRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-            projectRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-            _openProjectButton = CreateButton("Open project");
-            _openProjectButton.Dock = DockStyle.Fill;
-            _openProjectButton.Click += (_, _) => OpenProjectRequested?.Invoke();
-            _saveProjectButton = CreateButton("Save project");
-            _saveProjectButton.Dock = DockStyle.Fill;
-            _saveProjectButton.Enabled = false;
-            _saveProjectButton.Click += (_, _) => SaveProjectRequested?.Invoke();
-            projectRow.Controls.Add(_openProjectButton, 0, 0);
-            projectRow.Controls.Add(_saveProjectButton, 1, 0);
-            _layout.Controls.Add(projectRow);
 
             var attachRow = new TableLayoutPanel
             {
@@ -351,17 +272,6 @@ namespace CastleOverlayV2.Controls
             }
         }
 
-        private void ToggleCollapsed()
-        {
-            _isCollapsed = !_isCollapsed;
-            _content.Visible = !_isCollapsed;
-            _resizeGrip.Visible = !_isCollapsed;
-            Width = _isCollapsed ? CollapsedWidth : _lastExpandedWidth;
-            _collapseButton.Arrow = _isCollapsed ? "›" : "‹";
-            _collapseButton.Invalidate();
-            ArrangePanelRegions();
-        }
-
         protected override void OnResize(EventArgs e)
         {
             base.OnResize(e);
@@ -370,85 +280,11 @@ namespace CastleOverlayV2.Controls
 
         private void ArrangePanelRegions()
         {
-            if (_resizeGrip == null || _collapseButton == null || _content == null)
+            if (_content == null)
                 return;
 
-            if (_isCollapsed)
-            {
-                _collapseButton.SetBounds(0, 0, CollapsedWidth, ClientSize.Height);
-                return;
-            }
-
-            int contentLeft = ResizeGripWidth + CollapsedWidth;
-            _resizeGrip.SetBounds(0, 0, ResizeGripWidth, ClientSize.Height);
-            _collapseButton.SetBounds(
-                ResizeGripWidth,
-                0,
-                CollapsedWidth,
-                ClientSize.Height);
-            _content.SetBounds(
-                contentLeft,
-                0,
-                Math.Max(0, ClientSize.Width - contentLeft),
-                ClientSize.Height);
-
-            if (!_isResizing)
-                ResizeContent();
-        }
-
-        private void ResizeGrip_MouseDown(object? sender, MouseEventArgs e)
-        {
-            if (e.Button != MouseButtons.Left || _isCollapsed)
-                return;
-
-            _isResizing = true;
-            _resizeStartMouseX = Cursor.Position.X;
-            _resizeStartWidth = Width;
-            _resizeGrip.Capture = true;
-            _content.BeginInteractiveResize();
-        }
-
-        private void ResizeGrip_MouseMove(object? sender, MouseEventArgs e)
-        {
-            if (!_isResizing)
-                return;
-
-            int delta = _resizeStartMouseX - Cursor.Position.X;
-            int availableWidth = Parent?.ClientSize.Width ?? MaximumExpandedWidth;
-            int maximum = Math.Min(
-                MaximumExpandedWidth,
-                Math.Max(MinimumExpandedWidth, availableWidth - 420));
-
-            Width = Math.Clamp(_resizeStartWidth + delta, MinimumExpandedWidth, maximum);
-            _lastExpandedWidth = Width;
-
-            int contentLeft = ResizeGripWidth + CollapsedWidth;
-            _content.SetBounds(
-                contentLeft,
-                0,
-                Math.Max(0, ClientSize.Width - contentLeft),
-                ClientSize.Height);
-            _content.Invalidate();
-        }
-
-        private void ResizeGrip_MouseUp(object? sender, MouseEventArgs e)
-        {
-            if (e.Button != MouseButtons.Left)
-                return;
-
-            _resizeGrip.Capture = false;
-            CompletePanelResize();
-        }
-
-        private void CompletePanelResize()
-        {
-            if (!_isResizing)
-                return;
-
-            _isResizing = false;
-            ArrangePanelRegions();
+            _content.SetBounds(0, 0, ClientSize.Width, ClientSize.Height);
             ResizeContent();
-            _content.EndInteractiveResize();
         }
 
         private void ResizeContent()
@@ -468,7 +304,7 @@ namespace CastleOverlayV2.Controls
                 int innerLeft = _content.Padding.Left;
                 int innerTop = _content.Padding.Top;
                 // ClientSize already excludes the native scrollbar; small margin only.
-                int contentWidth = Math.Max(0, _content.ClientSize.Width - _content.Padding.Horizontal - 2);
+                int contentWidth = Math.Clamp(_content.ClientSize.Width - _content.Padding.Horizontal - 2, 0, MaxContentWidth);
 
                 _layout.Width = contentWidth;
                 foreach (Control control in _layout.Controls)
@@ -866,8 +702,6 @@ namespace CastleOverlayV2.Controls
             // ShowScrollBar, which also stopped AutoScroll from moving the content and
             // left ghost trails). Native AutoScroll handles wheel + drag + repaint
             // reliably; these remain only so existing call sites keep compiling.
-            public void BeginInteractiveResize() { }
-            public void EndInteractiveResize() { }
             public void ResetHorizontalScroll() { }
             public void RefreshScrollIndicator() { }
 
@@ -879,36 +713,6 @@ namespace CastleOverlayV2.Controls
 
             [System.Runtime.InteropServices.DllImport("uxtheme.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
             private static extern int SetWindowTheme(IntPtr hWnd, string? pszSubAppName, string? pszSubIdList);
-        }
-
-        private sealed class VerticalTextButton : Button
-        {
-            public string Arrow { get; set; } = "‹";
-
-            protected override void OnPaint(PaintEventArgs e)
-            {
-                e.Graphics.Clear(BackColor);
-                string verticalText = string.Join(
-                    Environment.NewLine,
-                    Text.ToUpperInvariant().ToCharArray());
-                Size textSize = TextRenderer.MeasureText(
-                    verticalText,
-                    Font,
-                    new Size(Width, Height),
-                    TextFormatFlags.HorizontalCenter | TextFormatFlags.NoPadding);
-                int textTop = Math.Max(0, (Height - textSize.Height) / 2);
-                TextRenderer.DrawText(
-                    e.Graphics,
-                    verticalText,
-                    Font,
-                    new Rectangle(0, textTop, Width, textSize.Height),
-                    ForeColor,
-                    TextFormatFlags.HorizontalCenter |
-                    TextFormatFlags.VerticalCenter |
-                    TextFormatFlags.NoPadding);
-
-                ControlPaint.DrawBorder(e.Graphics, ClientRectangle, FlatAppearance.BorderColor, ButtonBorderStyle.Solid);
-            }
         }
     }
 }
