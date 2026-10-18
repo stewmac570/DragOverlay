@@ -31,6 +31,15 @@ namespace CastleOverlayV2.Plot
         // Cursor
         private VerticalLine _cursor;
         private readonly Controls.CursorReadout _readout = new();
+        private readonly HashSet<string> _readoutChannels = new(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>Which channels the cursor box shows (picked in the channel list).</summary>
+        public void SetReadoutChannels(IEnumerable<string> channels)
+        {
+            _readoutChannels.Clear();
+            foreach (var c in channels) _readoutChannels.Add(c);
+            if (_readoutChannels.Count == 0) _readout.Visible = false;
+        }
 
         // Lines and lookups
         private readonly List<Scatter> _scatters = new();
@@ -1068,6 +1077,7 @@ namespace CastleOverlayV2.Plot
             var lines = new List<Controls.CursorReadout.Line>();
             foreach (var channel in ChannelText.Order)
             {
+                if (!_readoutChannels.Contains(channel)) continue;
                 if (!values.TryGetValue(channel, out var v) || v.All(x => !x.HasValue)) continue;
                 var c = GetTraceColor(channel);
                 lines.Add(new Controls.CursorReadout.Line(

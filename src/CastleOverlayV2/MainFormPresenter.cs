@@ -70,6 +70,15 @@ namespace CastleOverlayV2
             _drawer.ChannelBandChanged += OnChannelBandChanged;
             _drawer.SetRpmMode(_isFourPoleMode);
             _drawer.SetPanelWidth(_config.Config.ChannelListWidth);
+            var cursorChannels = _config.Config.CursorChannels ?? new List<string>();
+            _drawer.SetCursorChannels(cursorChannels);
+            _plot.SetReadoutChannels(cursorChannels);
+            _drawer.CursorChannelsChanged += picked =>
+            {
+                _plot.SetReadoutChannels(picked);
+                _config.Config.CursorChannels = picked.ToList();
+                _config.Save();
+            };
             _drawer.PanelWidthChanged += width =>
             {
                 _config.Config.ChannelListWidth = width;
