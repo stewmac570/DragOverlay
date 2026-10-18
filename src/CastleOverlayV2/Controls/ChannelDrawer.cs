@@ -22,7 +22,7 @@ namespace CastleOverlayV2.Controls
         // ---- Theme tokens ---------------------------------------------------
         private static readonly Color SurfacePanel = Color.FromArgb(0x16, 0x1B, 0x23);
         private static readonly Color SurfaceBar = Color.FromArgb(0x1B, 0x21, 0x2B);
-        private static readonly Color SurfaceRowFocus = Color.FromArgb(0x17, 0x22, 0x30);
+        private static readonly Color SurfaceRowPicked = Color.FromArgb(0x1C, 0x2E, 0x45);
         private static readonly Color TextPrimary = Color.FromArgb(0xE6, 0xE9, 0xEF);
         private static readonly Color TextAccent = Color.FromArgb(0x9A, 0xC7, 0xF2);
         private static readonly Color TextSecond = Color.FromArgb(0x9A, 0xA3, 0xB2);
@@ -46,6 +46,8 @@ namespace CastleOverlayV2.Controls
         public event Action<string, bool>? ChannelBoldChanged;
         /// <summary>Line size changed: channel, height (0.1..1), position (0 bottom..1 top).</summary>
         public event Action<string, double, double>? ChannelBandChanged;
+        /// <summary>The set of channels picked for the cursor box changed.</summary>
+        public event Action<IReadOnlyCollection<string>>? CursorChannelsChanged;
         /// <summary>The user finished dragging the list's right edge to this width.</summary>
         public event Action<int>? PanelWidthChanged;
 
@@ -56,6 +58,8 @@ namespace CastleOverlayV2.Controls
         private readonly Dictionary<ChannelGroup, GroupHeader> _groups = new();
         private readonly Dictionary<string, Color> _colors = new(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string> _bold = new(StringComparer.OrdinalIgnoreCase);
+        // Channels picked (by clicking their row) to show in the box that follows the chart cursor.
+        private readonly HashSet<string> _picked = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, (double Height, double Position)> _bands = new(StringComparer.OrdinalIgnoreCase);
 
         private readonly Panel _scroll;
@@ -221,8 +225,9 @@ namespace CastleOverlayV2.Controls
             row.SetBold(_bold.Contains(channelName));
             row.SetBandActive(_bands.ContainsKey(channelName));
             row.SetFocused(channelName == _focusedChannel);
+            row.SetPicked(_picked.Contains(channelName));
             row.VisibilityToggled += (n, v) => ChannelVisibilityChanged?.Invoke(n, v);
-            row.NameClicked += n => ChannelFocused?.Invoke(n);
+            row.NameClicked += TogglePicked;
             row.ColorClicked += PickColor;
             row.ColorResetClicked += n =>
             {
@@ -250,6 +255,27 @@ namespace CastleOverlayV2.Controls
             if (_rows.TryGetValue(_focusedChannel, out var prev)) prev.SetFocused(false);
             _focusedChannel = channelName;
             if (_rows.TryGetValue(channelName, out var next)) next.SetFocused(true);
+        }
+
+        /// <summary>Saved cursor-box picks. Also applied to channels added later.</summary>
+        public void SetCursorChannels(IEnumerable<string> channels)
+        {
+            _picked.Clear();
+            foreach (var c in channels) _picked.Add(c);
+            foreach (var (name, row) in _rows) row.SetPicked(_picked.Contains(name));
+        }
+
+        public IReadOnlyCollection<string> CursorChannels => _picked;
+
+        // Clicking a row adds it to the cursor box (and gives it the chart's Y axis);
+        // clicking it again takes it off.
+        private void TogglePicked(string channelName)
+        {
+            bool picked = !_picked.Contains(channelName);
+            if (picked) _picked.Add(channelName); else _picked.Remove(channelName);
+            _rows[channelName].SetPicked(picked);
+            CursorChannelsChanged?.Invoke(_picked);
+            if (picked) ChannelFocused?.Invoke(channelName);
         }
 
         /// <summary>Apply visibility states from a project. Unknown channels are ignored.</summary>
@@ -565,6 +591,7 @@ namespace CastleOverlayV2.Controls
             private readonly Label[] _values = new Label[3];
             private readonly ToolTip _toolTip;
             private bool _focused;
+            private bool _picked;
 
             public ChannelRow(string channelName, bool initialVisible, ToolTip toolTip)
             {
@@ -610,6 +637,8 @@ namespace CastleOverlayV2.Controls
                     Cursor = Cursors.Hand
                 };
                 _name.Click += (_, _) => NameClicked?.Invoke(ChannelName);
+                Click += (_, _) => NameClicked?.Invoke(ChannelName);
+                Cursor = Cursors.Hand;
 
                 for (int i = 0; i < 3; i++)
                 {
@@ -620,6 +649,7 @@ namespace CastleOverlayV2.Controls
                         TextAlign = ContentAlignment.MiddleRight,
                         Font = new Font(SystemFonts.DefaultFont.FontFamily, 9f)
                     };
+                    _values[i].Click += (_, _) => NameClicked?.Invoke(ChannelName);
                     Controls.Add(_values[i]);
                 }
 
@@ -657,6 +687,12 @@ namespace CastleOverlayV2.Controls
                 base.OnPaint(e);
                 using var pen = new Pen(SurfaceBar);
                 e.Graphics.DrawLine(pen, 0, Height - 1, Width, Height - 1);
+                if (_picked)
+                {
+                    // Accent bar on the left edge marks a channel shown in the cursor box.
+                    using var bar = new SolidBrush(AccentBlue);
+                    e.Graphics.FillRectangle(bar, 0, 0, 4, Height);
+                }
             }
 
             public void SetChannelVisible(bool visible)
@@ -665,10 +701,16 @@ namespace CastleOverlayV2.Controls
                 ApplyVisibleState();
             }
 
+            public void SetPicked(bool picked)
+            {
+                _picked = picked;
+                BackColor = picked ? SurfaceRowPicked : SurfacePanel;
+                Invalidate();
+            }
+
             public void SetFocused(bool focused)
             {
                 _focused = focused;
-                BackColor = focused ? SurfaceRowFocus : SurfacePanel;
                 _name.Font = new Font(SystemFonts.DefaultFont.FontFamily, 9f, focused ? FontStyle.Bold : FontStyle.Regular);
                 ApplyVisibleState();
             }
@@ -689,7 +731,7 @@ namespace CastleOverlayV2.Controls
 
             public void SetStats(IEnumerable<string> lines)
             {
-                string tip = DisplayName(ChannelName) + "  (click the name to put its scale on the chart)";
+                string tip = DisplayName(ChannelName) + "  (click the row to show it in the cursor box)";
                 var list = lines.ToList();
                 if (list.Count > 0)
                     tip += Environment.NewLine + string.Join(Environment.NewLine, list);
