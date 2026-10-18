@@ -36,5 +36,8 @@ namespace CastleOverlayV2
 
         // Settings
         void ShowSettingsDialog();
+
+        // Project
+        void SetSaveProjectEnabled(bool enabled);
     }
 }

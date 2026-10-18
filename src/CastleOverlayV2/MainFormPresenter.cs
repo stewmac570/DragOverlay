@@ -5,6 +5,7 @@ using CastleOverlayV2.Plot;
 using CastleOverlayV2.Services;
 using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -33,7 +34,8 @@ namespace CastleOverlayV2
         private bool _isFourPoleMode;
         private bool _isSpeedRunMode;
         private int? _armedSlot;
-        private int? _selectedTuneSlot;
+        // A tune opened with no Castle run loaded, shown on the Tune page as a preview.
+        private TuneSettings? _previewTune;
 
         // Cleanup tracker for the temp-extracted project (issue #87).
         private string? _activeProjectTempDir;
@@ -63,6 +65,17 @@ namespace CastleOverlayV2
             _drawer.ChannelVisibilityChanged += OnChannelVisibilityChanged;
             _drawer.RpmModeChanged += OnRpmModeChanged;
             _drawer.ChannelFocused += OnChannelFocused;
+            _drawer.ChannelColorChanged += OnChannelColorChanged;
+            _drawer.ChannelBoldChanged += OnChannelBoldChanged;
+            _drawer.ChannelBandChanged += OnChannelBandChanged;
+            _drawer.SetRpmMode(_isFourPoleMode);
+            _drawer.SetPanelWidth(_config.Config.ChannelListWidth);
+            _drawer.PanelWidthChanged += width =>
+            {
+                _config.Config.ChannelListWidth = width;
+                _config.Save();
+            };
+            ApplySavedChannelDisplay();
             _plot.CursorMoved += OnCursorMoved;
             _plot.AlignmentDragged += OnAlignmentDragged;
             _plot.TrimBeforeRequested += plotX => TrimArmedRun(plotX, before: true);
@@ -70,24 +83,22 @@ namespace CastleOverlayV2
             _plot.TrimResetRequested += ResetArmedRunTrim;
             _tunePanel.AttachTuneRequested += AttachTuneToRun;
             _tunePanel.RadioSettingsChanged += UpdateRadioSettings;
-            _tunePanel.SelectedRunChanged += SelectTuneRun;
-            _tunePanel.OpenProjectRequested += OnOpenProjectRequested;
-            _tunePanel.SaveProjectRequested += OnSaveProjectRequested;
 
             RefreshTunePanelRuns();
-            _tunePanel.SetSaveProjectEnabled(IsAnyRunLoaded);
         }
 
-        private void OnOpenProjectRequested()
+        /// <summary>Top bar "Open project": pick a package and restore it.</summary>
+        public void OpenProject()
         {
             string? path = _view.PickProjectFileToOpen();
             if (path == null) return;
             var result = OpenProjectFrom(path);
             if (!result.Ok) ShowResultMessage(result);
-            _tunePanel.SetSaveProjectEnabled(IsAnyRunLoaded);
+            RefreshProjectButtonsState();
         }
 
-        private void OnSaveProjectRequested()
+        /// <summary>Top bar "Save project": pick a destination and save the session.</summary>
+        public void SaveProject()
         {
             string? path = _view.PickProjectFileToSave();
             if (path == null) return;
@@ -139,7 +150,6 @@ namespace CastleOverlayV2
 
                 loaded.SourcePath = path;
                 _runs[slot] = loaded;
-                _selectedTuneSlot = slot;
                 Logger.Log($"Loaded Run {slot} - {Path.GetFileName(path)} - {loaded.DataPoints.Count} rows");
 
                 _plot.SetRun(slot, loaded);
@@ -421,9 +431,6 @@ namespace CastleOverlayV2
             _runs.Remove(slot);
             _view.ResetSlotUI(slot);
 
-            if (_selectedTuneSlot == slot)
-                _selectedTuneSlot = null;
-
             if (_plot.GetRunVisibility(slot))
                 _plot.ToggleRunVisibility(slot);
 
@@ -583,14 +590,14 @@ namespace CastleOverlayV2
                 if (previousRadio != null)
                     run.Tune.Radio = previousRadio;
 
-                _selectedTuneSlot = slot.Value;
                 Logger.Log($"Attached tune to Run {slot.Value}: {Path.GetFileName(path)}");
                 RefreshTunePanelRuns();
             }
             else
             {
                 Logger.Log($"Previewed tune without a loaded run: {Path.GetFileName(path)}");
-                _tunePanel.SetTune(null, result.Value);
+                _previewTune = result.Value;
+                RefreshTunePanelRuns();
             }
         }
 
@@ -617,7 +624,6 @@ namespace CastleOverlayV2
             if (previousRadio != null)
                 run.Tune.Radio = previousRadio;
 
-            _selectedTuneSlot = slot;
             Logger.Log($"Auto Load: attached tune to Run {slot}: {Path.GetFileName(path)}");
             RefreshTunePanelRuns();
         }
@@ -710,38 +716,25 @@ namespace CastleOverlayV2
 
             run.Tune ??= new TuneSettings();
             run.Tune.Radio = settings;
-            _selectedTuneSlot = slot;
-        }
-
-        private void SelectTuneRun(int slot)
-        {
-            _selectedTuneSlot = slot;
-            _tunePanel.SetTune(slot, _runs.TryGetValue(slot, out var run) ? run.Tune : null);
         }
 
         private void RefreshProjectButtonsState() =>
-            _tunePanel.SetSaveProjectEnabled(IsAnyRunLoaded);
+            _view.SetSaveProjectEnabled(IsAnyRunLoaded);
 
         private void RefreshTunePanelRuns()
         {
-            var castleSlots = _runs
+            var columns = _runs
                 .Where(kvp => kvp.Key <= 3 && !kvp.Value.IsRaceBox)
-                .Select(kvp => kvp.Key)
-                .OrderBy(slot => slot)
+                .OrderBy(kvp => kvp.Key)
+                .Select(kvp => new TuneRunColumn(kvp.Key, Path.GetFileName(kvp.Value.SourcePath ?? ""), kvp.Value.Tune))
                 .ToList();
 
-            if (_selectedTuneSlot.HasValue && !castleSlots.Contains(_selectedTuneSlot.Value))
-                _selectedTuneSlot = null;
+            if (columns.Count > 0)
+                _previewTune = null; // a real run replaces the preview
+            else if (_previewTune != null)
+                columns.Add(new TuneRunColumn(0, "", _previewTune));
 
-            int? selected = _selectedTuneSlot ?? castleSlots.FirstOrDefault();
-            if (selected == 0)
-                selected = null;
-
-            _tunePanel.SetAvailableRuns(castleSlots, selected);
-            _tunePanel.SetTune(
-                selected,
-                selected.HasValue && _runs.TryGetValue(selected.Value, out var run) ? run.Tune : null);
-
+            _tunePanel.SetRuns(columns);
             RefreshProjectButtonsState();
         }
 
@@ -817,6 +810,64 @@ namespace CastleOverlayV2
             // SetChannelVisibility updates per-scatter IsVisible and refreshes; no full replot needed.
             _plot.SetChannelVisibility(channelName, isVisible);
             _config.SetChannelVisibility(channelName, isVisible);
+        }
+
+        /// <summary>Restore saved colour / bold / line size choices to the channel list and plot.</summary>
+        private void ApplySavedChannelDisplay()
+        {
+            var cfg = _config.Config;
+            var colors = new Dictionary<string, Color>();
+            foreach (var (name, hex) in cfg.ChannelColors ?? new())
+            {
+                try { colors[name] = ColorTranslator.FromHtml(hex); }
+                catch (Exception) { /* unreadable colour in config: keep the default */ }
+            }
+            var bold = cfg.BoldChannels ?? new();
+            var bands = (cfg.ChannelBands ?? new())
+                .Where(kv => kv.Value != null)
+                .ToDictionary(kv => kv.Key, kv => (kv.Value.Height, kv.Value.Position));
+
+            _drawer.ApplyDisplaySettings(colors, bold, bands);
+            foreach (var (name, color) in colors) _plot.SetChannelColor(name, color);
+            foreach (var name in bold) _plot.SetChannelBold(name, true);
+            foreach (var (name, band) in bands) _plot.SetChannelBand(name, band.Height, band.Position);
+        }
+
+        private void OnChannelColorChanged(string channelName, Color? color)
+        {
+            _plot.SetChannelColor(channelName, color);
+            _config.SetChannelColor(channelName, color is { } c ? ColorTranslator.ToHtml(Color.FromArgb(c.R, c.G, c.B)) : null);
+        }
+
+        private void OnChannelBoldChanged(string channelName, bool bold)
+        {
+            _plot.SetChannelBold(channelName, bold);
+            _config.SetChannelBold(channelName, bold);
+        }
+
+        // Slider drags fire many changes; the plot follows each one, the config file is
+        // written once the slider settles.
+        private System.Windows.Forms.Timer? _bandSaveTimer;
+        private readonly Dictionary<string, (double Height, double Position)> _pendingBandSaves = new();
+
+        private void OnChannelBandChanged(string channelName, double height, double position)
+        {
+            _plot.SetChannelBand(channelName, height, position);
+            _pendingBandSaves[channelName] = (height, position);
+
+            if (_bandSaveTimer == null)
+            {
+                _bandSaveTimer = new System.Windows.Forms.Timer { Interval = 500 };
+                _bandSaveTimer.Tick += (_, _) =>
+                {
+                    _bandSaveTimer!.Stop();
+                    foreach (var (name, band) in _pendingBandSaves)
+                        _config.SetChannelBand(name, band.Height, band.Position);
+                    _pendingBandSaves.Clear();
+                };
+            }
+            _bandSaveTimer.Stop();
+            _bandSaveTimer.Start();
         }
 
         private void OnRpmModeChanged(bool isFourPole)
@@ -1132,7 +1183,6 @@ namespace CastleOverlayV2
                     _view.ResetSlotUI(slot);
                 }
             }
-            _selectedTuneSlot = null;
 
             // Apply manifest-level state.
             _isSpeedRunMode = restored.Manifest.RunMode == ProjectRunMode.Speed;
@@ -1164,8 +1214,6 @@ namespace CastleOverlayV2
             _plot.RefreshPlot();
 
             // Pick the first Castle slot for the tune panel (or first run if no Castle).
-            _selectedTuneSlot = restored.RunsBySlot.Keys.Where(s => s <= 3).OrderBy(s => s).FirstOrDefault();
-            if (_selectedTuneSlot == 0) _selectedTuneSlot = null;
             RefreshTunePanelRuns();
             _view.UpdateRunTypeLockState();
 

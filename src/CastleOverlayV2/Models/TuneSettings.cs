@@ -38,5 +38,9 @@ namespace CastleOverlayV2.Models
         public string SampleFrequency { get; set; } = "";
 
         public RadioTuneSettings Radio { get; set; } = new();
+
+        /// <summary>Every "Key: Value" line from the .dat file, for the side-by-side tune comparison.</summary>
+        public IReadOnlyDictionary<string, string> Fields { get; set; } =
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
     }
 }

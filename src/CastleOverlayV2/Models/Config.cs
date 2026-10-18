@@ -3,6 +3,13 @@ using System.Collections.Generic;
 namespace CastleOverlayV2.Models
 {
 
+    /// <summary>Line size for one channel: Height 0.1..1 of the chart, Position 0 (bottom)..1 (top).</summary>
+    public class ChannelBand
+    {
+        public double Height { get; set; } = 1.0;
+        public double Position { get; set; } = 0.0;
+    }
+
     public class Config
     {
         public bool IsFourPoleMode { get; set; } = false;
@@ -25,6 +32,15 @@ namespace CastleOverlayV2.Models
         // ---- Voltage smoothing (Settings dialog) --------------------------
         public bool VoltageSmoothingEnabled { get; set; } = false;
         public int VoltageSmoothingWindow { get; set; } = 5; // odd, 3..15
+
+        // ---- Channel list display choices (Logs page) ---------------------
+        // Channel name -> "#RRGGBB". Missing = the default palette colour.
+        public Dictionary<string, string> ChannelColors { get; set; } = new();
+        public List<string> BoldChannels { get; set; } = new();
+        // Width of the channel list (dragged by its right edge).
+        public int ChannelListWidth { get; set; } = 400;
+        // Channel name -> share of the chart height and where that band sits.
+        public Dictionary<string, ChannelBand> ChannelBands { get; set; } = new();
 
 
         public Config()

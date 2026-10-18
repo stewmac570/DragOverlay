@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Build / Run
 
-The repo has no test project and no automated lint. Build, run, and publish from `src/CastleOverlayV2/`:
+There is no automated lint. Tests live in `Tests/CastleOverlayV2.Tests` (xUnit; `dotnet test Tests/CastleOverlayV2.Tests/CastleOverlayV2.Tests.csproj`). Build, run, and publish from `src/CastleOverlayV2/`:
 
 ```powershell
 dotnet build src/CastleOverlayV2/CastleOverlayV2.csproj -c Release
@@ -29,14 +29,16 @@ Treat these versions as constraints, not suggestions:
 
 ## Architecture
 
-Data flows in one direction: **CSV → Loader → `RunData` → `PlotManager` → ScottPlot `FormsPlot`**. `MainForm` owns the slots and wires button clicks into the pipeline. `ConfigService` reads/writes user prefs to `%AppData%\Roaming\DragOverlay\config.json`.
+The window is a top bar (Logs / Tune tabs), the run strip, then one page. The Logs page is the channel list (left) and the plot; the Tune page compares every run's tune. See `Docs/UI_Layout_Plan.md`.
+
+Data flows in one direction: **CSV → Loader → `RunData` → `PlotManager` → ScottPlot `FormsPlot`**. `MainFormPresenter` owns the runs and all business logic; `MainForm` is the view (`IMainView`) and forwards control events to it. `ConfigService` reads/writes user prefs to `%AppData%\Roaming\DragOverlay\config.json`.
 
 ### Slot model (read carefully — it's load-bearing)
 
-`MainForm` holds **six** `RunData` fields, but they represent two parallel sets:
+`MainFormPresenter` keeps runs in `_runs` (`Dictionary<int, RunData>`), keyed by slot, as two parallel sets:
 
-- Castle slots 1–3 → `run1`, `run2`, `run3` (fields on `MainForm`)
-- RaceBox slots 1–3 → `run4`, `run5`, `run6` in `MainForm`; surfaced separately as `raceBox1/2/3` of type `RaceBoxData`
+- Castle slots 1–3
+- RaceBox / Mini Logger slots 4–6 (UI slot 1–3 + 3); RaceBox header metadata is held separately as `_raceBox1/2/3` (`RaceBoxData`)
 - In `PlotManager`, RaceBox uses **plot slot = UI slot + 3** (so UI RaceBox slot 1 is plot slot 4)
 - `LineStyleHelper.GetLinePattern(slot - 1)` indexes off the plot slot — keep that mapping intact when touching either side
 
@@ -73,7 +75,6 @@ The Castle CSV header sets `CsvConfiguration(CultureInfo.InvariantCulture)`, but
 - **Missing `Power-Out` column**: `CsvLoader` now warns and aborts (`e2035d4`) rather than silently returning empty `DataPoints`. Don't reintroduce the silent path.
 - **Hover scan**: `PlotManager`'s mouse hover is now a single linear pass (`f56292f`) — don't re-add per-pixel `Array.Sort` / `BinarySearch` over every scatter.
 - **GovGain**: referenced in docs and README but **not implemented** — no axis, no color, no entry in `GetChannelsWithRaw`. Treat it as not-yet-supported, not as broken.
-- **`run1`..`run6` field layout**: every new Castle/RaceBox feature touches ~15 sites in `MainForm` because of this. A `Dictionary<int, RunData>` refactor is on the wishlist but not done — when you must add a slot, grep for all six names rather than copy/pasting one block.
 - Services (`CsvLoader`, `RaceBoxLoader`) currently call `MessageBox.Show` directly. That makes them un-unit-testable and unsafe off the UI thread — don't add new direct UI calls there if there's another way.
 
 ## Project layout
@@ -81,7 +82,9 @@ The Castle CSV header sets `CsvConfiguration(CultureInfo.InvariantCulture)`, but
 ```
 src/CastleOverlayV2/
 ├─ Program.cs, MainForm.cs(/.Designer.cs/.resx)
-├─ Controls/   ChannelDrawer (collapsible drawer + stat cards)
+├─ MainFormPresenter.cs, IMainView.cs
+├─ Controls/   TopBar (Logs/Tune tabs + actions), RunStrip, ChannelDrawer (left channel list),
+│              AlignmentBar, TunePanel (Tune page: side-by-side tune comparison), TuneCurvePreview
 ├─ Models/     RunData, DataPoint, Config, RaceBoxData, RaceBoxPoint
 ├─ Services/   CsvLoader, RaceBoxLoader, ConfigService, Logger, ThrottlePercent
 ├─ Plot/       PlotManager (all ScottPlot setup lives here)
@@ -90,7 +93,7 @@ src/CastleOverlayV2/
 Docs/          FEATURES, DELIVERY_PLAN, STRUCTURE, DEVELOPMENT_LOG, audit/
 installer/     installer.iss (Inno Setup)
 publish/       output of `dotnet publish` (ignored by IDE, used by installer)
-Tests/         WorkingMWE (rollback reference only — no test project)
+Tests/         CastleOverlayV2.Tests (xUnit), sample logs and tunes, WorkingMWE (rollback reference)
 ```
 
 ## Development workflow — MANDATORY

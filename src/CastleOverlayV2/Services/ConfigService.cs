@@ -111,6 +111,27 @@ namespace CastleOverlayV2.Services
             Save();
         }
 
+        public void SetChannelColor(string channelName, string? hex)
+        {
+            if (hex == null) _config.ChannelColors.Remove(channelName);
+            else _config.ChannelColors[channelName] = hex;
+            Save();
+        }
+
+        public void SetChannelBold(string channelName, bool bold)
+        {
+            _config.BoldChannels.Remove(channelName);
+            if (bold) _config.BoldChannels.Add(channelName);
+            Save();
+        }
+
+        public void SetChannelBand(string channelName, double height, double position)
+        {
+            if (height >= 1.0) _config.ChannelBands.Remove(channelName);
+            else _config.ChannelBands[channelName] = new ChannelBand { Height = height, Position = position };
+            Save();
+        }
+
         public bool IsDebugLoggingEnabled() => _config?.EnableDebugLogging ?? false;
 
         public string GetBuildNumber() => _config?.BuildNumber ?? "unknown";

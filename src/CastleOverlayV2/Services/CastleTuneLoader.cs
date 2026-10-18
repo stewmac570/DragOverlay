@@ -68,6 +68,7 @@ namespace CastleOverlayV2.Services
                 fields[key] = value;
             }
 
+            tune.Fields = fields;
             tune.DeviceName = Get(fields, "Device Name");
             tune.Firmware = Get(fields, "Current Firmware");
             tune.MaxPower = Get(fields, "Max Power");

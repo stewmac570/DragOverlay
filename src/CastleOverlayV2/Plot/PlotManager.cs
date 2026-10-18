@@ -30,6 +30,7 @@ namespace CastleOverlayV2.Plot
 
         // Cursor
         private VerticalLine _cursor;
+        private readonly Controls.CursorReadout _readout = new();
 
         // Lines and lookups
         private readonly List<Scatter> _scatters = new();
@@ -46,6 +47,12 @@ namespace CastleOverlayV2.Plot
 
         // Line widths per focus state (spec §6.3).
         private const float FocusedLineWidth = 2.0f;
+        private const float BoldLineWidth = 4.0f;
+
+        // Per-channel display choices from the channel list (colour, bold, line size).
+        private readonly Dictionary<string, ScottPlot.Color> _colorOverrides = new(StringComparer.OrdinalIgnoreCase);
+        private readonly HashSet<string> _boldChannels = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, (double Height, double Position)> _channelBands = new(StringComparer.OrdinalIgnoreCase);
 
         // Dark theme tokens (from Docs/DragOverlay_UI_Spec.md §5).
         private static readonly ScottPlot.Color ThemePlotBg = new(0x0E, 0x12, 0x18);   // surface.plot
@@ -236,6 +243,8 @@ namespace CastleOverlayV2.Plot
             _plot.Plot.Grid.MinorLineWidth = 1;
 
             _plot.MouseMove += FormsPlot_MouseMove;
+            _plot.MouseLeave += (_, _) => _readout.Visible = false;
+            _plot.Controls.Add(_readout);
             _plot.MouseDown += FormsPlot_MouseDown;
             _plot.MouseUp += FormsPlot_MouseUp;
 
@@ -316,9 +325,88 @@ namespace CastleOverlayV2.Plot
         /// Stable full-opacity channel hue.
         /// </summary>
         private ScottPlot.Color GetTraceColor(string channelLabel)
-            => ChannelColorMap.GetColor(channelLabel);
+            => _colorOverrides.TryGetValue(channelLabel, out var c) ? c : ChannelColorMap.GetColor(channelLabel);
 
-        private static float WidthFor(string channelLabel) => FocusedLineWidth;
+        private float WidthFor(string channelLabel) =>
+            _boldChannels.Contains(channelLabel) ? BoldLineWidth : FocusedLineWidth;
+
+        /// <summary>Override a channel's trace colour (null restores the default palette colour).</summary>
+        public void SetChannelColor(string channelName, System.Drawing.Color? color)
+        {
+            if (color is { } c)
+                _colorOverrides[channelName] = new ScottPlot.Color(c.R, c.G, c.B);
+            else
+                _colorOverrides.Remove(channelName);
+
+            foreach (var s in _scatters)
+                if (string.Equals(s.LegendText, channelName, StringComparison.OrdinalIgnoreCase))
+                    s.Color = GetTraceColor(s.LegendText);
+
+            ApplyFocusToAxes();
+            _plot.Refresh();
+        }
+
+        /// <summary>Draw a channel's lines bold (thicker) or normal.</summary>
+        public void SetChannelBold(string channelName, bool bold)
+        {
+            if (bold) _boldChannels.Add(channelName);
+            else _boldChannels.Remove(channelName);
+
+            foreach (var s in _scatters)
+                if (string.Equals(s.LegendText, channelName, StringComparison.OrdinalIgnoreCase))
+                    s.LineWidth = WidthFor(s.LegendText);
+
+            _plot.Refresh();
+        }
+
+        /// <summary>
+        /// Squeeze a channel into part of the chart height. <paramref name="height"/> is the
+        /// share of the chart it uses (0.1..1); <paramref name="position"/> moves that band
+        /// from the bottom (0) to the top (1). Channels that share a Y axis share the band.
+        /// </summary>
+        public void SetChannelBand(string channelName, double height, double position)
+        {
+            height = Math.Clamp(height, 0.1, 1.0);
+            position = Math.Clamp(position, 0.0, 1.0);
+            if (height >= 1.0)
+                _channelBands.Remove(channelName);
+            else
+                _channelBands[channelName] = (height, position);
+
+            ReapplyAxisLocks();
+            _plot.Refresh();
+        }
+
+        /// <summary>
+        /// Lock a data axis to [min, max], widened so the data lands in the band set by
+        /// <see cref="SetChannelBand"/> for any channel drawn on that axis.
+        /// </summary>
+        private void AddLock(IYAxis axis, double min, double max)
+        {
+            foreach (var (channel, band) in _channelBands)
+            {
+                if (!ReferenceEquals(AxisFor(channel), axis)) continue;
+
+                var (axisMin, axisMax) = BandAxisRange(min, max, band.Height, band.Position);
+                _plot.Plot.Axes.Rules.Add(new LockedVertical(axis, axisMin, axisMax));
+                return;
+            }
+
+            _plot.Plot.Axes.Rules.Add(new LockedVertical(axis, min, max));
+        }
+
+        /// <summary>
+        /// Axis range that draws data spanning [min, max] inside a band of the chart:
+        /// <paramref name="height"/> is the band's share of the chart (0..1], and
+        /// <paramref name="position"/> slides it from the bottom (0) to the top (1).
+        /// </summary>
+        public static (double Min, double Max) BandAxisRange(double min, double max, double height, double position)
+        {
+            double bottom = position * (1.0 - height);
+            double axisSpan = (max - min) / height;
+            double axisMin = min - bottom * axisSpan;
+            return (axisMin, axisMin + axisSpan);
+        }
 
         // ---------------- Public API ----------------
 
@@ -748,7 +836,7 @@ namespace CastleOverlayV2.Plot
             var focusAxis = AxisFor(_focusedChannel);
             if (focusAxis is not null)
             {
-                var hue = ChannelColorMap.GetColor(_focusedChannel);
+                var hue = GetTraceColor(_focusedChannel);
                 focusAxis.Label.IsVisible = true;
                 focusAxis.TickLabelStyle.IsVisible = true;
                 focusAxis.MajorTickStyle.Length = 5;
@@ -801,14 +889,14 @@ namespace CastleOverlayV2.Plot
                 _plot.Plot.Axes.Rules.Remove(r);
 
             if (raceBoxSpeedAxis is not null)
-                _plot.Plot.Axes.Rules.Add(new LockedVertical(raceBoxSpeedAxis, 0, 110));
+                AddLock(raceBoxSpeedAxis, 0, 110);
             if (raceBoxGxAxis is not null)
-                _plot.Plot.Axes.Rules.Add(new LockedVertical(raceBoxGxAxis, -5, 7));
+                AddLock(raceBoxGxAxis, -5, 7);
             if (raceBoxDistanceAxis is not null)
-                _plot.Plot.Axes.Rules.Add(new LockedVertical(raceBoxDistanceAxis, 0, 1000));
+                AddLock(raceBoxDistanceAxis, 0, 1000);
             // Same top as the speed axis in mph, so rev/s and mph traces sit on the same line.
             if (wheelRevsAxis is not null)
-                _plot.Plot.Axes.Rules.Add(new LockedVertical(wheelRevsAxis, 0, 110 / MiniLoggerLoader.MphPerRevPerSec));
+                AddLock(wheelRevsAxis, 0, 110 / MiniLoggerLoader.MphPerRevPerSec);
             if (_splitLabelAxis is not null)
                 _plot.Plot.Axes.Rules.Add(new LockedVertical(_splitLabelAxis, 0.0, 1.0));
 
@@ -830,50 +918,50 @@ namespace CastleOverlayV2.Plot
 
             // Throttle
             if (!TryGetScale("Throttle %", out var thr)) thr = (-100, 120);
-            _plot.Plot.Axes.Rules.Add(new LockedVertical(throttleAxis, thr.Min, thr.Max));
+            AddLock(throttleAxis, thr.Min, thr.Max);
 
             // RPM (allow override; else pole-mode default)
             if (TryGetScale("RPM", out var rpm))
             {
-                _plot.Plot.Axes.Rules.Add(new LockedVertical(rpmAxis, rpm.Min, rpm.Max));
+                AddLock(rpmAxis, rpm.Min, rpm.Max);
             }
             else
             {
                 double rpmMax = _isFourPoleMode ? 100_000.0 : 200_000.0;
-                _plot.Plot.Axes.Rules.Add(new LockedVertical(rpmAxis, 0.0, rpmMax));
+                AddLock(rpmAxis, 0.0, rpmMax);
             }
 
             // Voltage
             if (!TryGetScale("Voltage", out var vlt)) vlt = (6.0, 9.0);
-            _plot.Plot.Axes.Rules.Add(new LockedVertical(voltageAxis, vlt.Min, vlt.Max));
+            AddLock(voltageAxis, vlt.Min, vlt.Max);
 
             // Current
             if (!TryGetScale("Current", out var cur)) cur = (0.0, 800.0);
-            _plot.Plot.Axes.Rules.Add(new LockedVertical(currentAxis, cur.Min, cur.Max));
+            AddLock(currentAxis, cur.Min, cur.Max);
 
             // Ripple
             if (!TryGetScale("Ripple", out var rip)) rip = (0.0, 5.0);
-            _plot.Plot.Axes.Rules.Add(new LockedVertical(rippleAxis, rip.Min, rip.Max));
+            AddLock(rippleAxis, rip.Min, rip.Max);
 
             // PowerOut
             if (!TryGetScale("PowerOut", out var pow)) pow = (0.0, 120.0);
-            _plot.Plot.Axes.Rules.Add(new LockedVertical(powerAxis, pow.Min, pow.Max));
+            AddLock(powerAxis, pow.Min, pow.Max);
 
             // ESC Temp
             if (!TryGetScale("ESC Temp", out var et)) et = (20.0, 120.0);
-            _plot.Plot.Axes.Rules.Add(new LockedVertical(escTempAxis, et.Min, et.Max));
+            AddLock(escTempAxis, et.Min, et.Max);
 
             // Motor Temp
             if (!TryGetScale("MotorTemp", out var mt)) mt = (20.0, 120.0);
-            _plot.Plot.Axes.Rules.Add(new LockedVertical(motorTempAxis, mt.Min, mt.Max));
+            AddLock(motorTempAxis, mt.Min, mt.Max);
 
             // Motor Timing
             if (!TryGetScale("MotorTiming", out var mtg)) mtg = (0.0, 120.0);
-            _plot.Plot.Axes.Rules.Add(new LockedVertical(motorTimingAxis, mtg.Min, mtg.Max));
+            AddLock(motorTimingAxis, mtg.Min, mtg.Max);
 
             // Acceleration
             if (!TryGetScale("Acceleration", out var acc)) acc = (-5.0, 7.0);
-            _plot.Plot.Axes.Rules.Add(new LockedVertical(accelAxis, acc.Min, acc.Max));
+            AddLock(accelAxis, acc.Min, acc.Max);
         }
 
 
@@ -972,6 +1060,22 @@ namespace CastleOverlayV2.Plot
                 _rawYMap[s] = ys;
                 _scatterSlotMap[s] = slot;
             }
+        }
+
+        /// <summary>Move the cursor box beside the mouse and fill it with the visible channels.</summary>
+        private void UpdateReadout(int pixelX, int pixelY, double time, Dictionary<string, double?[]> values)
+        {
+            var lines = new List<Controls.CursorReadout.Line>();
+            foreach (var channel in ChannelText.Order)
+            {
+                if (!values.TryGetValue(channel, out var v) || v.All(x => !x.HasValue)) continue;
+                var c = GetTraceColor(channel);
+                lines.Add(new Controls.CursorReadout.Line(
+                    ChannelText.DisplayName(channel),
+                    System.Drawing.Color.FromArgb(c.R, c.G, c.B),
+                    v.Select(x => x.HasValue ? ChannelText.Format(channel, x.Value) : "–").ToArray()));
+            }
+            _readout.ShowAt(pixelX, pixelY, time, lines);
         }
 
         private void AddRaceBoxSplitLines(int slot, List<double>? splitTimes, List<string>? splitLabels, bool includeZero = false)
@@ -1108,10 +1212,11 @@ namespace CastleOverlayV2.Plot
 
                 var channelValues = new double?[3];
 
-                for (int i = 0; i < scatters.Count && i < 3; i++)
+                foreach (var s in scatters)
                 {
-                    var s = scatters[i];
                     if (!s.IsVisible) continue;
+                    if (!_scatterSlotMap.TryGetValue(s, out int slot)) continue;
+                    int i = (slot - 1) % 3;
 
                     var pts = s.Data.GetScatterPoints();
                     if (pts == null || pts.Count == 0) continue;
@@ -1139,6 +1244,7 @@ namespace CastleOverlayV2.Plot
             }
 
             CursorMoved?.Invoke(valuesAtCursor);
+            UpdateReadout(e.X, e.Y, mouseCoord.X, valuesAtCursor);
             _plot.Refresh();
         }
 

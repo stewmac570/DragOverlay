@@ -28,6 +28,11 @@ namespace CastleOverlayV2.Tests
             Assert.False(tune.BoostEnabled);
             Assert.True(tune.TurboEnabled);
             Assert.Equal(32, tune.TurboTimingAmountDeg);
+
+            // Every line is kept for the side-by-side tune comparison.
+            Assert.Equal("Slow", tune.Fields["Drag Brake Ramp"]);
+            Assert.Equal("0%, Disabled", tune.Fields["Punch Control"]);
+            Assert.Equal("RPM Based Boost", tune.Fields["boost timing mode"]);
             Assert.Equal(85, tune.TurboActivationThrottlePct);
             Assert.Equal(45, tune.TurboAccelDegPerSecond);
             Assert.Equal(60, tune.TurboDecelDegPerSecond);

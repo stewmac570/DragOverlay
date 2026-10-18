@@ -32,6 +32,8 @@ public sealed class FakeMainView : IMainView
     public string? PickTuneFile() => TuneFileToReturn;
     public void ShowSettingsDialog() => SettingsShown++;
     public int SettingsShown;
+    public bool? SaveProjectEnabled;
+    public void SetSaveProjectEnabled(bool enabled) => SaveProjectEnabled = enabled;
     public string? PickProjectFileToOpen() => ProjectOpenPathToReturn;
     public string? PickProjectFileToSave() => ProjectSavePathToReturn;
     public readonly List<(string title, string? initialDir)> FolderPicks = new();
@@ -44,7 +46,7 @@ public sealed class FakeMainView : IMainView
     public void ShowError(string title, string message) => Errors.Add((title, message));
     public void ShowInfo(string title, string message) => Infos.Add((title, message));
 
-    public void SetSlotLoadedUI(int slot, string fullPath, bool isVisible) =>
+    public void SetSlotLoadedUI(int slot, string fullPath, bool isVisible, string? sourceTag = null) =>
         SlotLoaded.Add((slot, fullPath, isVisible));
     public void ResetSlotUI(int slot) => SlotReset.Add(slot);
     public void SetSlotToggleText(int slot, bool isVisible) =>
