@@ -416,45 +416,9 @@ namespace CastleOverlayV2.Controls
             popup.Show(anchor, new Point(anchor.Width + 4, 0));
         }
 
-        internal static string DisplayName(string channelName) => channelName switch
-        {
-            "PowerOut" => "Power Out",
-            "MotorTemp" => "Motor Temp",
-            "MotorTiming" => "Motor Timing",
-            "RaceBox Speed" => "Speed",
-            "RaceBox Distance" => "Distance",
-            "RaceBox G-Force X" => "G-Force X",
-            "Logger Throttle %" => "Throttle %",
-            "Logger RPM" => "RPM",
-            "Logger Wheel Speed" => "Wheel Speed",
-            "Logger Wheel rev/s" => "Wheel rev/s",
-            _ => channelName
-        };
+        internal static string DisplayName(string channelName) => ChannelText.DisplayName(channelName);
 
-        private static string Format(string channelName, double v)
-        {
-            return channelName switch
-            {
-                "RPM" => v.ToString("N0"),
-                "Throttle %" => v.ToString("F0"),
-                "PowerOut" => v.ToString("F0"),
-                "ESC Temp" => v.ToString("F0"),
-                "MotorTemp" => v.ToString("F0"),
-                "MotorTiming" => v.ToString("F0"),
-                "Voltage" => v.ToString("F2"),
-                "Ripple" => v.ToString("F2"),
-                "Current" => v.ToString("F1"),
-                "Acceleration" => v.ToString("F2"),
-                "RaceBox Speed" => v.ToString("F1"),
-                "RaceBox Distance" => v.ToString("F0"),
-                "RaceBox G-Force X" => v.ToString("F2"),
-                "Logger Throttle %" => v.ToString("F0"),
-                "Logger RPM" => v.ToString("N0"),
-                "Logger Wheel Speed" => v.ToString("F1"),
-                "Logger Wheel rev/s" => v.ToString("F1"),
-                _ => v.ToString("F2"),
-            };
-        }
+        private static string Format(string channelName, double v) => ChannelText.Format(channelName, v);
 
         // ============================================================
         // Nested: run column header (line style per run above the value columns)

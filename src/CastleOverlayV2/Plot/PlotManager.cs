@@ -30,6 +30,7 @@ namespace CastleOverlayV2.Plot
 
         // Cursor
         private VerticalLine _cursor;
+        private readonly Controls.CursorReadout _readout = new();
 
         // Lines and lookups
         private readonly List<Scatter> _scatters = new();
@@ -242,6 +243,8 @@ namespace CastleOverlayV2.Plot
             _plot.Plot.Grid.MinorLineWidth = 1;
 
             _plot.MouseMove += FormsPlot_MouseMove;
+            _plot.MouseLeave += (_, _) => _readout.Visible = false;
+            _plot.Controls.Add(_readout);
             _plot.MouseDown += FormsPlot_MouseDown;
             _plot.MouseUp += FormsPlot_MouseUp;
 
@@ -1059,6 +1062,22 @@ namespace CastleOverlayV2.Plot
             }
         }
 
+        /// <summary>Move the cursor box beside the mouse and fill it with the visible channels.</summary>
+        private void UpdateReadout(int pixelX, int pixelY, double time, Dictionary<string, double?[]> values)
+        {
+            var lines = new List<Controls.CursorReadout.Line>();
+            foreach (var channel in ChannelText.Order)
+            {
+                if (!values.TryGetValue(channel, out var v) || v.All(x => !x.HasValue)) continue;
+                var c = GetTraceColor(channel);
+                lines.Add(new Controls.CursorReadout.Line(
+                    ChannelText.DisplayName(channel),
+                    System.Drawing.Color.FromArgb(c.R, c.G, c.B),
+                    v.Select(x => x.HasValue ? ChannelText.Format(channel, x.Value) : "–").ToArray()));
+            }
+            _readout.ShowAt(pixelX, pixelY, time, lines);
+        }
+
         private void AddRaceBoxSplitLines(int slot, List<double>? splitTimes, List<string>? splitLabels, bool includeZero = false)
         {
             if (splitTimes == null || splitTimes.Count == 0)
@@ -1225,6 +1244,7 @@ namespace CastleOverlayV2.Plot
             }
 
             CursorMoved?.Invoke(valuesAtCursor);
+            UpdateReadout(e.X, e.Y, mouseCoord.X, valuesAtCursor);
             _plot.Refresh();
         }
 
