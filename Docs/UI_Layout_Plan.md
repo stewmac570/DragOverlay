@@ -1,7 +1,8 @@
 # UI layout plan: Logs page and Tune page
 
-Status: planning. This document records what is agreed so far and what is
-still open. It is updated as decisions land.
+Status: built. Top bar with Logs / Tune tabs, the left channel list and the
+side-by-side tune comparison are implemented; mockups are in `Docs/mockups/`.
+The open questions below are not built.
 
 ## Why
 
@@ -45,7 +46,7 @@ BBRC Stock Data Logger).
    tune while reading a log, for example the throttle curve against the
    throttle trace.
 
-## Proposed, not yet agreed
+## Logs page (agreed from the mockups, built)
 
 - **Logs page layout (FuelTech model).** Thin run strip on top. Left channel
   sidebar grouped by source (ESC, GPS, Mini Logger), each row showing the
