@@ -69,6 +69,12 @@ namespace CastleOverlayV2
             _drawer.ChannelBoldChanged += OnChannelBoldChanged;
             _drawer.ChannelBandChanged += OnChannelBandChanged;
             _drawer.SetRpmMode(_isFourPoleMode);
+            _drawer.SetPanelWidth(_config.Config.ChannelListWidth);
+            _drawer.PanelWidthChanged += width =>
+            {
+                _config.Config.ChannelListWidth = width;
+                _config.Save();
+            };
             ApplySavedChannelDisplay();
             _plot.CursorMoved += OnCursorMoved;
             _plot.AlignmentDragged += OnAlignmentDragged;

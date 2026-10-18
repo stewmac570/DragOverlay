@@ -37,6 +37,8 @@ namespace CastleOverlayV2.Models
         // Channel name -> "#RRGGBB". Missing = the default palette colour.
         public Dictionary<string, string> ChannelColors { get; set; } = new();
         public List<string> BoldChannels { get; set; } = new();
+        // Width of the channel list (dragged by its right edge).
+        public int ChannelListWidth { get; set; } = 400;
         // Channel name -> share of the chart height and where that band sits.
         public Dictionary<string, ChannelBand> ChannelBands { get; set; } = new();
 

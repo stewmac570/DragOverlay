@@ -32,6 +32,8 @@ namespace CastleOverlayV2.Controls
         private static readonly Color AccentBlue = Color.FromArgb(0x2D, 0x6C, 0xB5);
 
         private const int PanelWidth = 400;
+        private const int MinPanelWidth = 260;
+        private const int MaxPanelWidth = 900;
         private const int RowHeight = 30;
         private const int ValueColumnWidth = 66;
 
@@ -44,6 +46,8 @@ namespace CastleOverlayV2.Controls
         public event Action<string, bool>? ChannelBoldChanged;
         /// <summary>Line size changed: channel, height (0.1..1), position (0 bottom..1 top).</summary>
         public event Action<string, double, double>? ChannelBandChanged;
+        /// <summary>The user finished dragging the list's right edge to this width.</summary>
+        public event Action<int>? PanelWidthChanged;
 
         // ---- State ----------------------------------------------------------
         private string _focusedChannel = "RPM"; // matches PlotManager's initial focus
@@ -60,6 +64,11 @@ namespace CastleOverlayV2.Controls
         private readonly Panel _title;
         private readonly Button _expandButton;
         private const int CollapsedWidth = 30;
+        private readonly Panel _resizeGrip;
+        private int _expandedWidth = PanelWidth;
+        private int _dragStartX;
+        private int _dragStartWidth;
+        private bool _dragging;
         private readonly RunColumnHeader _columns;
         private readonly ToolTip _toolTip;
 
@@ -159,6 +168,37 @@ namespace CastleOverlayV2.Controls
             _toolTip.SetToolTip(_expandButton, "Show the channel list");
             Controls.Add(_expandButton);
 
+            // Drag the right edge to make the list wider or narrower.
+            _resizeGrip = new Panel { Dock = DockStyle.Right, Width = 6, BackColor = BorderDef, Cursor = Cursors.SizeWE };
+            _resizeGrip.MouseDown += (_, e) =>
+            {
+                if (e.Button != MouseButtons.Left) return;
+                _dragging = true;
+                _dragStartX = Cursor.Position.X;
+                _dragStartWidth = Width;
+                _resizeGrip.Capture = true;
+            };
+            _resizeGrip.MouseMove += (_, _) =>
+            {
+                if (!_dragging) return;
+                int max = Math.Min(MaxPanelWidth, (Parent?.ClientSize.Width ?? MaxPanelWidth) - 300);
+                Width = Math.Clamp(_dragStartWidth + Cursor.Position.X - _dragStartX, MinPanelWidth, Math.Max(MinPanelWidth, max));
+                _expandedWidth = Width;
+            };
+            _resizeGrip.MouseUp += (_, _) =>
+            {
+                if (!_dragging) return;
+                _dragging = false;
+                _resizeGrip.Capture = false;
+                PanelWidthChanged?.Invoke(Width);
+            };
+            _toolTip.SetToolTip(_resizeGrip, "Drag to make the channel list wider or narrower");
+            Controls.Add(_resizeGrip);
+
+            // GPS and Mini Logger sections show from the start, empty until a log loads.
+            foreach (var group in new[] { ChannelGroup.Esc, ChannelGroup.Gps, ChannelGroup.Logger })
+                EnsureGroup(group);
+
             foreach (var ch in channelNames)
             {
                 bool visible = initialStates.TryGetValue(ch, out var v) && v;
@@ -174,13 +214,7 @@ namespace CastleOverlayV2.Controls
         {
             if (_rows.ContainsKey(channelName)) return;
 
-            var group = GroupOf(channelName);
-            if (!_groups.TryGetValue(group, out var header))
-            {
-                header = new GroupHeader(GroupTitle(group));
-                header.Click += (_, _) => ToggleGroup(group);
-                _groups[group] = header;
-            }
+            EnsureGroup(GroupOf(channelName));
 
             var row = new ChannelRow(channelName, initialVisible, _toolTip);
             row.SetColor(ColorFor(channelName));
@@ -247,6 +281,13 @@ namespace CastleOverlayV2.Controls
 
         public bool IsCollapsed => _expandButton.Visible;
 
+        /// <summary>Restore a saved list width.</summary>
+        public void SetPanelWidth(int width)
+        {
+            _expandedWidth = Math.Clamp(width, MinPanelWidth, MaxPanelWidth);
+            if (!IsCollapsed) Width = _expandedWidth;
+        }
+
         /// <summary>Slide the list in to a thin strip (true) or back out to full width.</summary>
         public void SetCollapsed(bool collapsed)
         {
@@ -255,7 +296,8 @@ namespace CastleOverlayV2.Controls
             _columns.Visible = !collapsed;
             _scroll.Visible = !collapsed;
             _expandButton.Visible = collapsed;
-            Width = collapsed ? CollapsedWidth : PanelWidth;
+            _resizeGrip.Visible = !collapsed;
+            Width = collapsed ? CollapsedWidth : _expandedWidth;
             ResumeLayout(true);
         }
 
@@ -300,6 +342,15 @@ namespace CastleOverlayV2.Controls
             ChannelGroup.Logger => "Mini Logger",
             _ => "ESC (Castle)"
         };
+
+        private void EnsureGroup(ChannelGroup group)
+        {
+            if (_groups.ContainsKey(group)) return;
+            var header = new GroupHeader(GroupTitle(group));
+            header.Click += (_, _) => ToggleGroup(group);
+            _groups[group] = header;
+            RebuildList();
+        }
 
         private void ToggleGroup(ChannelGroup group)
         {
@@ -522,7 +573,9 @@ namespace CastleOverlayV2.Controls
             }
 
             private void UpdateText() =>
-                Text = $"{(_expanded ? "▾" : "▸")}  {_title}   ({_count})";
+                Text = _count == 0
+                    ? $"▸  {_title}   (no log loaded)"
+                    : $"{(_expanded ? "▾" : "▸")}  {_title}   ({_count})";
         }
 
         // ============================================================
