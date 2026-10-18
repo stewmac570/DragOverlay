@@ -57,6 +57,9 @@ namespace CastleOverlayV2.Controls
         private readonly Panel _scroll;
         private readonly FlowLayoutPanel _list;
         private readonly Button _poleButton;
+        private readonly Panel _title;
+        private readonly Button _expandButton;
+        private const int CollapsedWidth = 30;
         private readonly RunColumnHeader _columns;
         private readonly ToolTip _toolTip;
 
@@ -96,7 +99,7 @@ namespace CastleOverlayV2.Controls
             Controls.Add(_columns);
 
             // Title bar: "Channels" + RPM pole toggle.
-            var title = new Panel { Dock = DockStyle.Top, Height = 36, BackColor = SurfacePanel };
+            var title = _title = new Panel { Dock = DockStyle.Top, Height = 36, BackColor = SurfacePanel };
             var titleLbl = new Label
             {
                 Text = "Channels",
@@ -124,10 +127,37 @@ namespace CastleOverlayV2.Controls
                 RpmModeChanged?.Invoke(_isFourPole);
             };
             _toolTip.SetToolTip(_poleButton, "Motor poles for the RPM channel (4 pole halves the value)");
+            var collapse = new Button
+            {
+                Text = "‹",
+                Dock = DockStyle.Right,
+                Width = 32,
+                FlatStyle = FlatStyle.Flat,
+                BackColor = SurfacePanel,
+                ForeColor = TextSecond,
+                Font = new Font(SystemFonts.DefaultFont.FontFamily, 12f, FontStyle.Bold),
+                TabStop = false,
+                UseVisualStyleBackColor = false
+            };
+            collapse.FlatAppearance.BorderSize = 0;
+            collapse.Click += (_, _) => SetCollapsed(true);
+            _toolTip.SetToolTip(collapse, "Hide the channel list");
             title.Controls.Add(titleLbl);
             title.Controls.Add(_poleButton);
+            title.Controls.Add(collapse);
             Controls.Add(title);
             SetRpmMode(false);
+
+            // Collapsed: a thin strip down the left edge; click it to bring the list back.
+            _expandButton = new VerticalButton
+            {
+                Text = "›   CHANNELS",
+                Dock = DockStyle.Fill,
+                Visible = false
+            };
+            _expandButton.Click += (_, _) => SetCollapsed(false);
+            _toolTip.SetToolTip(_expandButton, "Show the channel list");
+            Controls.Add(_expandButton);
 
             foreach (var ch in channelNames)
             {
@@ -213,6 +243,20 @@ namespace CastleOverlayV2.Controls
             foreach (var (name, vals) in values)
                 if (_rows.TryGetValue(name, out var row))
                     row.SetValues(vals.Select(v => v.HasValue ? Format(name, v.Value) : "–").ToArray());
+        }
+
+        public bool IsCollapsed => _expandButton.Visible;
+
+        /// <summary>Slide the list in to a thin strip (true) or back out to full width.</summary>
+        public void SetCollapsed(bool collapsed)
+        {
+            SuspendLayout();
+            _title.Visible = !collapsed;
+            _columns.Visible = !collapsed;
+            _scroll.Visible = !collapsed;
+            _expandButton.Visible = collapsed;
+            Width = collapsed ? CollapsedWidth : PanelWidth;
+            ResumeLayout(true);
         }
 
         public void SetRpmMode(bool isFourPole)
@@ -408,6 +452,37 @@ namespace CastleOverlayV2.Controls
                 2 => DashStyle.Dot,
                 _ => DashStyle.Solid
             };
+        }
+
+        // ============================================================
+        // Nested: the collapsed strip (vertical text)
+        // ============================================================
+        private sealed class VerticalButton : Button
+        {
+            public VerticalButton()
+            {
+                FlatStyle = FlatStyle.Flat;
+                BackColor = SurfaceBar;
+                ForeColor = TextSecond;
+                Cursor = Cursors.Hand;
+                TabStop = false;
+                UseVisualStyleBackColor = false;
+                FlatAppearance.BorderColor = BorderDef;
+                Font = new Font(SystemFonts.DefaultFont.FontFamily, 9f, FontStyle.Bold);
+            }
+
+            protected override void OnPaint(PaintEventArgs e)
+            {
+                e.Graphics.Clear(BackColor);
+                var state = e.Graphics.Save();
+                e.Graphics.TranslateTransform(Width / 2f + 6, 14);
+                e.Graphics.RotateTransform(90);
+                using var brush = new SolidBrush(ForeColor);
+                e.Graphics.DrawString(Text, Font, brush, 0, 0);
+                e.Graphics.Restore(state);
+                using var pen = new Pen(BorderDef);
+                e.Graphics.DrawLine(pen, Width - 1, 0, Width - 1, Height);
+            }
         }
 
         // ============================================================
