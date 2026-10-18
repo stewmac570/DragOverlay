@@ -34,7 +34,8 @@ namespace CastleOverlayV2
         private bool _isFourPoleMode;
         private bool _isSpeedRunMode;
         private int? _armedSlot;
-        private int? _selectedTuneSlot;
+        // A tune opened with no Castle run loaded, shown on the Tune page as a preview.
+        private TuneSettings? _previewTune;
 
         // Cleanup tracker for the temp-extracted project (issue #87).
         private string? _activeProjectTempDir;
@@ -76,7 +77,6 @@ namespace CastleOverlayV2
             _plot.TrimResetRequested += ResetArmedRunTrim;
             _tunePanel.AttachTuneRequested += AttachTuneToRun;
             _tunePanel.RadioSettingsChanged += UpdateRadioSettings;
-            _tunePanel.SelectedRunChanged += SelectTuneRun;
 
             RefreshTunePanelRuns();
         }
@@ -144,7 +144,6 @@ namespace CastleOverlayV2
 
                 loaded.SourcePath = path;
                 _runs[slot] = loaded;
-                _selectedTuneSlot = slot;
                 Logger.Log($"Loaded Run {slot} - {Path.GetFileName(path)} - {loaded.DataPoints.Count} rows");
 
                 _plot.SetRun(slot, loaded);
@@ -426,9 +425,6 @@ namespace CastleOverlayV2
             _runs.Remove(slot);
             _view.ResetSlotUI(slot);
 
-            if (_selectedTuneSlot == slot)
-                _selectedTuneSlot = null;
-
             if (_plot.GetRunVisibility(slot))
                 _plot.ToggleRunVisibility(slot);
 
@@ -588,14 +584,14 @@ namespace CastleOverlayV2
                 if (previousRadio != null)
                     run.Tune.Radio = previousRadio;
 
-                _selectedTuneSlot = slot.Value;
                 Logger.Log($"Attached tune to Run {slot.Value}: {Path.GetFileName(path)}");
                 RefreshTunePanelRuns();
             }
             else
             {
                 Logger.Log($"Previewed tune without a loaded run: {Path.GetFileName(path)}");
-                _tunePanel.SetTune(null, result.Value);
+                _previewTune = result.Value;
+                RefreshTunePanelRuns();
             }
         }
 
@@ -622,7 +618,6 @@ namespace CastleOverlayV2
             if (previousRadio != null)
                 run.Tune.Radio = previousRadio;
 
-            _selectedTuneSlot = slot;
             Logger.Log($"Auto Load: attached tune to Run {slot}: {Path.GetFileName(path)}");
             RefreshTunePanelRuns();
         }
@@ -715,13 +710,6 @@ namespace CastleOverlayV2
 
             run.Tune ??= new TuneSettings();
             run.Tune.Radio = settings;
-            _selectedTuneSlot = slot;
-        }
-
-        private void SelectTuneRun(int slot)
-        {
-            _selectedTuneSlot = slot;
-            _tunePanel.SetTune(slot, _runs.TryGetValue(slot, out var run) ? run.Tune : null);
         }
 
         private void RefreshProjectButtonsState() =>
@@ -729,24 +717,18 @@ namespace CastleOverlayV2
 
         private void RefreshTunePanelRuns()
         {
-            var castleSlots = _runs
+            var columns = _runs
                 .Where(kvp => kvp.Key <= 3 && !kvp.Value.IsRaceBox)
-                .Select(kvp => kvp.Key)
-                .OrderBy(slot => slot)
+                .OrderBy(kvp => kvp.Key)
+                .Select(kvp => new TuneRunColumn(kvp.Key, Path.GetFileName(kvp.Value.SourcePath ?? ""), kvp.Value.Tune))
                 .ToList();
 
-            if (_selectedTuneSlot.HasValue && !castleSlots.Contains(_selectedTuneSlot.Value))
-                _selectedTuneSlot = null;
+            if (columns.Count > 0)
+                _previewTune = null; // a real run replaces the preview
+            else if (_previewTune != null)
+                columns.Add(new TuneRunColumn(0, "", _previewTune));
 
-            int? selected = _selectedTuneSlot ?? castleSlots.FirstOrDefault();
-            if (selected == 0)
-                selected = null;
-
-            _tunePanel.SetAvailableRuns(castleSlots, selected);
-            _tunePanel.SetTune(
-                selected,
-                selected.HasValue && _runs.TryGetValue(selected.Value, out var run) ? run.Tune : null);
-
+            _tunePanel.SetRuns(columns);
             RefreshProjectButtonsState();
         }
 
@@ -1195,7 +1177,6 @@ namespace CastleOverlayV2
                     _view.ResetSlotUI(slot);
                 }
             }
-            _selectedTuneSlot = null;
 
             // Apply manifest-level state.
             _isSpeedRunMode = restored.Manifest.RunMode == ProjectRunMode.Speed;
@@ -1227,8 +1208,6 @@ namespace CastleOverlayV2
             _plot.RefreshPlot();
 
             // Pick the first Castle slot for the tune panel (or first run if no Castle).
-            _selectedTuneSlot = restored.RunsBySlot.Keys.Where(s => s <= 3).OrderBy(s => s).FirstOrDefault();
-            if (_selectedTuneSlot == 0) _selectedTuneSlot = null;
             RefreshTunePanelRuns();
             _view.UpdateRunTypeLockState();
 

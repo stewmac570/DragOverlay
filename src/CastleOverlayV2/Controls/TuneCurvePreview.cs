@@ -5,10 +5,14 @@ namespace CastleOverlayV2.Controls
 {
     public sealed class TuneCurvePreview : Control
     {
-        private readonly List<TuneCurvePoint> _points = new();
+        // One curve per run (index 0..2 = run 1..3, drawn solid / dashed / dotted).
+        // A null entry means that run has no curve; Disabled draws it faded.
+        private readonly List<(IReadOnlyList<TuneCurvePoint>? Points, bool Disabled)> _curves = new();
         private string _title = "";
         private string _emptyText = "No curve";
         private bool _disabledOverlay;
+
+        private bool HasCurve => _curves.Any(c => c.Points is { Count: >= 2 });
         private readonly bool _interactive;
 
         private static readonly Color PanelBack = Color.FromArgb(0x18, 0x1D, 0x25);
@@ -36,19 +40,29 @@ namespace CastleOverlayV2.Controls
 
         public void SetCurve(string title, IReadOnlyList<TuneCurvePoint> points, string emptyText, bool disabledOverlay = false)
         {
+            SetCurves(title, new[] { ((IReadOnlyList<TuneCurvePoint>?)points.ToList(), false) }, emptyText);
+            _disabledOverlay = disabledOverlay;
+        }
+
+        /// <summary>Overlay one curve per run, in run order.</summary>
+        public void SetCurves(
+            string title,
+            IReadOnlyList<(IReadOnlyList<TuneCurvePoint>? Points, bool Disabled)> curvesByRun,
+            string emptyText)
+        {
             _title = title;
             _emptyText = emptyText;
-            _disabledOverlay = disabledOverlay;
-            _points.Clear();
-            _points.AddRange(points);
-            Cursor = _interactive && _points.Count >= 2 ? Cursors.Hand : Cursors.Default;
+            _disabledOverlay = false;
+            _curves.Clear();
+            _curves.AddRange(curvesByRun);
+            Cursor = _interactive && HasCurve ? Cursors.Hand : Cursors.Default;
             Invalidate();
         }
 
         protected override void OnMouseClick(MouseEventArgs e)
         {
             base.OnMouseClick(e);
-            if (_interactive && e.Button == MouseButtons.Left && _points.Count >= 2)
+            if (_interactive && e.Button == MouseButtons.Left && HasCurve)
                 OpenPopout();
         }
 
@@ -59,7 +73,8 @@ namespace CastleOverlayV2.Controls
                 Dock = DockStyle.Fill,
                 Font = new Font(Font.FontFamily, 11f)
             };
-            enlarged.SetCurve(_title, _points, _emptyText, _disabledOverlay);
+            enlarged.SetCurves(_title, _curves.ToList(), _emptyText);
+            enlarged._disabledOverlay = _disabledOverlay;
 
             using var window = new Form
             {
@@ -93,7 +108,6 @@ namespace CastleOverlayV2.Controls
             using var numberBrush = new SolidBrush(AxisNumber);
             using var gridPen = new Pen(Grid, 1);
             using var axisPen = new Pen(Axis, 1);
-            using var curvePen = new Pen(Curve, 2.5f);
             using var overlayBrush = new SolidBrush(Color.FromArgb(150, 0x18, 0x1D, 0x25));
 
             g.DrawString(_title, Font, titleBrush, 8, 6);
@@ -132,18 +146,37 @@ namespace CastleOverlayV2.Controls
             if (showCaptions)
                 DrawAxisCaptions(g, captionFont, mutedBrush, plot);
 
-            if (_points.Count < 2)
+            if (!HasCurve)
             {
                 DrawCentered(g, _emptyText, mutedBrush, plot);
                 return;
             }
 
-            var drawPoints = _points
-                .Select(p => new PointF(
-                    plot.Left + (float)(Math.Clamp(p.InputPercent, 0, 100) / 100.0 * plot.Width),
-                    plot.Bottom - (float)(Math.Clamp(p.OutputPercent, 0, 100) / 100.0 * plot.Height)))
-                .ToArray();
-            g.DrawLines(curvePen, drawPoints);
+            for (int i = 0; i < _curves.Count; i++)
+            {
+                var (points, disabled) = _curves[i];
+                if (points is not { Count: >= 2 }) continue;
+
+                var drawPoints = points
+                    .Select(p => new PointF(
+                        plot.Left + (float)(Math.Clamp(p.InputPercent, 0, 100) / 100.0 * plot.Width),
+                        plot.Bottom - (float)(Math.Clamp(p.OutputPercent, 0, 100) / 100.0 * plot.Height)))
+                    .ToArray();
+                using var pen = new Pen(disabled ? Color.FromArgb(90, Curve) : Curve, 2.5f)
+                {
+                    DashStyle = i switch { 1 => DashStyle.Dash, 2 => DashStyle.Dot, _ => DashStyle.Solid }
+                };
+                g.DrawLines(pen, drawPoints);
+            }
+
+            // Identical curves draw on top of each other, so say so.
+            var present = _curves.Where(c => c.Points is { Count: >= 2 }).Select(c => c.Points!).ToList();
+            if (present.Count >= 2 && present.All(c => c.SequenceEqual(present[0])))
+            {
+                string same = $"same in all {present.Count} tunes";
+                SizeF size = g.MeasureString(same, Font);
+                g.DrawString(same, Font, mutedBrush, plot.Right - size.Width - 6, plot.Bottom - size.Height - 6);
+            }
 
             if (_disabledOverlay)
             {
@@ -241,7 +274,7 @@ namespace CastleOverlayV2.Controls
 
         private void DrawPopoutHint(Graphics g, Brush brush)
         {
-            if (!_interactive || _points.Count < 2)
+            if (!_interactive || !HasCurve)
                 return;
 
             const string hint = "⤢ Enlarge";

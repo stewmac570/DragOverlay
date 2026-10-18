@@ -1,710 +1,719 @@
 using CastleOverlayV2.Models;
+using System.Drawing.Drawing2D;
 
 namespace CastleOverlayV2.Controls
 {
+    /// <summary>One column of the tune comparison: a loaded Castle run and its tune.</summary>
+    /// <param name="Slot">Castle slot 1..3, or 0 for a tune previewed without a run.</param>
+    public sealed record TuneRunColumn(int Slot, string LogName, TuneSettings? Tune);
+
+    /// <summary>
+    /// The Tune page (Docs/UI_Layout_Plan.md): every loaded run's tune side by side.
+    /// Left: a settings table, one column per run, rows that differ highlighted, with
+    /// "Show only differences". The radio throttle speed rows are typed in per run.
+    /// Right: the throttle and boost-by-throttle curves of every tune on one chart each.
+    /// </summary>
     public sealed class TunePanel : UserControl
     {
-        // The Tune page fills the window; keep the settings column a readable width.
-        private const int MaxContentWidth = 560;
+        private static readonly Color SurfaceWindow = Color.FromArgb(0x13, 0x17, 0x1E);
+        private static readonly Color SurfacePanel = Color.FromArgb(0x16, 0x1B, 0x23);
+        private static readonly Color SurfaceBar = Color.FromArgb(0x1B, 0x21, 0x2B);
+        private static readonly Color SurfaceInput = Color.FromArgb(0x20, 0x26, 0x31);
+        private static readonly Color DiffRow = Color.FromArgb(0x22, 0x1D, 0x10);
+        private static readonly Color TextPrimary = Color.FromArgb(0xE6, 0xE9, 0xEF);
+        private static readonly Color TextSecond = Color.FromArgb(0x9A, 0xA3, 0xB2);
+        private static readonly Color TextDim = Color.FromArgb(0x5C, 0x65, 0x73);
+        private static readonly Color TextAlert = Color.FromArgb(0xF5, 0xC5, 0x42);
+        private static readonly Color BorderDef = Color.FromArgb(0x29, 0x2F, 0x39);
+        private static readonly Color AccentBlue = Color.FromArgb(0x2D, 0x6C, 0xB5);
 
-        private readonly UnifiedScrollPanel _content;
-        private readonly FlowLayoutPanel _layout;
-        private readonly TableLayoutPanel _curveLayout;
-        private readonly ComboBox _runCombo;
-        private readonly Button _attachButton;
-        private readonly Label _statusLabel;
-        private readonly ComboBox _radioModeCombo;
-        private readonly FlowLayoutPanel _radioModeFields;
-        private readonly NumericUpDown _radioAllTurn;
-        private readonly NumericUpDown _radioAllReturn;
-        private readonly NumericUpDown _radioHighTurn;
-        private readonly NumericUpDown _radioHighReturn;
-        private readonly NumericUpDown _radioPoint1;
-        private readonly NumericUpDown _radioMiddleTurn;
-        private readonly NumericUpDown _radioMiddleReturn;
-        private readonly NumericUpDown _radioPoint2;
-        private readonly NumericUpDown _radioLowTurn;
-        private readonly NumericUpDown _radioLowReturn;
-        private readonly Label _boostLabel;
-        private readonly Label _turboLabel;
-        private readonly TuneCurvePreview _throttleCurve;
-        private readonly TuneCurvePreview _boostCurve;
-
-        private readonly Dictionary<int, string> _availableRuns = new();
-        private bool _isUpdating;
-        private bool _performingLayout;
-        private string _radioSpeedType = "Normal";
+        private const int SettingColumnWidth = 250;
+        private const int RowHeight = 26;
+        private const int MaxValueColumnWidth = 260;
 
         public event Action<int?>? AttachTuneRequested;
         public event Action<int, RadioTuneSettings>? RadioSettingsChanged;
-        public event Action<int>? SelectedRunChanged;
+
+        private readonly Label _diffBadge;
+        private readonly CheckBox _onlyDiffs;
+        private readonly Panel _scroll;
+        private readonly FlowLayoutPanel _table;
+        private readonly TuneCurvePreview _throttleCurve;
+        private readonly TuneCurvePreview _boostCurve;
+        private readonly ToolTip _toolTip = new() { ShowAlways = true };
+
+        private IReadOnlyList<TuneRunColumn> _columns = Array.Empty<TuneRunColumn>();
+        private readonly List<TableRow> _rows = new();
+        // Working copy of each run's radio settings (slot -> settings), edited in place.
+        private readonly Dictionary<int, RadioTuneSettings> _radio = new();
+
+        // ---- Which .dat settings to show, grouped. Anything not listed lands in "Other". ----
+        private static readonly (string Group, (string Key, string Label)[] Rows)[] SettingGroups =
+        {
+            ("Boost", new[]
+            {
+                ("Boost Mode Enable", "Boost on"),
+                ("Boost Timing Mode", "Boost mode"),
+                ("Boost Timing Amount", "Boost timing"),
+                ("Boost RPM Activation Range - Start RPM", "Boost start RPM"),
+                ("Boost RPM Activation Range - End RPM", "Boost end RPM"),
+                ("Boost Throttle Activation Range - Start RPM", "Boost start throttle"),
+                ("Boost Throttle Activation Range - End RPM", "Boost end throttle"),
+            }),
+            ("Turbo", new[]
+            {
+                ("Turbo Enable", "Turbo on"),
+                ("Turbo Timing Amount", "Turbo timing"),
+                ("Activation Throttle Percent", "Turbo activation throttle"),
+                ("Acceleration Degrees Per Second", "Turbo ramp up (deg/s)"),
+                ("Deceleration Degrees Per Second", "Turbo ramp down (deg/s)"),
+            }),
+            ("Power and throttle", new[]
+            {
+                ("Max Power", "Max power"),
+                ("Punch Control", "Punch control"),
+                ("Start Power", "Start power"),
+                ("Start Power Hold Time", "Start power hold time"),
+                ("Start Power Ramp Time", "Start power ramp time"),
+                ("Throttle Dead Band", "Throttle dead band"),
+                ("Current Limiting", "Current limiting"),
+                ("RPM Limit", "RPM limit"),
+                ("Torque Control Value", "Torque control"),
+            }),
+            ("Brake", new[]
+            {
+                ("Drag Brake", "Drag brake"),
+                ("Drag Brake Ramp", "Drag brake ramp"),
+                ("Brake Amount", "Brake amount"),
+                ("Brake Lockout Time", "Brake lockout time"),
+                ("Reverse Type", "Reverse type"),
+            }),
+            ("Device", new[]
+            {
+                ("Device Name", "Device"),
+                ("Current Firmware", "Firmware"),
+                ("Sample Frequency", "Sample frequency"),
+                ("Motor Direction", "Motor direction"),
+                ("Motor Type", "Motor type"),
+                ("Cutoff Voltage", "Cutoff voltage"),
+                ("Auto-Lipo Volts/Cell", "Auto-LiPo volts/cell"),
+                ("BEC Voltage", "BEC voltage"),
+            }),
+        };
+
+        private enum RadioField { Mode, Point1Position, Point1Speed, Point2Position, Point2Speed, Point3Speed }
+
+        private static readonly (RadioField Field, string Label)[] RadioRows =
+        {
+            (RadioField.Mode, "Radio mode"),
+            (RadioField.Point1Position, "Point 1 position"),
+            (RadioField.Point1Speed, "Point 1 speed"),
+            (RadioField.Point2Position, "Point 2 position"),
+            (RadioField.Point2Speed, "Point 2 speed"),
+            (RadioField.Point3Speed, "Point 3 speed"),
+        };
 
         public TunePanel()
         {
             Dock = DockStyle.Fill;
-            BackColor = Color.FromArgb(0x13, 0x17, 0x1E);
-            ForeColor = Color.FromArgb(0xE6, 0xE9, 0xEF);
+            BackColor = SurfaceWindow;
+            ForeColor = TextPrimary;
 
-            _content = new UnifiedScrollPanel
+            // ---- Curves on the right ----
+            _throttleCurve = new TuneCurvePreview { Dock = DockStyle.Fill, Margin = new Padding(0, 0, 0, 8) };
+            _boostCurve = new TuneCurvePreview { Dock = DockStyle.Fill, Margin = new Padding(0, 8, 0, 0) };
+            var curves = new TableLayoutPanel
             {
-                Dock = DockStyle.None,
-                Padding = new Padding(12),
-                AutoScroll = true,
-                BackColor = BackColor
-            };
-            Controls.Add(_content);
-
-            _layout = new FlowLayoutPanel
-            {
-                FlowDirection = FlowDirection.TopDown,
-                WrapContents = false,
-                AutoSize = true,
-                AutoSizeMode = AutoSizeMode.GrowAndShrink,
-                BackColor = BackColor
-            };
-            _content.Controls.Add(_layout);
-            _content.Resize += (_, _) => ResizeContent();
-
-            _layout.Controls.Add(CreateTitle("Tune"));
-
-            var attachRow = new TableLayoutPanel
-            {
-                ColumnCount = 2,
-                RowCount = 1,
-                Width = 360,
-                Height = 34,
-                Margin = new Padding(0, 8, 0, 6),
-                BackColor = BackColor
-            };
-            attachRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 55));
-            attachRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 45));
-            _runCombo = new ComboBox
-            {
-                Dock = DockStyle.Fill,
-                DropDownStyle = ComboBoxStyle.DropDownList,
-                BackColor = Color.FromArgb(0x20, 0x26, 0x31),
-                ForeColor = ForeColor,
-                FlatStyle = FlatStyle.Flat
-            };
-            _runCombo.SelectedIndexChanged += (_, _) =>
-            {
-                if (!_isUpdating && TryGetSelectedSlot(out int slot))
-                    SelectedRunChanged?.Invoke(slot);
-            };
-            _attachButton = CreateButton("Attach tune");
-            _attachButton.Dock = DockStyle.Fill;
-            _attachButton.Click += (_, _) => AttachTuneRequested?.Invoke(GetSelectedSlot());
-            attachRow.Controls.Add(_runCombo, 0, 0);
-            attachRow.Controls.Add(_attachButton, 1, 0);
-            _layout.Controls.Add(attachRow);
-
-            _statusLabel = CreateValueLabel("Load a Castle run, then attach a Castle Link .dat tune.");
-            _statusLabel.Height = 26;
-            _layout.Controls.Add(_statusLabel);
-
-            _layout.Controls.Add(CreateSection("Radio throttle speed"));
-            var radioHeader = CreateGrid(2);
-            _radioModeCombo = new ComboBox
-            {
-                Dock = DockStyle.Fill,
-                DropDownStyle = ComboBoxStyle.DropDownList,
-                BackColor = Color.FromArgb(0x20, 0x26, 0x31),
-                ForeColor = ForeColor,
-                FlatStyle = FlatStyle.Flat
-            };
-            _radioModeCombo.Items.AddRange(new object[] { "Mode 1", "Mode 2", "Mode 3" });
-            AddField(radioHeader, "Mode", _radioModeCombo);
-            _layout.Controls.Add(radioHeader);
-
-            _radioModeFields = new FlowLayoutPanel
-            {
-                FlowDirection = FlowDirection.TopDown,
-                WrapContents = false,
-                AutoSize = true,
-                AutoSizeMode = AutoSizeMode.GrowAndShrink,
-                Margin = new Padding(0, 2, 0, 0),
-                BackColor = BackColor
-            };
-            _layout.Controls.Add(_radioModeFields);
-
-            _radioAllTurn = CreateNumeric();
-            _radioAllReturn = CreateNumeric();
-            _radioHighTurn = CreateNumeric();
-            _radioHighReturn = CreateNumeric();
-            _radioPoint1 = CreateNumeric();
-            _radioMiddleTurn = CreateNumeric();
-            _radioMiddleReturn = CreateNumeric();
-            _radioPoint2 = CreateNumeric();
-            _radioLowTurn = CreateNumeric();
-            _radioLowReturn = CreateNumeric();
-
-            _radioModeCombo.SelectedIndexChanged += (_, _) =>
-            {
-                RebuildRadioModeFields();
-                RaiseRadioChanged();
-            };
-            foreach (var numeric in new[]
-            {
-                _radioAllTurn, _radioAllReturn,
-                _radioHighTurn, _radioHighReturn, _radioPoint1,
-                _radioMiddleTurn, _radioMiddleReturn, _radioPoint2,
-                _radioLowTurn, _radioLowReturn
-            })
-                numeric.ValueChanged += (_, _) => RaiseRadioChanged();
-
-            _layout.Controls.Add(CreateSection("Boost"));
-            _boostLabel = CreateValueLabel("-");
-            _boostLabel.Height = 104;
-            _layout.Controls.Add(_boostLabel);
-
-            _layout.Controls.Add(CreateSection("Turbo"));
-            _turboLabel = CreateValueLabel("-");
-            _turboLabel.Height = 72;
-            _layout.Controls.Add(_turboLabel);
-
-            _throttleCurve = new TuneCurvePreview();
-            _boostCurve = new TuneCurvePreview();
-            _throttleCurve.Dock = DockStyle.Fill;
-            _boostCurve.Dock = DockStyle.Fill;
-            _throttleCurve.Margin = new Padding(0, 0, 0, 5);
-            _boostCurve.Margin = new Padding(0, 5, 0, 0);
-
-            _curveLayout = new TableLayoutPanel
-            {
+                Dock = DockStyle.Right,
+                Width = 520,
                 ColumnCount = 1,
                 RowCount = 2,
-                BackColor = BackColor,
-                Margin = Padding.Empty
+                Padding = new Padding(12, 12, 16, 12),
+                BackColor = SurfaceWindow
             };
-            _curveLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            _curveLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
-            _curveLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
-            _curveLayout.Controls.Add(_throttleCurve, 0, 0);
-            _curveLayout.Controls.Add(_boostCurve, 0, 1);
-            // Curves live inside the same scrolling stack (fixed height) so the whole
-            // panel is one auto-sizing column that scrolls natively.
-            _curveLayout.AutoSize = false;
-            _curveLayout.Height = 430;
-            _curveLayout.Margin = new Padding(0, 12, 0, 4);
-            _layout.Controls.Add(_curveLayout);
+            curves.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
+            curves.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
+            curves.Controls.Add(_throttleCurve, 0, 0);
+            curves.Controls.Add(_boostCurve, 0, 1);
 
-            SetAvailableRuns(Array.Empty<int>(), preferredSlot: null);
-            SetTune(null, null);
-            ArrangePanelRegions();
-            ResizeContent();
-        }
-
-        public void SetAvailableRuns(IEnumerable<int> slots, int? preferredSlot)
-        {
-            _isUpdating = true;
-            try
+            // ---- Settings table on the left ----
+            _scroll = new DarkScrollPanel { Dock = DockStyle.Fill, AutoScroll = true, BackColor = SurfaceWindow };
+            _table = new FlowLayoutPanel
             {
-                _availableRuns.Clear();
-                _runCombo.Items.Clear();
-
-                foreach (int slot in slots.OrderBy(s => s))
-                {
-                    string label = $"Run {slot}";
-                    _availableRuns[slot] = label;
-                    _runCombo.Items.Add(label);
-                }
-
-                if (_runCombo.Items.Count == 0)
-                {
-                    _attachButton.Enabled = true;
-                    _runCombo.Enabled = false;
-                    _statusLabel.Text = "No Castle run loaded. You can still load a tune to preview it.";
-                }
-                else
-                {
-                    _attachButton.Enabled = true;
-                    _runCombo.Enabled = true;
-
-                    string? selectedLabel = preferredSlot.HasValue && _availableRuns.TryGetValue(preferredSlot.Value, out var preferred)
-                        ? preferred
-                        : _runCombo.Items[0]?.ToString();
-
-                    if (selectedLabel != null)
-                        _runCombo.SelectedItem = selectedLabel;
-                }
-            }
-            finally
-            {
-                _isUpdating = false;
-            }
-        }
-
-        public void SetTune(int? slot, TuneSettings? tune)
-        {
-            _isUpdating = true;
-            try
-            {
-                if (slot.HasValue && _availableRuns.TryGetValue(slot.Value, out var label))
-                    _runCombo.SelectedItem = label;
-
-                _statusLabel.Text = slot.HasValue
-                    ? tune == null ? $"Run {slot.Value}: no tune attached." : $"Run {slot.Value}: tune attached."
-                    : tune == null
-                        ? "No Castle run selected. Load a tune to preview it."
-                        : "Tune preview loaded. Load a Castle run to attach it.";
-
-                bool boostEnabled = tune?.BoostEnabled == true;
-                _boostLabel.Text = tune == null ? "-" : BuildBoostText(tune);
-                _boostLabel.Visible = tune == null || boostEnabled;
-                _boostLabel.Height = 72;
-                _turboLabel.Text = tune == null ? "-" : BuildTurboText(tune);
-
-                ApplyRadio(tune?.Radio);
-
-                _throttleCurve.SetCurve(
-                    "Throttle curve",
-                    tune != null ? tune.ThrottleCurve : Array.Empty<TuneCurvePoint>(),
-                    "No throttle curve");
-                _boostCurve.SetCurve(
-                    "Boost by throttle",
-                    tune != null ? tune.BoostByThrottleCurve : Array.Empty<TuneCurvePoint>(),
-                    "No boost curve");
-                _boostCurve.Visible = true;
-            }
-            finally
-            {
-                _isUpdating = false;
-            }
-        }
-
-        protected override void OnResize(EventArgs e)
-        {
-            base.OnResize(e);
-            ArrangePanelRegions();
-        }
-
-        private void ArrangePanelRegions()
-        {
-            if (_content == null)
-                return;
-
-            _content.SetBounds(0, 0, ClientSize.Width, ClientSize.Height);
-            ResizeContent();
-        }
-
-        private void ResizeContent()
-        {
-            if (_content == null || _layout == null || _curveLayout == null || _performingLayout)
-                return;
-
-            _performingLayout = true;
-            int verticalScroll = _content.VerticalScrollPosition;
-            _content.SuspendLayout();
-            _layout.SuspendLayout();
-            _radioModeFields.SuspendLayout();
-            try
-            {
-                _content.ResetHorizontalScroll();
-
-                int innerLeft = _content.Padding.Left;
-                int innerTop = _content.Padding.Top;
-                // ClientSize already excludes the native scrollbar; small margin only.
-                int contentWidth = Math.Clamp(_content.ClientSize.Width - _content.Padding.Horizontal - 2, 0, MaxContentWidth);
-
-                _layout.Width = contentWidth;
-                foreach (Control control in _layout.Controls)
-                    control.Width = Math.Max(0, contentWidth - control.Margin.Horizontal);
-
-                _radioModeFields.Width = contentWidth;
-                foreach (Control control in _radioModeFields.Controls)
-                    control.Width = Math.Max(0, contentWidth - control.Margin.Horizontal);
-
-                _layout.Location = new Point(innerLeft, innerTop);
-
-                // One auto-sizing column — let AutoScroll derive the scroll range from it.
-                _content.AutoScrollMinSize = new Size(
-                    0,
-                    _layout.Bottom + _content.Padding.Bottom);
-            }
-            finally
-            {
-                _radioModeFields.ResumeLayout(false);
-                _layout.ResumeLayout(false);
-                _content.ResumeLayout(true);
-                _throttleCurve.Invalidate();
-                _boostCurve.Invalidate();
-                _content.SetVerticalScroll(verticalScroll);
-                _content.RefreshScrollIndicator();
-                _performingLayout = false;
-            }
-        }
-
-        private bool TryGetSelectedSlot(out int slot)
-        {
-            slot = 0;
-            string? selected = _runCombo.SelectedItem?.ToString();
-            if (selected == null)
-                return false;
-
-            foreach (var kvp in _availableRuns)
-            {
-                if (kvp.Value == selected)
-                {
-                    slot = kvp.Key;
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        private int? GetSelectedSlot() =>
-            TryGetSelectedSlot(out int slot) ? slot : null;
-
-        private void RaiseRadioChanged()
-        {
-            if (_isUpdating || !TryGetSelectedSlot(out int slot))
-                return;
-
-            RadioSettingsChanged?.Invoke(slot, new RadioTuneSettings
-            {
-                Mode = GetRadioMode(),
-                ThrottleSpeedMode = _radioModeCombo.Text,
-                SpeedType = _radioSpeedType,
-                AllTurnPercent = ValueOrNull(_radioAllTurn),
-                AllReturnPercent = ValueOrNull(_radioAllReturn),
-                HighTurnPercent = ValueOrNull(_radioHighTurn),
-                HighReturnPercent = ValueOrNull(_radioHighReturn),
-                Point1Percent = ValueOrNull(_radioPoint1),
-                MiddleTurnPercent = ValueOrNull(_radioMiddleTurn),
-                MiddleReturnPercent = ValueOrNull(_radioMiddleReturn),
-                Point2Percent = ValueOrNull(_radioPoint2),
-                LowTurnPercent = ValueOrNull(_radioLowTurn),
-                LowReturnPercent = ValueOrNull(_radioLowReturn)
-            });
-        }
-
-        private void ApplyRadio(RadioTuneSettings? radio)
-        {
-            int mode = Math.Clamp(radio?.Mode ?? ParseLegacyMode(radio?.ThrottleSpeedMode), 1, 3);
-            _radioModeCombo.SelectedIndex = mode - 1;
-            _radioSpeedType = string.IsNullOrWhiteSpace(radio?.SpeedType)
-                ? "Normal"
-                : radio.SpeedType;
-
-            SetNumeric(_radioAllTurn, radio?.AllTurnPercent ?? radio?.AllPercent);
-            SetNumeric(_radioAllReturn, radio?.AllReturnPercent ?? 100);
-            SetNumeric(_radioHighTurn, radio?.HighTurnPercent ?? radio?.HighPercent);
-            SetNumeric(_radioHighReturn, radio?.HighReturnPercent ?? 100);
-            SetNumeric(_radioPoint1, radio?.Point1Percent);
-            SetNumeric(_radioMiddleTurn, radio?.MiddleTurnPercent ?? radio?.MiddlePercent);
-            SetNumeric(_radioMiddleReturn, radio?.MiddleReturnPercent ?? 100);
-            SetNumeric(_radioPoint2, radio?.Point2Percent);
-            SetNumeric(_radioLowTurn, radio?.LowTurnPercent ?? radio?.LowPercent);
-            SetNumeric(_radioLowReturn, radio?.LowReturnPercent ?? 100);
-            RebuildRadioModeFields();
-        }
-
-        private int GetRadioMode() => _radioModeCombo.SelectedIndex + 1;
-
-        private static int ParseLegacyMode(string? value)
-        {
-            if (value?.Contains('3') == true || value?.Contains("Middle", StringComparison.OrdinalIgnoreCase) == true)
-                return 3;
-            if (value?.Contains('2') == true || value?.Contains("High", StringComparison.OrdinalIgnoreCase) == true)
-                return 2;
-            return 1;
-        }
-
-        private void RebuildRadioModeFields()
-        {
-            if (_radioModeFields == null)
-                return;
-
-            _radioModeFields.SuspendLayout();
-            _radioModeFields.Controls.Clear();
-
-            var grid = new TableLayoutPanel
-            {
-                ColumnCount = 4,
-                AutoSize = false,
-                Width = Math.Max(0, _radioModeFields.ClientSize.Width),
+                FlowDirection = FlowDirection.TopDown,
+                WrapContents = false,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                BackColor = SurfacePanel,
                 Margin = new Padding(0),
-                BackColor = BackColor,
-                GrowStyle = TableLayoutPanelGrowStyle.AddRows
+                Padding = new Padding(0),
+                Location = new Point(16, 0)
             };
-            grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
-            grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
-            grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
-            grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
-            AddRadioHeader(grid);
+            _scroll.Controls.Add(_table);
+            _scroll.Resize += (_, _) => SizeRows();
 
-            switch (GetRadioMode())
+            // ---- Bar above the table ----
+            var bar = new FlowLayoutPanel
             {
-                case 2:
-                    AddZoneRow(grid, null, _radioHighTurn, _radioHighReturn, "High");
-                    AddZoneRow(grid, _radioPoint1, _radioLowTurn, _radioLowReturn, "Low");
-                    break;
-                case 3:
-                    AddZoneRow(grid, null, _radioHighTurn, _radioHighReturn, "High");
-                    AddZoneRow(grid, _radioPoint2, _radioMiddleTurn, _radioMiddleReturn, "Middle");
-                    AddZoneRow(grid, _radioPoint1, _radioLowTurn, _radioLowReturn, "Low");
-                    break;
-                default:
-                    AddZoneRow(grid, null, _radioAllTurn, _radioAllReturn, "All");
-                    break;
+                Dock = DockStyle.Top,
+                Height = 52,
+                FlowDirection = FlowDirection.LeftToRight,
+                WrapContents = false,
+                Padding = new Padding(16, 12, 0, 0),
+                BackColor = SurfaceWindow
+            };
+            bar.Controls.Add(new Label
+            {
+                Text = "Tune comparison",
+                AutoSize = true,
+                Font = new Font(SystemFonts.DefaultFont.FontFamily, 12f, FontStyle.Bold),
+                ForeColor = TextPrimary,
+                Margin = new Padding(0, 2, 14, 0)
+            });
+            _diffBadge = new Label
+            {
+                AutoSize = true,
+                Font = new Font(SystemFonts.DefaultFont.FontFamily, 9f, FontStyle.Bold),
+                ForeColor = TextAlert,
+                BackColor = Color.FromArgb(0x4A, 0x3A, 0x12),
+                Padding = new Padding(8, 4, 8, 4),
+                Margin = new Padding(0, 2, 18, 0)
+            };
+            bar.Controls.Add(_diffBadge);
+            _onlyDiffs = new CheckBox
+            {
+                Text = "Show only differences",
+                AutoSize = true,
+                ForeColor = TextSecond,
+                Margin = new Padding(0, 6, 0, 0)
+            };
+            _onlyDiffs.CheckedChanged += (_, _) => ApplyRowFilter();
+            bar.Controls.Add(_onlyDiffs);
+
+            Controls.Add(_scroll);
+            Controls.Add(bar);
+            Controls.Add(curves);
+            _scroll.BringToFront();
+
+            SetRuns(Array.Empty<TuneRunColumn>());
+        }
+
+        /// <summary>Show these runs side by side. Called whenever runs or tunes change.</summary>
+        public void SetRuns(IReadOnlyList<TuneRunColumn> columns)
+        {
+            _columns = columns;
+            _radio.Clear();
+            foreach (var col in columns.Where(c => c.Slot > 0))
+                _radio[col.Slot] = (col.Tune?.Radio ?? new RadioTuneSettings()).Clone();
+            RebuildTable();
+            UpdateCurves();
+        }
+
+        // ============================================================
+        // Table
+        // ============================================================
+
+        private void RebuildTable()
+        {
+            _table.SuspendLayout();
+            var old = _table.Controls.Cast<Control>().ToList();
+            _table.Controls.Clear();
+            foreach (var c in old) c.Dispose();
+            _rows.Clear();
+
+            if (_columns.Count == 0)
+            {
+                _table.Controls.Add(MakeEmptyState());
+                _table.ResumeLayout(true);
+                _diffBadge.Visible = false;
+                SizeRows();
+                return;
             }
 
-            grid.Height = grid.RowStyles
-                .Cast<RowStyle>()
-                .Sum(style => (int)style.Height);
-            _radioModeFields.Controls.Add(grid);
-            _radioModeFields.ResumeLayout(true);
-            ResizeContent();
-        }
+            _table.Controls.Add(MakeHeaderRow());
 
-        private static void AddRadioHeader(TableLayoutPanel grid)
-        {
-            int row = grid.RowCount++;
-            grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 20));
-            grid.Controls.Add(CreateSmallLabel("Point"), 0, row);
-            grid.Controls.Add(CreateSmallLabel("Turn"), 1, row);
-            grid.Controls.Add(CreateSmallLabel("Return"), 2, row);
-            grid.Controls.Add(CreateSmallLabel(""), 3, row);
-        }
-
-        private static void AddZoneRow(
-            TableLayoutPanel grid,
-            NumericUpDown? pointValue,
-            NumericUpDown turn,
-            NumericUpDown returnValue,
-            string zoneLabel)
-        {
-            int row = grid.RowCount++;
-            grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
-            int tabIndex = row * 3;
-            if (pointValue != null)
-                pointValue.TabIndex = tabIndex++;
-            turn.TabIndex = tabIndex++;
-            returnValue.TabIndex = tabIndex;
-            grid.Controls.Add(pointValue ?? CreateSpacer(), 0, row);
-            grid.Controls.Add(turn, 1, row);
-            grid.Controls.Add(returnValue, 2, row);
-            grid.Controls.Add(CreateSmallLabel(zoneLabel), 3, row);
-        }
-
-        private static Control CreateSpacer() => new Panel
-        {
-            Dock = DockStyle.Fill,
-            Margin = Padding.Empty,
-            BackColor = Color.Transparent
-        };
-
-        private static Label CreateSmallLabel(string text) => new()
-        {
-            Text = text,
-            Dock = DockStyle.Fill,
-            TextAlign = ContentAlignment.MiddleLeft,
-            ForeColor = Color.FromArgb(0xBF, 0xC7, 0xD5)
-        };
-
-        private static Label CreateTitle(string text)
-        {
-            var baseFont = SystemFonts.MessageBoxFont ?? Control.DefaultFont;
-            return new Label
+            if (_columns.Any(c => c.Slot > 0))
             {
-                Text = text,
-                AutoSize = false,
-                Width = 360,
-                Height = 30,
-                Font = new Font(baseFont.FontFamily, 15, FontStyle.Bold),
-                ForeColor = Color.FromArgb(0xF6, 0xF8, 0xFB),
-                Margin = new Padding(0, 0, 0, 2)
-            };
-        }
+                AddRow(TableRow.Group("Radio throttle speed (typed in, saved with the project)"));
+                foreach (var (field, label) in RadioRows)
+                    AddRow(MakeRadioRow(field, label));
+            }
 
-        private static Label CreateSection(string text)
-        {
-            var baseFont = SystemFonts.MessageBoxFont ?? Control.DefaultFont;
-            return new Label
+            var tunes = _columns.Select(c => c.Tune).ToList();
+            var shownKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var (group, rows) in SettingGroups)
             {
-                Text = text,
-                AutoSize = false,
-                Width = 360,
-                Height = 24,
-                Font = new Font(baseFont, FontStyle.Bold),
-                ForeColor = Color.FromArgb(0xF6, 0xF8, 0xFB),
-                Margin = new Padding(0, 12, 0, 2)
-            };
+                var present = rows.Where(r => tunes.Any(t => t?.Fields.ContainsKey(r.Key) == true)).ToList();
+                if (present.Count == 0) continue;
+                AddRow(TableRow.Group(group));
+                foreach (var (key, label) in present)
+                {
+                    shownKeys.Add(key);
+                    AddRow(MakeValueRow(label, key));
+                }
+            }
+
+            // Everything else in the .dat file (skips the raw curve tables, which are charted).
+            var otherKeys = tunes
+                .Where(t => t != null)
+                .SelectMany(t => t!.Fields.Keys)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Where(k => !shownKeys.Contains(k) && !IsRawTable(k))
+                .OrderBy(k => k, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            if (otherKeys.Count > 0)
+            {
+                AddRow(TableRow.Group("Other settings"));
+                foreach (var key in otherKeys)
+                    AddRow(MakeValueRow(key, key));
+            }
+
+            _table.ResumeLayout(true);
+            RefreshDiffs();
         }
 
-        private static Label CreateValueLabel(string text) => new()
+        private static bool IsRawTable(string key) =>
+            key.Contains("65535") || key.Contains("65534");
+
+        private void AddRow(TableRow row)
         {
-            Text = text,
-            AutoSize = false,
-            Width = 360,
-            Height = 22,
-            ForeColor = Color.FromArgb(0xBF, 0xC7, 0xD5),
-            Margin = new Padding(0, 1, 0, 1)
+            _rows.Add(row);
+            _table.Controls.Add(row);
+        }
+
+        private Control MakeEmptyState()
+        {
+            var panel = new Panel { Height = 120, BackColor = SurfaceWindow, Margin = new Padding(0) };
+            var text = new Label
+            {
+                Text = "Load a Castle log, then attach its Castle Link .dat tune to compare it here.",
+                AutoSize = true,
+                ForeColor = TextSecond,
+                Location = new Point(0, 12)
+            };
+            var preview = MakeButton("Preview a tune without a log…");
+            preview.Location = new Point(0, 44);
+            preview.Size = new Size(220, 30);
+            preview.Click += (_, _) => AttachTuneRequested?.Invoke(null);
+            panel.Controls.Add(text);
+            panel.Controls.Add(preview);
+            return panel;
+        }
+
+        private Control MakeHeaderRow()
+        {
+            var header = new TableRow(isHeader: true) { Height = 100 };
+            header.SetSetting("Setting");
+            foreach (var col in _columns)
+            {
+                var cell = new Panel { BackColor = SurfaceBar };
+                var line = new RunLineSample(Math.Max(0, col.Slot - 1)) { Bounds = new Rectangle(0, 10, 28, 10) };
+                var title = new Label
+                {
+                    Text = col.Slot > 0 ? $"Run {col.Slot}" : "Preview",
+                    AutoSize = true,
+                    Font = new Font(SystemFonts.DefaultFont.FontFamily, 9f, FontStyle.Bold),
+                    ForeColor = TextPrimary,
+                    Location = new Point(32, 6)
+                };
+                string fileText = (string.IsNullOrEmpty(col.LogName) ? "" : col.LogName + "\n")
+                    + (col.Tune?.SourceFileName is { Length: > 0 } tuneName ? tuneName : "no tune file");
+                var files = new Label
+                {
+                    Text = fileText,
+                    AutoSize = false,
+                    AutoEllipsis = true,
+                    ForeColor = TextSecond,
+                    Location = new Point(0, 28),
+                    Size = new Size(200, 32)
+                };
+                var attach = MakeButton(col.Tune?.SourceFileName is { Length: > 0 } ? "Change tune…" : "Attach tune…");
+                attach.Size = new Size(110, 26);
+                attach.Location = new Point(0, 64);
+                int slot = col.Slot;
+                attach.Click += (_, _) => AttachTuneRequested?.Invoke(slot > 0 ? slot : null);
+                _toolTip.SetToolTip(files, fileText.Replace("\n", "  ·  "));
+
+                cell.Controls.Add(line);
+                cell.Controls.Add(title);
+                cell.Controls.Add(files);
+                cell.Controls.Add(attach);
+                cell.Resize += (_, _) => files.Width = Math.Max(0, cell.Width - 4);
+                header.AddCell(cell);
+            }
+            return header;
+        }
+
+        private TableRow MakeValueRow(string label, string key)
+        {
+            var row = new TableRow(isHeader: false);
+            row.SetSetting(label);
+            foreach (var col in _columns)
+            {
+                string value = col.Tune != null && col.Tune.Fields.TryGetValue(key, out var v) ? v : "–";
+                var cell = new Label
+                {
+                    Text = value,
+                    AutoSize = false,
+                    AutoEllipsis = true,
+                    TextAlign = ContentAlignment.MiddleLeft,
+                    ForeColor = TextPrimary
+                };
+                _toolTip.SetToolTip(cell, value);
+                row.AddCell(cell, () => cell.Text);
+            }
+            return row;
+        }
+
+        private TableRow MakeRadioRow(RadioField field, string label)
+        {
+            var row = new TableRow(isHeader: false);
+            row.SetSetting(label);
+            foreach (var col in _columns)
+            {
+                if (col.Slot <= 0)
+                {
+                    row.AddCell(MakeDash(null), () => "–");
+                    continue;
+                }
+
+                var radio = _radio[col.Slot];
+                int mode = Math.Clamp(radio.Mode, 1, 3);
+                int slot = col.Slot;
+
+                if (field == RadioField.Mode)
+                {
+                    var combo = new ComboBox
+                    {
+                        DropDownStyle = ComboBoxStyle.DropDownList,
+                        FlatStyle = FlatStyle.Flat,
+                        BackColor = SurfaceInput,
+                        ForeColor = TextPrimary,
+                        Width = 110
+                    };
+                    combo.Items.AddRange(new object[] { "Mode 1", "Mode 2", "Mode 3" });
+                    combo.SelectedIndex = mode - 1;
+                    combo.SelectedIndexChanged += (_, _) => RadioEdited(slot, field, combo.SelectedIndex + 1);
+                    row.AddCell(combo, () => combo.Text, fixedWidth: 110);
+                    continue;
+                }
+
+                if (!RadioFieldApplies(field, mode))
+                {
+                    row.AddCell(MakeDash($"Not used in Mode {mode}"), () => "–");
+                    continue;
+                }
+
+                var number = new NumericUpDown
+                {
+                    Minimum = 0,
+                    Maximum = 100,
+                    DecimalPlaces = 0,
+                    BackColor = SurfaceInput,
+                    ForeColor = TextPrimary,
+                    BorderStyle = BorderStyle.FixedSingle,
+                    Width = 80
+                };
+                double? current = GetRadio(radio, field, mode);
+                number.Value = current.HasValue ? (decimal)Math.Clamp(Math.Round(current.Value), 0, 100) : 0;
+                number.ValueChanged += (_, _) => RadioEdited(slot, field, (double)number.Value);
+                number.Enter += (_, _) => number.Select(0, number.Text.Length);
+                row.AddCell(number, () => $"{number.Value}%", fixedWidth: 80);
+            }
+            return row;
+        }
+
+        private Label MakeDash(string? tooltip)
+        {
+            var dash = new Label { Text = "–", ForeColor = TextDim, TextAlign = ContentAlignment.MiddleLeft };
+            if (tooltip != null) _toolTip.SetToolTip(dash, tooltip);
+            return dash;
+        }
+
+        private void RadioEdited(int slot, RadioField field, double value)
+        {
+            if (!_radio.TryGetValue(slot, out var radio)) return;
+
+            if (field == RadioField.Mode)
+            {
+                radio.Mode = (int)value;
+                radio.ThrottleSpeedMode = $"Mode {(int)value}";
+            }
+            else
+            {
+                SetRadio(radio, field, Math.Clamp(radio.Mode, 1, 3), value);
+            }
+
+            RadioSettingsChanged?.Invoke(slot, radio.Clone());
+
+            // A mode change switches which point rows apply. Rebuild after the combo's own
+            // event has finished, since the rebuild disposes the combo.
+            if (field != RadioField.Mode)
+                RefreshDiffs();
+            else if (IsHandleCreated)
+                BeginInvoke(new Action(RebuildTable));
+            else
+                RebuildTable();
+        }
+
+        // Points count up from the bottom of the stick: Mode 1 has one speed for the whole
+        // travel; Mode 2 adds Point 1 (low zone, high zone); Mode 3 adds Point 2 (low,
+        // middle, high). The top zone has no position of its own.
+        private static bool RadioFieldApplies(RadioField field, int mode) => field switch
+        {
+            RadioField.Point1Position => mode >= 2,
+            RadioField.Point1Speed => true,
+            RadioField.Point2Position => mode == 3,
+            RadioField.Point2Speed => mode >= 2,
+            RadioField.Point3Speed => mode == 3,
+            _ => true
         };
 
-        private Button CreateButton(string text)
+        private static double? GetRadio(RadioTuneSettings r, RadioField field, int mode) => field switch
         {
-            var button = new Button
+            RadioField.Point1Position => r.Point1Percent,
+            RadioField.Point1Speed => mode == 1 ? r.AllTurnPercent ?? r.AllPercent : r.LowTurnPercent ?? r.LowPercent,
+            RadioField.Point2Position => r.Point2Percent,
+            RadioField.Point2Speed => mode == 2 ? r.HighTurnPercent ?? r.HighPercent : r.MiddleTurnPercent ?? r.MiddlePercent,
+            RadioField.Point3Speed => r.HighTurnPercent ?? r.HighPercent,
+            _ => null
+        };
+
+        private static void SetRadio(RadioTuneSettings r, RadioField field, int mode, double value)
+        {
+            switch (field)
+            {
+                case RadioField.Point1Position: r.Point1Percent = value; break;
+                case RadioField.Point1Speed:
+                    if (mode == 1) r.AllTurnPercent = value; else r.LowTurnPercent = value;
+                    break;
+                case RadioField.Point2Position: r.Point2Percent = value; break;
+                case RadioField.Point2Speed:
+                    if (mode == 2) r.HighTurnPercent = value; else r.MiddleTurnPercent = value;
+                    break;
+                case RadioField.Point3Speed: r.HighTurnPercent = value; break;
+            }
+        }
+
+        private void RefreshDiffs()
+        {
+            int differing = 0;
+            foreach (var row in _rows)
+                if (row.UpdateDiff()) differing++;
+
+            _diffBadge.Visible = _columns.Count >= 2;
+            _diffBadge.Text = differing == 1 ? "1 setting differs" : $"{differing} settings differ";
+            ApplyRowFilter();
+        }
+
+        private void ApplyRowFilter()
+        {
+            bool onlyDiffs = _onlyDiffs.Checked;
+            _table.SuspendLayout();
+            TableRow? currentGroup = null;
+            bool groupHasVisible = false;
+            foreach (var row in _rows)
+            {
+                if (row.IsGroup)
+                {
+                    if (currentGroup != null) currentGroup.Visible = groupHasVisible;
+                    currentGroup = row;
+                    groupHasVisible = false;
+                    continue;
+                }
+                bool show = !onlyDiffs || row.IsDifferent;
+                row.Visible = show;
+                groupHasVisible |= show;
+            }
+            if (currentGroup != null) currentGroup.Visible = groupHasVisible;
+            _table.ResumeLayout(true);
+            SizeRows();
+        }
+
+        private void SizeRows()
+        {
+            int available = _scroll.ClientSize.Width - 32;
+            int columns = Math.Max(1, _columns.Count);
+            int valueWidth = Math.Clamp((available - SettingColumnWidth) / columns, 120, MaxValueColumnWidth);
+            int width = _columns.Count == 0 ? Math.Max(400, available) : SettingColumnWidth + valueWidth * columns;
+            foreach (Control c in _table.Controls)
+            {
+                if (c is TableRow row) row.ValueColumnWidth = valueWidth;
+                c.Width = width;
+            }
+        }
+
+        // ============================================================
+        // Curves
+        // ============================================================
+
+        private void UpdateCurves()
+        {
+            var throttle = new (IReadOnlyList<TuneCurvePoint>? Points, bool Disabled)[3];
+            var boost = new (IReadOnlyList<TuneCurvePoint>? Points, bool Disabled)[3];
+            foreach (var col in _columns)
+            {
+                if (col.Tune == null) continue;
+                int i = Math.Clamp(col.Slot - 1, 0, 2);
+                throttle[i] = (col.Tune.ThrottleCurve, false);
+                boost[i] = (col.Tune.BoostByThrottleCurve, !IsYes(col.Tune.BoostModeEnableText, col.Tune.BoostEnabled));
+            }
+            _throttleCurve.SetCurves("Throttle curve", throttle, "No throttle curve");
+            _boostCurve.SetCurves("Boost by throttle (faded = boost off in that tune)", boost, "No boost curve");
+        }
+
+        private static bool IsYes(string text, bool fallback) =>
+            string.IsNullOrWhiteSpace(text) ? fallback : text.Trim().StartsWith("Y", StringComparison.OrdinalIgnoreCase);
+
+        private static Button MakeButton(string text)
+        {
+            var b = new Button
             {
                 Text = text,
                 FlatStyle = FlatStyle.Flat,
-                BackColor = Color.FromArgb(0x2A, 0x66, 0xB8),
+                BackColor = AccentBlue,
                 ForeColor = Color.White,
-                Margin = new Padding(4, 0, 0, 0)
+                UseVisualStyleBackColor = false,
+                TabStop = false
             };
-            button.FlatAppearance.BorderColor = Color.FromArgb(0x3D, 0x7D, 0xD7);
-            return button;
+            b.FlatAppearance.BorderColor = AccentBlue;
+            return b;
         }
 
-        private TableLayoutPanel CreateGrid(int columns) => new()
+        // ============================================================
+        // Nested: one table row (setting name + one cell per run)
+        // ============================================================
+        private sealed class TableRow : Panel
         {
-            ColumnCount = columns,
-            AutoSize = true,
-            Width = 360,
-            BackColor = BackColor,
-            Margin = new Padding(0, 0, 0, 0)
-        };
+            private readonly Label _setting;
+            private readonly List<(Control Cell, Func<string>? Value, int FixedWidth)> _cells = new();
+            private string _settingText = "";
+            private int _valueColumnWidth = 160;
 
-        private static TextBox CreateTextBox() => new()
-        {
-            Dock = DockStyle.Fill,
-            BackColor = Color.FromArgb(0x20, 0x26, 0x31),
-            ForeColor = Color.FromArgb(0xE6, 0xE9, 0xEF),
-            BorderStyle = BorderStyle.FixedSingle
-        };
+            public bool IsGroup { get; private set; }
+            public bool IsHeader { get; }
+            public bool IsDifferent { get; private set; }
 
-        private static NumericUpDown CreateNumeric()
-        {
-            var numeric = new NumericUpDown
+            public int ValueColumnWidth
             {
-                Dock = DockStyle.Fill,
-                Minimum = 1,
-                Maximum = 100,
-                DecimalPlaces = 0,
-                Increment = 1,
-                BackColor = Color.FromArgb(0x20, 0x26, 0x31),
-                ForeColor = Color.FromArgb(0xE6, 0xE9, 0xEF)
-            };
-            numeric.Enter += (_, _) => SelectNumericText(numeric);
-            numeric.MouseUp += (_, e) =>
+                get => _valueColumnWidth;
+                set { _valueColumnWidth = value; PerformLayout(); }
+            }
+
+            public TableRow(bool isHeader)
             {
-                if (e.Button == MouseButtons.Left)
-                    SelectNumericText(numeric);
-            };
-            return numeric;
-        }
+                IsHeader = isHeader;
+                Height = RowHeight;
+                Margin = new Padding(0);
+                BackColor = isHeader ? SurfaceBar : SurfacePanel;
+                _setting = new Label
+                {
+                    AutoSize = false,
+                    AutoEllipsis = true,
+                    TextAlign = isHeader ? ContentAlignment.TopLeft : ContentAlignment.MiddleLeft,
+                    ForeColor = isHeader ? TextPrimary : TextSecond,
+                    Font = new Font(SystemFonts.DefaultFont.FontFamily, 9f, isHeader ? FontStyle.Bold : FontStyle.Regular),
+                    Padding = new Padding(10, isHeader ? 8 : 0, 0, 0)
+                };
+                Controls.Add(_setting);
+            }
 
-        private static void SelectNumericText(NumericUpDown numeric)
-        {
-            if (!numeric.IsHandleCreated)
-                return;
-
-            numeric.BeginInvoke(() => numeric.Select(0, numeric.Text.Length));
-        }
-
-        private static void AddField(TableLayoutPanel grid, string label, Control input)
-        {
-            int row = grid.RowCount++;
-            grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
-            var labelControl = new Label
+            public static TableRow Group(string title)
             {
-                Text = label,
-                Dock = DockStyle.Fill,
-                TextAlign = ContentAlignment.MiddleLeft,
-                ForeColor = Color.FromArgb(0xBF, 0xC7, 0xD5)
-            };
-            grid.Controls.Add(labelControl, 0, row);
-            grid.Controls.Add(input, 1, row);
+                var row = new TableRow(isHeader: false) { IsGroup = true, Height = 30, BackColor = SurfaceBar };
+                row.SetSetting(title);
+                row._setting.ForeColor = TextPrimary;
+                row._setting.Font = new Font(SystemFonts.DefaultFont.FontFamily, 9f, FontStyle.Bold);
+                return row;
+            }
 
-            if (grid.ColumnStyles.Count == 0)
+            public void SetSetting(string text)
             {
-                grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 38));
-                grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 62));
+                _settingText = text;
+                _setting.Text = text;
+            }
+
+            public void AddCell(Control cell, Func<string>? value = null, int fixedWidth = 0)
+            {
+                _cells.Add((cell, value, fixedWidth));
+                Controls.Add(cell);
+            }
+
+            /// <summary>Compare this row's cells; tint the row and mark values that differ from run 1.</summary>
+            public bool UpdateDiff()
+            {
+                if (IsGroup || IsHeader) return false;
+                var values = _cells.Select(c => c.Value?.Invoke() ?? "").ToList();
+                var real = values.Where(v => v != "–").ToList();
+                IsDifferent = real.Count >= 2 && real.Distinct().Count() > 1;
+
+                BackColor = IsDifferent ? DiffRow : SurfacePanel;
+                _setting.ForeColor = IsDifferent ? TextAlert : TextSecond;
+                _setting.Text = (IsDifferent ? "● " : "") + _settingText;
+                string first = values.Count > 0 ? values[0] : "";
+                for (int i = 0; i < _cells.Count; i++)
+                {
+                    if (_cells[i].Cell is not Label label || label.Text == "–") continue;
+                    bool changed = IsDifferent && i > 0 && values[i] != first;
+                    label.ForeColor = changed ? TextAlert : TextPrimary;
+                    label.Font = new Font(SystemFonts.DefaultFont.FontFamily, 9f, changed ? FontStyle.Bold : FontStyle.Regular);
+                }
+                return IsDifferent;
+            }
+
+            protected override void OnLayout(LayoutEventArgs levent)
+            {
+                base.OnLayout(levent);
+                if (_setting == null || _cells == null) return; // laid out mid-constructor
+                _setting.SetBounds(0, 0, IsGroup ? Width : SettingColumnWidth, Height);
+                int x = SettingColumnWidth;
+                foreach (var (cell, _, fixedWidth) in _cells)
+                {
+                    int w = fixedWidth > 0 ? Math.Min(fixedWidth, _valueColumnWidth - 12) : _valueColumnWidth - 12;
+                    if (IsHeader)
+                        cell.SetBounds(x, 0, _valueColumnWidth - 8, Height);
+                    else if (cell is Label)
+                        cell.SetBounds(x, 0, w, Height);
+                    else
+                        cell.SetBounds(x, (Height - cell.Height) / 2, w, cell.Height);
+                    x += _valueColumnWidth;
+                }
+            }
+
+            protected override void OnPaint(PaintEventArgs e)
+            {
+                base.OnPaint(e);
+                using var pen = new Pen(IsGroup ? BorderDef : SurfaceBar);
+                e.Graphics.DrawLine(pen, 0, Height - 1, Width, Height - 1);
             }
         }
 
-        private static string BuildBoostText(TuneSettings tune)
+        // ============================================================
+        // Nested: run line-style sample (solid / dashed / dotted)
+        // ============================================================
+        private sealed class RunLineSample : Control
         {
-            bool throttleBased = tune.BoostTimingMode.Contains(
-                "Throttle",
-                StringComparison.OrdinalIgnoreCase);
-            string activationText = throttleBased
-                ? $"Start throttle: {Format(tune.BoostStartThrottlePct, "%")}\n" +
-                  $"End throttle: {Format(tune.BoostEndThrottlePct, "%")}"
-                : $"Start RPM: {Format(tune.BoostStartRpm, "")}\n" +
-                  $"End RPM: {Format(tune.BoostEndRpm, "")}";
+            private readonly int _runIndex;
 
-            return
-                "Enabled: YES\n" +
-                $"Amount: {Format(tune.BoostTimingAmountDeg, " deg")}\n" +
-                activationText;
-        }
-
-        private static string BuildTurboText(TuneSettings tune)
-        {
-            string turbo = tune.TurboEnabled ? "YES" : EmptyDash(tune.TurboEnableText);
-            return
-                $"Enabled: {turbo}\n" +
-                $"Amount: {Format(tune.TurboTimingAmountDeg, " deg")}\n" +
-                $"Activation throttle: {Format(tune.TurboActivationThrottlePct, "%")}\n" +
-                $"Acceleration: {Format(tune.TurboAccelDegPerSecond, " deg/s")}";
-        }
-
-        private static string BuildLegacyTimingText(TuneSettings tune)
-        {
-            string turbo = tune.TurboEnabled ? "YES" : EmptyDash(tune.TurboEnableText);
-            string boost = tune.BoostEnabled ? "YES" : EmptyDash(tune.BoostModeEnableText);
-            return
-                $"Turbo: {turbo}\n" +
-                $"Turbo amount: {Format(tune.TurboTimingAmountDeg, "°")}\n" +
-                $"Activation throttle: {Format(tune.TurboActivationThrottlePct, "%")}\n" +
-                $"Accel / Decel: {Format(tune.TurboAccelDegPerSecond, "°/s")} / {Format(tune.TurboDecelDegPerSecond, "°/s")}\n" +
-                $"Boost: {boost}\n" +
-                $"Boost amount: {Format(tune.BoostTimingAmountDeg, "°")}\n" +
-                $"Boost RPM: {Format(tune.BoostStartRpm, "")} - {Format(tune.BoostEndRpm, "")}\n" +
-                $"Boost throttle: {Format(tune.BoostStartThrottlePct, "%")} - {Format(tune.BoostEndThrottlePct, "%")}\n" +
-                $"Max power / Drag brake: {EmptyDash(tune.MaxPower)} / {EmptyDash(tune.DragBrake)}";
-        }
-
-        private static string Format(double? value, string suffix) =>
-            value.HasValue ? $"{value.Value:0.##}{suffix}" : "-";
-
-        private static string EmptyDash(string? value) =>
-            string.IsNullOrWhiteSpace(value) ? "-" : value;
-
-        private static double? ValueOrNull(NumericUpDown control) =>
-            (double)decimal.Round(control.Value, 0, MidpointRounding.AwayFromZero);
-
-        private static void SetNumeric(NumericUpDown control, double? value)
-        {
-            control.Value = value.HasValue
-                ? Math.Min(
-                    control.Maximum,
-                    Math.Max(
-                        control.Minimum,
-                        decimal.Round((decimal)value.Value, 0, MidpointRounding.AwayFromZero)))
-                : control.Minimum;
-        }
-
-        private sealed class UnifiedScrollPanel : Panel
-        {
-            public UnifiedScrollPanel()
+            public RunLineSample(int runIndex)
             {
-                AutoScroll = true;
+                _runIndex = runIndex;
+                SetStyle(ControlStyles.SupportsTransparentBackColor | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer, true);
+                BackColor = Color.Transparent;
             }
 
-            public int VerticalScrollPosition => Math.Max(0, -AutoScrollPosition.Y);
+            protected override void OnPaint(PaintEventArgs e)
+            {
+                using var pen = new Pen(TextPrimary, 2f)
+                {
+                    DashStyle = (_runIndex % 3) switch { 1 => DashStyle.Dash, 2 => DashStyle.Dot, _ => DashStyle.Solid }
+                };
+                e.Graphics.DrawLine(pen, 0, Height / 2, Width, Height / 2);
+            }
+        }
 
-            public void SetVerticalScroll(int position) =>
-                AutoScrollPosition = new Point(0, Math.Max(0, position));
-
-            // The previous custom scrollbar fought WinForms (it hid the native bar via
-            // ShowScrollBar, which also stopped AutoScroll from moving the content and
-            // left ghost trails). Native AutoScroll handles wheel + drag + repaint
-            // reliably; these remain only so existing call sites keep compiling.
-            public void ResetHorizontalScroll() { }
-            public void RefreshScrollIndicator() { }
-
+        private sealed class DarkScrollPanel : Panel
+        {
             protected override void OnHandleCreated(EventArgs e)
             {
                 base.OnHandleCreated(e);
