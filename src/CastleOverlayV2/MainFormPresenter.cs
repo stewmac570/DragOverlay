@@ -214,33 +214,50 @@ namespace CastleOverlayV2
 
             try
             {
-                var headerResult = RaceBoxLoader.LoadHeaderOnly(path);
-                if (!headerResult.Ok)
+                RaceBoxData rbData;
+                List<Models.RaceBoxPoint> points;
+                if (RtProLoader.IsRtProCsv(path))
                 {
-                    Logger.Log($"[Presenter] RaceBox header load failed for slot {uiSlot}: {headerResult.Message}");
-                    ShowResultMessage(headerResult);
-                    return;
+                    // RT Pro GPS logs load like a RaceBox run (same channels, splits worked out).
+                    var rtResult = await Task.Run(() => RtProLoader.Load(path));
+                    if (!rtResult.Ok)
+                    {
+                        Logger.Log($"[Presenter] RT Pro load failed for slot {uiSlot}: {rtResult.Message}");
+                        ShowResultMessage(rtResult);
+                        return;
+                    }
+                    (rbData, points) = rtResult.Value;
                 }
-
-                var rbData = headerResult.Value!;
-
-                if (rbData.FirstCompleteRunIndex == null)
+                else
                 {
-                    _view.ShowInfo("Incomplete Run", "No complete run found in this RaceBox file.");
-                    return;
+                    var headerResult = RaceBoxLoader.LoadHeaderOnly(path);
+                    if (!headerResult.Ok)
+                    {
+                        Logger.Log($"[Presenter] RaceBox header load failed for slot {uiSlot}: {headerResult.Message}");
+                        ShowResultMessage(headerResult);
+                        return;
+                    }
+
+                    rbData = headerResult.Value!;
+
+                    if (rbData.FirstCompleteRunIndex == null)
+                    {
+                        _view.ShowInfo("Incomplete Run", "No complete run found in this RaceBox file.");
+                        return;
+                    }
+
+                    var loader = new RaceBoxLoader();
+                    var telemetryResult = await Task.Run(() => loader.LoadTelemetry(path, rbData.FirstCompleteRunIndex.Value));
+
+                    if (!telemetryResult.Ok)
+                    {
+                        Logger.Log($"[Presenter] RaceBox telemetry load failed for slot {uiSlot}: {telemetryResult.Message}");
+                        ShowResultMessage(telemetryResult);
+                        return;
+                    }
+
+                    points = telemetryResult.Value!;
                 }
-
-                var loader = new RaceBoxLoader();
-                var telemetryResult = await Task.Run(() => loader.LoadTelemetry(path, rbData.FirstCompleteRunIndex.Value));
-
-                if (!telemetryResult.Ok)
-                {
-                    Logger.Log($"[Presenter] RaceBox telemetry load failed for slot {uiSlot}: {telemetryResult.Message}");
-                    ShowResultMessage(telemetryResult);
-                    return;
-                }
-
-                var points = telemetryResult.Value!;
                 if (points.Count == 0)
                 {
                     Logger.Log($"[Presenter] RaceBox telemetry empty for slot {uiSlot}.");
