@@ -2,6 +2,7 @@
 using System;
 using System.Drawing;
 using System.IO;
+using System.Linq;
 using System.Windows.Forms;
 
 namespace CastleOverlayV2.Controls
@@ -58,6 +59,7 @@ namespace CastleOverlayV2.Controls
                 Margin = new Padding(0)
             };
             Controls.Add(_flow);
+            _flow.Resize += (_, _) => FitChips();
 
             for (int slot = 1; slot <= 9; slot++)
             {
@@ -85,7 +87,33 @@ namespace CastleOverlayV2.Controls
             _chips[slot].SetLoaded(fullPath, isVisible, sourceTag);
         public void SetSlotToggleState(int slot, bool isVisible) =>
             _chips[slot].SetToggleState(isVisible);
-        public void SetSlotVisible(int slot, bool visible) => _chips[slot].Visible = visible;
+        public void SetSlotVisible(int slot, bool visible)
+        {
+            _slotHidden[slot] = !visible;
+            _chips[slot].Visible = visible;
+            FitChips();
+        }
+
+        // Slots hidden on purpose (Speed mode). Control.Visible can't be used for this: it
+        // reads false for every chip while the window itself isn't shown yet.
+        private readonly bool[] _slotHidden = new bool[10];
+
+        // Share the strip's width between the visible buttons so they shrink and grow
+        // with the window instead of wrapping out of sight.
+        private const int MinChipWidth = 100;
+        private const int MaxChipWidth = 220;
+
+        private void FitChips()
+        {
+            var visible = _chips.Where(c => c != null && !_slotHidden[c.Slot]).ToList();
+            if (visible.Count == 0) return;
+            int gaps = visible[0].Margin.Horizontal * visible.Count;
+            int each = Math.Clamp((_flow.ClientSize.Width - gaps) / visible.Count, MinChipWidth, MaxChipWidth);
+            _flow.SuspendLayout();
+            foreach (var chip in visible)
+                chip.Width = each;
+            _flow.ResumeLayout(true);
+        }
         public void SetSlotArmed(int slot, bool armed) => _chips[slot].SetArmed(armed);
 
         // ====================================================================
@@ -197,10 +225,13 @@ namespace CastleOverlayV2.Controls
                 };
                 layout.Controls.Add(_tagLbl, 1, 0);
 
+                // One line high and anchored (not docked) so a long name ends in "…"
+                // instead of wrapping onto a second line when the button is narrow.
                 _nameLbl = new Label
                 {
                     Text = "",
-                    Dock = DockStyle.Fill,
+                    Anchor = AnchorStyles.Left | AnchorStyles.Right,
+                    Height = 18,
                     TextAlign = ContentAlignment.MiddleLeft,
                     ForeColor = TextPrimary,
                     Font = new Font(SystemFonts.DefaultFont.FontFamily, 9f),
