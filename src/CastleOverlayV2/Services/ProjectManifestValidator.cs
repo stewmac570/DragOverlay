@@ -87,11 +87,17 @@ namespace CastleOverlayV2.Services
             if (run.UiSlot is < 1 or > 3)
                 errors.Add($"{prefix}.UiSlot must be between 1 and 3.");
 
-            // RaceBox and Mini Logger runs share the RaceBox slots (plot slot = UI slot + 3).
-            int expectedPlotSlot = run.SourceType == ProjectSourceType.Castle
-                ? run.UiSlot
-                : run.UiSlot + 3;
-            if (run.PlotSlot != expectedPlotSlot)
+            // Castle = UI slot, RaceBox = UI slot + 3, Mini Logger = UI slot + 6. Projects saved
+            // before data logs had their own slots stored Mini Logger at UI slot + 3; accept those.
+            int expectedPlotSlot = run.SourceType switch
+            {
+                ProjectSourceType.Castle => run.UiSlot,
+                ProjectSourceType.MiniLogger => RunSlots.DataLog(run.UiSlot),
+                _ => RunSlots.Gps(run.UiSlot)
+            };
+            bool legacyMiniLogger = run.SourceType == ProjectSourceType.MiniLogger &&
+                                    run.PlotSlot == RunSlots.Gps(run.UiSlot);
+            if (run.PlotSlot != expectedPlotSlot && !legacyMiniLogger)
             {
                 errors.Add(
                     $"{prefix}.PlotSlot must be {expectedPlotSlot} for {run.SourceType} UI slot {run.UiSlot}.");

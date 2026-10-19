@@ -16,8 +16,11 @@ public class LineStyleHelperTests
     [InlineData(2, "Dotted")] // Castle Run 3
     [InlineData(5, "Dotted")] // RaceBox 3 (paired with Run 3)
     [InlineData(99, "Dashed")] // Split lines marker
+    [InlineData(6, "Solid")]   // Data log 1
+    [InlineData(7, "Dashed")]  // Data log 2
+    [InlineData(8, "Dotted")]  // Data log 3
     [InlineData(-1, "Solid")]  // Out of range — default
-    [InlineData(7, "Solid")]   // Out of range — default
+    [InlineData(9, "Solid")]   // Out of range — default
     public void GetLinePattern_returns_expected(int index, string expectedName)
     {
         var expected = expectedName switch

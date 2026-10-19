@@ -2,6 +2,7 @@
 using System;
 using System.Drawing;
 using System.IO;
+using System.Linq;
 using System.Windows.Forms;
 
 namespace CastleOverlayV2.Controls
@@ -11,7 +12,7 @@ namespace CastleOverlayV2.Controls
     /// Empty slots show a "Load …" button; loaded slots show a chip
     /// (master eye toggle + source tag + truncated name + delete ×).
     ///
-    /// Slot map: 1..3 = Castle (ESC), 4..6 = RaceBox (GPS).
+    /// Slot map: 1..3 = Castle (ESC), 4..6 = GPS (RaceBox, RT Pro), 7..9 = data logs (Mini Logger).
     /// </summary>
     public class RunStrip : UserControl
     {
@@ -33,7 +34,7 @@ namespace CastleOverlayV2.Controls
         public event Action<int>? ArmRequested;    // slot 1..6 (click on chip body)
 
         // ---- State ----------------------------------------------------------
-        private readonly SlotChip[] _chips = new SlotChip[7]; // index 1..6
+        private readonly SlotChip[] _chips = new SlotChip[10]; // index 1..9
         private readonly FlowLayoutPanel _flow;
         private readonly ToolTip _toolTip;
 
@@ -58,14 +59,16 @@ namespace CastleOverlayV2.Controls
                 Margin = new Padding(0)
             };
             Controls.Add(_flow);
+            _flow.Resize += (_, _) => FitChips();
 
-            for (int slot = 1; slot <= 6; slot++)
+            for (int slot = 1; slot <= 9; slot++)
             {
                 int capturedSlot = slot;
                 bool isCastle = capturedSlot <= 3;
                 string emptyLabel = isCastle
                     ? $"Load Castle {capturedSlot}"
-                    : $"Load RaceBox / Logger {capturedSlot - 3}";
+                    : capturedSlot <= 6 ? $"Load GPS {capturedSlot - 3}"
+                    : $"Load Data Log {capturedSlot - 6}";
                 string sourceTag = isCastle ? "ESC" : "GPS";
 
                 var chip = new SlotChip(capturedSlot, emptyLabel, sourceTag, _toolTip);
@@ -84,7 +87,33 @@ namespace CastleOverlayV2.Controls
             _chips[slot].SetLoaded(fullPath, isVisible, sourceTag);
         public void SetSlotToggleState(int slot, bool isVisible) =>
             _chips[slot].SetToggleState(isVisible);
-        public void SetSlotVisible(int slot, bool visible) => _chips[slot].Visible = visible;
+        public void SetSlotVisible(int slot, bool visible)
+        {
+            _slotHidden[slot] = !visible;
+            _chips[slot].Visible = visible;
+            FitChips();
+        }
+
+        // Slots hidden on purpose (Speed mode). Control.Visible can't be used for this: it
+        // reads false for every chip while the window itself isn't shown yet.
+        private readonly bool[] _slotHidden = new bool[10];
+
+        // Share the strip's width between the visible buttons so they shrink and grow
+        // with the window instead of wrapping out of sight.
+        private const int MinChipWidth = 100;
+        private const int MaxChipWidth = 220;
+
+        private void FitChips()
+        {
+            var visible = _chips.Where(c => c != null && !_slotHidden[c.Slot]).ToList();
+            if (visible.Count == 0) return;
+            int gaps = visible[0].Margin.Horizontal * visible.Count;
+            int each = Math.Clamp((_flow.ClientSize.Width - gaps) / visible.Count, MinChipWidth, MaxChipWidth);
+            _flow.SuspendLayout();
+            foreach (var chip in visible)
+                chip.Width = each;
+            _flow.ResumeLayout(true);
+        }
         public void SetSlotArmed(int slot, bool armed) => _chips[slot].SetArmed(armed);
 
         // ====================================================================
@@ -119,7 +148,7 @@ namespace CastleOverlayV2.Controls
                 _emptyLabel = emptyLabel;
                 _defaultTag = sourceTag;
 
-                Width = 188;
+                Width = 168;
                 Height = 32;
                 BackColor = SurfaceCardDim;
                 Padding = new Padding(0);
@@ -196,10 +225,13 @@ namespace CastleOverlayV2.Controls
                 };
                 layout.Controls.Add(_tagLbl, 1, 0);
 
+                // One line high and anchored (not docked) so a long name ends in "…"
+                // instead of wrapping onto a second line when the button is narrow.
                 _nameLbl = new Label
                 {
                     Text = "",
-                    Dock = DockStyle.Fill,
+                    Anchor = AnchorStyles.Left | AnchorStyles.Right,
+                    Height = 18,
                     TextAlign = ContentAlignment.MiddleLeft,
                     ForeColor = TextPrimary,
                     Font = new Font(SystemFonts.DefaultFont.FontFamily, 9f),
