@@ -46,6 +46,8 @@ namespace CastleOverlayV2.Controls
         private readonly List<TableRow> _rows = new();
         // Working copy of each run's radio settings (slot -> settings), edited in place.
         private readonly Dictionary<int, RadioTuneSettings> _radio = new();
+        // Group titles folded away with their arrow; kept across table rebuilds.
+        private readonly HashSet<string> _collapsedGroups = new();
 
         // ---- Which .dat settings to show, grouped. Anything not listed lands in "Other". ----
         private static readonly (string Group, (string Key, string Label)[] Rows)[] SettingGroups =
@@ -277,6 +279,17 @@ namespace CastleOverlayV2.Controls
 
         private void AddRow(TableRow row)
         {
+            if (row.IsGroup)
+            {
+                string title = row.GroupTitle;
+                row.SetCollapsed(_collapsedGroups.Contains(title));
+                row.GroupClicked += () =>
+                {
+                    if (!_collapsedGroups.Remove(title)) _collapsedGroups.Add(title);
+                    row.SetCollapsed(_collapsedGroups.Contains(title));
+                    ApplyRowFilter();
+                };
+            }
             _rows.Add(row);
             _table.Controls.Add(row);
         }
@@ -522,7 +535,7 @@ namespace CastleOverlayV2.Controls
                     continue;
                 }
                 bool show = !onlyDiffs || row.IsDifferent;
-                row.Visible = show;
+                row.Visible = show && currentGroup?.IsCollapsed != true;
                 groupHasVisible |= show;
             }
             if (currentGroup != null) currentGroup.Visible = groupHasVisible;
@@ -591,6 +604,11 @@ namespace CastleOverlayV2.Controls
             private int _valueColumnWidth = 160;
 
             public bool IsGroup { get; private set; }
+            public string GroupTitle { get; private set; } = "";
+            public bool IsCollapsed { get; private set; }
+
+            /// <summary>The arrow on a group row was clicked.</summary>
+            public event Action? GroupClicked;
             public bool IsHeader { get; }
             public bool IsDifferent { get; private set; }
 
@@ -620,11 +638,22 @@ namespace CastleOverlayV2.Controls
 
             public static TableRow Group(string title)
             {
-                var row = new TableRow(isHeader: false) { IsGroup = true, Height = 30, BackColor = SurfaceBar };
-                row.SetSetting(title);
+                var row = new TableRow(isHeader: false) { IsGroup = true, Height = 30, BackColor = SurfaceBar, GroupTitle = title };
                 row._setting.ForeColor = TextPrimary;
                 row._setting.Font = new Font(SystemFonts.DefaultFont.FontFamily, 9f, FontStyle.Bold);
+                row._setting.Cursor = Cursors.Hand;
+                row.Cursor = Cursors.Hand;
+                row._setting.Click += (_, _) => row.GroupClicked?.Invoke();
+                row.Click += (_, _) => row.GroupClicked?.Invoke();
+                row.SetCollapsed(false);
                 return row;
+            }
+
+            /// <summary>Group rows only: show ▸ when folded away, ▾ when open.</summary>
+            public void SetCollapsed(bool collapsed)
+            {
+                IsCollapsed = collapsed;
+                SetSetting($"{(collapsed ? "▸" : "▾")}  {GroupTitle}");
             }
 
             public void SetSetting(string text)

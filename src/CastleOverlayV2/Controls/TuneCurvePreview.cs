@@ -173,7 +173,7 @@ namespace CastleOverlayV2.Controls
             var present = _curves.Where(c => c.Points is { Count: >= 2 }).Select(c => c.Points!).ToList();
             if (present.Count >= 2 && present.All(c => c.SequenceEqual(present[0])))
             {
-                string same = $"same in all {present.Count} tunes";
+                string same = present.Count == 2 ? "same in both tunes" : $"same in all {present.Count} tunes";
                 SizeF size = g.MeasureString(same, Font);
                 g.DrawString(same, Font, mutedBrush, plot.Right - size.Width - 6, plot.Bottom - size.Height - 6);
             }
