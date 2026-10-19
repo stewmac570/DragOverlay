@@ -1,4 +1,4 @@
-﻿using ScottPlot;
+using ScottPlot;
 
 namespace CastleOverlayV2.Utils
 {
@@ -12,9 +12,9 @@ namespace CastleOverlayV2.Utils
         {
             return index switch
             {
-                0 or 3 => ScottPlot.LinePattern.Solid,    // Run 1 and RaceBox 1
-                1 or 4 => ScottPlot.LinePattern.Dashed,   // Run 2 and RaceBox 2
-                2 or 5 => ScottPlot.LinePattern.Dotted,   // Run 3 and RaceBox 3
+                0 or 3 or 6 => ScottPlot.LinePattern.Solid,    // Castle 1, GPS 1, Data log 1
+                1 or 4 or 7 => ScottPlot.LinePattern.Dashed,   // Castle 2, GPS 2, Data log 2
+                2 or 5 or 8 => ScottPlot.LinePattern.Dotted,   // Castle 3, GPS 3, Data log 3
                 99 => ScottPlot.LinePattern.Dashed,         // RaceBox Split Lines
                 _ => ScottPlot.LinePattern.Solid
             };

@@ -25,7 +25,7 @@ namespace CastleOverlayV2
         private readonly ChannelDrawer _drawer;
         private readonly TunePanel _tunePanel;
 
-        // Active runs by slot. Castle = 1..3, RaceBox = 4..6.
+        // Active runs by slot. Castle = 1..3, GPS = 4..6, data logs = 7..9 (see RunSlots).
         private readonly Dictionary<int, RunData> _runs = new();
 
         // RaceBox header metadata per UI slot (1..3).
@@ -202,7 +202,7 @@ namespace CastleOverlayV2
         /// </summary>
         private async Task LoadRaceBoxRunFromPathAsync(int uiSlot, string path)
         {
-            // The RaceBox slots also take Mini Logger runs; route by the file's header.
+            // A Mini Logger file picked from a GPS button goes to the matching data log slot.
             if (MiniLoggerLoader.IsMiniLoggerCsv(path))
             {
                 await LoadMiniLoggerRunFromPathAsync(uiSlot, path);
@@ -312,13 +312,28 @@ namespace CastleOverlayV2
             RefreshTunePanelRuns();
         }
 
+        /// <summary>"Load Data Log N": pick a Mini Logger file for data log slot N.</summary>
+        public async Task LoadDataLogRunAsync(int uiSlot)
+        {
+            string? path = _view.PickRaceBoxCsvFile();
+            if (path == null) return;
+
+            // A GPS file picked from a data log button goes to the matching GPS slot.
+            if (!MiniLoggerLoader.IsMiniLoggerCsv(path))
+            {
+                await LoadRaceBoxRunFromPathAsync(uiSlot, path);
+                return;
+            }
+            await LoadMiniLoggerRunFromPathAsync(uiSlot, path);
+        }
+
         /// <summary>
-        /// Load a Mini Logger CSV into RaceBox <paramref name="uiSlot"/> (plot slot = uiSlot + 3)
+        /// Load a Mini Logger CSV into data log <paramref name="uiSlot"/> (plot slot = uiSlot + 6)
         /// and shift it so its throttle step lines up with the first loaded Castle run's.
         /// </summary>
         private async Task LoadMiniLoggerRunFromPathAsync(int uiSlot, string path)
         {
-            int plotSlot = uiSlot + 3;
+            int plotSlot = RunSlots.DataLog(uiSlot);
             Logger.Log($"LoadMiniLoggerRunAsync(UI {uiSlot} → plot slot {plotSlot}) started");
 
             try
@@ -695,7 +710,7 @@ namespace CastleOverlayV2
                 var raceBox = AutoLoadResolver.Nearest(raceBoxDir, "*.csv", anchor.Value, sessionWindow);
 
                 // Replace everything so the button reliably shows the latest pass.
-                for (int s = 1; s <= 6; s++)
+                for (int s = 1; s <= RunSlots.Count; s++)
                     DeleteRun(s);
 
                 if (castle != null)
@@ -1003,9 +1018,9 @@ namespace CastleOverlayV2
             var list = new List<ChannelRunStats>();
             foreach (var (slot, run) in _runs)
             {
-                string label = slot <= 3 ? $"Run {slot}"
-                    : run.IsMiniLogger ? $"Log {slot - 3}"
-                    : $"RB {slot - 3}";
+                string label = RunSlots.IsCastle(slot) ? $"Run {slot}"
+                    : RunSlots.IsDataLog(slot) ? $"Log {RunSlots.ButtonNumber(slot)}"
+                    : $"GPS {RunSlots.ButtonNumber(slot)}";
                 if (!TryExtractChannelValues(run, channelLabel, out var values) || values.Count == 0)
                     continue;
 
@@ -1107,8 +1122,8 @@ namespace CastleOverlayV2
 
             foreach (var (plotSlot, run) in _runs.OrderBy(kv => kv.Key))
             {
-                bool isRaceBox = plotSlot >= 4;
-                int uiSlot = isRaceBox ? plotSlot - 3 : plotSlot;
+                bool isRaceBox = !RunSlots.IsCastle(plotSlot);
+                int uiSlot = RunSlots.ButtonNumber(plotSlot);
                 var sourceType = run.IsMiniLogger ? ProjectSourceType.MiniLogger
                     : isRaceBox ? ProjectSourceType.RaceBox
                     : ProjectSourceType.Castle;
@@ -1200,7 +1215,7 @@ namespace CastleOverlayV2
 
             // Tear down the current session — clear plot scatters and chip state, but
             // do NOT call DeleteRun (which writes to config + nudges Castle delete UI flows).
-            for (int slot = 1; slot <= 6; slot++)
+            for (int slot = 1; slot <= RunSlots.Count; slot++)
             {
                 if (_runs.ContainsKey(slot))
                 {

@@ -647,7 +647,7 @@ namespace CastleOverlayV2.Plot
                 }
             }
 
-            // Plot RaceBox + Mini Logger (both share the RaceBox slots 4..6)
+            // Plot GPS (slots 4..6) and Mini Logger data logs (slots 7..9)
             foreach (var kvp in runsBySlot)
             {
                 int slot = kvp.Key;

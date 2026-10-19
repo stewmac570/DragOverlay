@@ -150,6 +150,27 @@ namespace CastleOverlayV2.Services
                         }
                         run = loadResult.Value!;
                     }
+                    else if (RtProLoader.IsRtProCsv(localPath))
+                    {
+                        var rtResult = RtProLoader.Load(localPath);
+                        if (!rtResult.Ok)
+                        {
+                            TryDeleteTempDir(tempDir);
+                            return LoadResult<RestoredProject>.Error("Open Project",
+                                $"Failed to parse RT Pro log for GPS {entry.UiSlot}:\n{rtResult.Message}");
+                        }
+                        var (rtHeader, rtPoints) = rtResult.Value;
+                        run = new RunData
+                        {
+                            IsRaceBox = true,
+                            SplitTimes = rtHeader.SplitTimes,
+                            SplitLabels = rtHeader.SplitLabels,
+                        };
+                        run.Data["RaceBox Speed"] = rtPoints.Select(p => new DataPoint { Time = p.Time.TotalSeconds, Y = p.SpeedMph }).ToList();
+                        run.Data["RaceBox G-Force X"] = rtPoints.Select(p => new DataPoint { Time = p.Time.TotalSeconds, Y = p.GForceX }).ToList();
+                        run.Data["RaceBox Distance"] = IntegrateDistanceFeet(rtPoints);
+                        run.DataPoints = rtPoints.Select(p => new DataPoint { Time = p.Time.TotalSeconds }).ToList();
+                    }
                     else
                     {
                         var headerResult = RaceBoxLoader.LoadHeaderOnly(localPath);
@@ -229,6 +250,9 @@ namespace CastleOverlayV2.Services
                         run.Tune = new TuneSettings { Radio = entry.RadioSettings };
                     }
 
+                    // Older projects stored Mini Logger runs in the GPS slots; they now have their own.
+                    if (entry.SourceType == ProjectSourceType.MiniLogger)
+                        entry.PlotSlot = RunSlots.DataLog(entry.UiSlot);
                     loaded[entry.PlotSlot] = run;
                 }
             }

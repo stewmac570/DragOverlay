@@ -98,6 +98,35 @@ public sealed class ProjectManifestTests
         Assert.Contains(result.Errors, error => error.Contains("only valid for Castle", StringComparison.Ordinal));
     }
 
+    [Theory]
+    [InlineData(7, true)]  // data log slot (current)
+    [InlineData(4, true)]  // GPS slot (projects saved before data logs had their own slots)
+    [InlineData(1, false)] // Castle slot
+    public void Validator_MiniLogger_slots(int plotSlot, bool valid)
+    {
+        ProjectManifest manifest = CreateManifest();
+        manifest.Runs[1].SourceType = ProjectSourceType.MiniLogger;
+        manifest.Runs[1].UiSlot = 1;
+        manifest.Runs[1].PlotSlot = plotSlot;
+
+        ProjectManifestValidationResult result =
+            new ProjectManifestValidator().Validate(manifest);
+
+        Assert.Equal(valid, result.IsValid);
+    }
+
+    [Fact]
+    public void Validator_RejectsRaceBoxInDataLogSlot()
+    {
+        ProjectManifest manifest = CreateManifest();
+        manifest.Runs[1].PlotSlot = 7;
+
+        ProjectManifestValidationResult result =
+            new ProjectManifestValidator().Validate(manifest);
+
+        Assert.Contains(result.Errors, error => error.Contains("PlotSlot must be 4", StringComparison.Ordinal));
+    }
+
     [Fact]
     public void Serialize_RejectsInvalidManifest()
     {

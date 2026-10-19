@@ -11,7 +11,7 @@ namespace CastleOverlayV2.Controls
     /// Empty slots show a "Load …" button; loaded slots show a chip
     /// (master eye toggle + source tag + truncated name + delete ×).
     ///
-    /// Slot map: 1..3 = Castle (ESC), 4..6 = RaceBox (GPS).
+    /// Slot map: 1..3 = Castle (ESC), 4..6 = GPS (RaceBox, RT Pro), 7..9 = data logs (Mini Logger).
     /// </summary>
     public class RunStrip : UserControl
     {
@@ -33,7 +33,7 @@ namespace CastleOverlayV2.Controls
         public event Action<int>? ArmRequested;    // slot 1..6 (click on chip body)
 
         // ---- State ----------------------------------------------------------
-        private readonly SlotChip[] _chips = new SlotChip[7]; // index 1..6
+        private readonly SlotChip[] _chips = new SlotChip[10]; // index 1..9
         private readonly FlowLayoutPanel _flow;
         private readonly ToolTip _toolTip;
 
@@ -59,13 +59,14 @@ namespace CastleOverlayV2.Controls
             };
             Controls.Add(_flow);
 
-            for (int slot = 1; slot <= 6; slot++)
+            for (int slot = 1; slot <= 9; slot++)
             {
                 int capturedSlot = slot;
                 bool isCastle = capturedSlot <= 3;
                 string emptyLabel = isCastle
                     ? $"Load Castle {capturedSlot}"
-                    : $"Load RaceBox / Logger {capturedSlot - 3}";
+                    : capturedSlot <= 6 ? $"Load GPS {capturedSlot - 3}"
+                    : $"Load Data Log {capturedSlot - 6}";
                 string sourceTag = isCastle ? "ESC" : "GPS";
 
                 var chip = new SlotChip(capturedSlot, emptyLabel, sourceTag, _toolTip);
@@ -119,7 +120,7 @@ namespace CastleOverlayV2.Controls
                 _emptyLabel = emptyLabel;
                 _defaultTag = sourceTag;
 
-                Width = 188;
+                Width = 168;
                 Height = 32;
                 BackColor = SurfaceCardDim;
                 Padding = new Padding(0);

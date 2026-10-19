@@ -93,8 +93,9 @@ namespace CastleOverlayV2
             _runStrip = new RunStrip();
             _runStrip.LoadRequested += slot =>
             {
-                if (slot <= 3) _ = _presenter.LoadCastleRunAsync(slot);
-                else _ = _presenter.LoadRaceBoxRunAsync(slot - 3);
+                if (RunSlots.IsCastle(slot)) _ = _presenter.LoadCastleRunAsync(slot);
+                else if (RunSlots.IsGps(slot)) _ = _presenter.LoadRaceBoxRunAsync(slot - 3);
+                else _ = _presenter.LoadDataLogRunAsync(slot - 6);
             };
             _runStrip.ToggleRequested += slot => _presenter.ToggleRun(slot);
             _runStrip.DeleteRequested += slot => _presenter.DeleteRun(slot);
@@ -408,6 +409,8 @@ namespace CastleOverlayV2
             _runStrip?.SetSlotVisible(4, !isSpeedRun);
             _runStrip?.SetSlotVisible(5, !isSpeedRun);
             _runStrip?.SetSlotVisible(6, !isSpeedRun);
+            for (int slot = 7; slot <= RunSlots.Count; slot++)
+                _runStrip?.SetSlotVisible(slot, !isSpeedRun);
         }
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
