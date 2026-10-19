@@ -1,44 +1,34 @@
-# DragOverlay v1.17
+# DragOverlay v1.18
 
-Thanks for using DragOverlay! This update is a new layout: more room for the chart, all your channels in one list, and your tunes side by side.
+Thanks for using DragOverlay! This update adds RT Pro GPS logs and gives data logs their own buttons.
 
 ## What's new
 
-### 🗂️ Logs and Tune tabs
-The top bar now has **Logs** and **Tune** tabs. The Logs page is just your logs; the tune settings have moved to their own page instead of taking the right side of the chart. **Auto load**, **Open project**, **Save project** and **Settings** are all in the top bar.
+### 📡 RT Pro GPS logs
+RT Pro telemetry files (`RTProTree_..._telemetry.csv`) now load just like RaceBox logs:
 
-### 📋 Channel list down the left
-The channel buttons along the bottom are replaced by a list down the left of the chart, grouped into **ESC**, **GPS (RaceBox)** and **Mini Logger**. On every row:
+- They show on the **GPS Speed, Distance and G-Force** channels.
+- **66 ft and 132 ft split lines** are worked out from the speed.
+- A file holds a whole session, so DragOverlay picks your **fastest pass** and starts the clock at the standstill just before it.
 
-- **Tick** to show or hide the channel on the chart.
-- **Colour box** to pick the channel's colour (right-click for the default colour).
-- **B** to draw the channel's lines bold.
-- **↕** to squeeze the channel into part of the chart height, so lines stop crossing.
-- Each run's value at the cursor. Hover a name to see each run's max and average.
+### 🔘 GPS and Data Log buttons
+The buttons along the top are now three groups:
 
-Drag the list's right edge to make it wider or narrower, or click **‹** to fold it away. Your colours, bold lines, line sizes and list width are remembered.
+- **Load Castle 1–3** for Castle ESC logs.
+- **Load GPS 1–3** for RaceBox and RT Pro logs.
+- **Load Data Log 1–3** for Mini Logger logs, which now have their own slots.
 
-### 🎯 Value box that follows the cursor
-Move the mouse over the chart and a small box follows the cursor with the time and the values for each run. **Click a row in the channel list** to add that channel to the box; click it again to take it off.
+Pick a file with the wrong button and it goes into the right group anyway. Projects saved with an earlier version still open.
 
-### 🔧 Tunes side by side
-The Tune page shows every run's tune at once, one column per run:
-
-- Settings that differ between tunes are highlighted, with a count at the top and a **Show only differences** switch.
-- **Radio throttle speed** (mode, point positions and speeds) is typed in for each run and saved with your project.
-- The **throttle curve** and **boost by throttle** curve of every tune are drawn on the same chart.
-- Click a group heading (Boost, Turbo, …) to fold it away.
-
-### 📟 Mini Logger runs
-Mini Logger logs load alongside your Castle logs, using the RaceBox / Logger slots.
+### ↔️ Buttons fit the window
+The buttons shrink and grow with the window, so all nine always fit on one row. Long file names end in "…".
 
 ## Fixes
-- The window title now shows the right version number.
-- Values at the cursor line up with the right run when an earlier run slot is empty.
+- Projects that include an RT Pro GPS run now reopen.
 
 ## How to install
 
-1. Download **`DragOverlay-Setup-v1.17.exe`** from the **Assets** below.
+1. Download **`DragOverlay-Setup-v1.18.exe`** from the **Assets** below.
 2. Run it and follow the prompts.
 3. Launch **DragOverlay** from the Start menu.
 
