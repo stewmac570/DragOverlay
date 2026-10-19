@@ -167,7 +167,7 @@ namespace CastleOverlayV2
         {
             using var ofd = new OpenFileDialog
             {
-                Title = "Select RaceBox or Mini Logger CSV file",
+                Title = "Select RaceBox, RT Pro or Mini Logger CSV file",
                 Filter = "CSV files (*.csv)|*.csv|All files (*.*)|*.*",
                 InitialDirectory = ExistingDirOrEmpty(_configService.Config.RaceBoxLogDirectory)
             };
