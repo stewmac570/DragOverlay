@@ -16,7 +16,7 @@ dotnet run   --project src/CastleOverlayV2/CastleOverlayV2.csproj
 dotnet publish src/CastleOverlayV2/CastleOverlayV2.csproj -c Release -r win-x64 --self-contained false -o publish/win-x64
 ```
 
-The Inno Setup installer script at `installer/installer.iss` packages `publish/win-x64/` — bump `MyAppVersion` and `Models/Config.cs::BuildNumber` together when releasing. Visual Studio 2022+ also builds via `src/CastleOverlayV2/CastleOverlayV2.sln`.
+The Inno Setup installer script at `installer/installer.iss` packages `publish/win-x64/` — bump `MyAppVersion` and `Models/Config.cs::CurrentBuildNumber` together when releasing, then push a `v<version>` tag to run `.github/workflows/release.yml`. Visual Studio 2022+ also builds via `src/CastleOverlayV2/CastleOverlayV2.sln`.
 
 ## Pinned dependencies
 

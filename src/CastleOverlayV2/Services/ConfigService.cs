@@ -47,6 +47,8 @@ namespace CastleOverlayV2.Services
                 {
                     string json = File.ReadAllText(_configFilePath);
                     _config = JsonConvert.DeserializeObject<Config>(json) ?? new Config();
+                    // An older saved file carries an older build number; the running app wins.
+                    _config.BuildNumber = Config.CurrentBuildNumber;
                 }
                 catch
                 {
@@ -134,7 +136,7 @@ namespace CastleOverlayV2.Services
 
         public bool IsDebugLoggingEnabled() => _config?.EnableDebugLogging ?? false;
 
-        public string GetBuildNumber() => _config?.BuildNumber ?? "unknown";
+        public string GetBuildNumber() => Config.CurrentBuildNumber;
 
 
     }
