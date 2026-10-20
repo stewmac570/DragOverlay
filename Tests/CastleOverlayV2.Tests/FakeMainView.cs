@@ -29,6 +29,7 @@ public sealed class FakeMainView : IMainView
     public string? PickCsvFile() => CsvFileToReturn;
     public string? PickCastleCsvFile() => CsvFileToReturn;
     public string? PickRaceBoxCsvFile() => CsvFileToReturn;
+    public string? PickDataLogCsvFile() => CsvFileToReturn;
     public string? PickTuneFile() => TuneFileToReturn;
     public void ShowSettingsDialog() => SettingsShown++;
     public int SettingsShown;

@@ -10,6 +10,7 @@ namespace CastleOverlayV2
         string? PickCsvFile();
         string? PickCastleCsvFile();
         string? PickRaceBoxCsvFile();
+        string? PickDataLogCsvFile();
         string? PickTuneFile();
         string? PickProjectFileToOpen();
         string? PickProjectFileToSave();
