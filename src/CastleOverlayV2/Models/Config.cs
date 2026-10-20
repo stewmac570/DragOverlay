@@ -32,6 +32,7 @@ namespace CastleOverlayV2.Models
         public string CastleLogDirectory { get; set; } = "";
         public string RaceBoxLogDirectory { get; set; } = "";
         public string TuneDirectory { get; set; } = "";
+        public string DataLogDirectory { get; set; } = "";
 
         // ---- Voltage smoothing (Settings dialog) --------------------------
         public bool VoltageSmoothingEnabled { get; set; } = false;

@@ -175,6 +175,35 @@ namespace CastleOverlayV2
             return ofd.ShowDialog() == DialogResult.OK ? ofd.FileName : null;
         }
 
+        public string? PickDataLogCsvFile()
+        {
+            using var ofd = new OpenFileDialog
+            {
+                Title = "Select Mini Logger data log",
+                Filter = "CSV files (*.csv)|*.csv|All files (*.*)|*.*",
+                InitialDirectory = NewestSubfolderOrSelf(_configService.Config.DataLogDirectory)
+            };
+            return ofd.ShowDialog() == DialogResult.OK ? ofd.FileName : null;
+        }
+
+        // The logger saves each session in its own dated folder; start in the newest one.
+        private static string NewestSubfolderOrSelf(string? folder)
+        {
+            string root = ExistingDirOrEmpty(folder);
+            if (root.Length == 0) return root;
+            try
+            {
+                var newest = new DirectoryInfo(root).GetDirectories()
+                    .OrderByDescending(d => d.LastWriteTimeUtc)
+                    .FirstOrDefault();
+                return newest?.FullName ?? root;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                return root;
+            }
+        }
+
         public string? PickTuneFile()
         {
             using var ofd = new OpenFileDialog

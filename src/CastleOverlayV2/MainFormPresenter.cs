@@ -315,7 +315,7 @@ namespace CastleOverlayV2
         /// <summary>"Load Data Log N": pick a Mini Logger file for data log slot N.</summary>
         public async Task LoadDataLogRunAsync(int uiSlot)
         {
-            string? path = _view.PickRaceBoxCsvFile();
+            string? path = _view.PickDataLogCsvFile();
             if (path == null) return;
 
             // A GPS file picked from a data log button goes to the matching GPS slot.

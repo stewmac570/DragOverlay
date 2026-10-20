@@ -20,6 +20,7 @@ namespace CastleOverlayV2
         private readonly TextBox _castleDir = new();
         private readonly TextBox _raceboxDir = new();
         private readonly TextBox _tuneDir = new();
+        private readonly TextBox _dataLogDir = new();
         private readonly CheckBox _smoothingEnabled = new();
         private readonly NumericUpDown _smoothingWindow = new();
 
@@ -33,7 +34,7 @@ namespace CastleOverlayV2
             MinimizeBox = false;
             MaximizeBox = false;
             Width = 540;
-            Height = 360;
+            Height = 395;
             Font = new Font("Segoe UI", 9f);
             BackColor = SurfaceWindow;
             ForeColor = TextPrimary;
@@ -118,7 +119,7 @@ namespace CastleOverlayV2
             var panel = new TableLayoutPanel
             {
                 ColumnCount = 3,
-                RowCount = 3,
+                RowCount = 4,
                 Dock = DockStyle.Top,
                 AutoSize = true,
                 AutoSizeMode = AutoSizeMode.GrowAndShrink,
@@ -128,8 +129,9 @@ namespace CastleOverlayV2
             panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 80));
 
             AddFolderRow(panel, 0, "Castle log folder", _castleDir);
-            AddFolderRow(panel, 1, "RaceBox log folder", _raceboxDir);
+            AddFolderRow(panel, 1, "GPS log folder", _raceboxDir);
             AddFolderRow(panel, 2, "Tune folder", _tuneDir);
+            AddFolderRow(panel, 3, "Data log folder", _dataLogDir);
             return panel;
         }
 
@@ -220,6 +222,7 @@ namespace CastleOverlayV2
             _castleDir.Text = c.CastleLogDirectory ?? "";
             _raceboxDir.Text = c.RaceBoxLogDirectory ?? "";
             _tuneDir.Text = c.TuneDirectory ?? "";
+            _dataLogDir.Text = c.DataLogDirectory ?? "";
             _smoothingEnabled.Checked = c.VoltageSmoothingEnabled;
             _smoothingWindow.Value = Math.Max(3, Math.Min(15, c.VoltageSmoothingWindow | 1));
         }
@@ -230,6 +233,7 @@ namespace CastleOverlayV2
             c.CastleLogDirectory = _castleDir.Text.Trim();
             c.RaceBoxLogDirectory = _raceboxDir.Text.Trim();
             c.TuneDirectory = _tuneDir.Text.Trim();
+            c.DataLogDirectory = _dataLogDir.Text.Trim();
             c.VoltageSmoothingEnabled = _smoothingEnabled.Checked;
             int win = (int)_smoothingWindow.Value;
             if (win % 2 == 0) win += 1; // force odd
