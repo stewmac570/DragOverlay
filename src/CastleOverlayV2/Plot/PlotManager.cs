@@ -1245,8 +1245,9 @@ namespace CastleOverlayV2.Plot
 
                     if (_rawYMap.TryGetValue(s, out var rawYs) && index >= 0 && index < rawYs.Length)
                     {
-                        double value = rawYs[index];
-                        channelValues[i] = (channelName == "RPM" && _isFourPoleMode) ? value * 0.5 : value;
+                        // _rawYMap holds the plotted values, which already have the 4-pole
+                        // halving applied to RPM, so read them as they are.
+                        channelValues[i] = rawYs[index];
                     }
                 }
 
