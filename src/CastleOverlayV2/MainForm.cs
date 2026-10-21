@@ -117,6 +117,7 @@ namespace CastleOverlayV2
             headerRow.Visible = false;
             _topBar.PageSelected += ShowPage;
             _topBar.AutoLoadRequested += () => _ = _presenter.AutoLoadAsync();
+            _topBar.AutoTrimToggled += () => _ = _presenter.SetAutoTrimAsync(!_presenter.IsAutoTrimOn);
             _topBar.OpenProjectRequested += () => _presenter.OpenProject();
             _topBar.SaveProjectRequested += () => _presenter.SaveProject();
             _topBar.SettingsRequested += ShowSettingsDialog;
@@ -260,6 +261,8 @@ namespace CastleOverlayV2
         }
 
         public void SetSaveProjectEnabled(bool enabled) => _topBar.SetSaveProjectEnabled(enabled);
+
+        public void SetAutoTrimUI(bool on) => _topBar.SetAutoTrim(on);
 
         private void ShowPage(AppPage page)
         {

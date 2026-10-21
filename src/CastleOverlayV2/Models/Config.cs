@@ -34,6 +34,9 @@ namespace CastleOverlayV2.Models
         public string TuneDirectory { get; set; } = "";
         public string DataLogDirectory { get; set; } = "";
 
+        // Auto trim on: logs are cut to -0.5 s .. +2.5 s around the launch. Off: full logs.
+        public bool AutoTrim { get; set; } = true;
+
         // ---- Voltage smoothing (Settings dialog) --------------------------
         public bool VoltageSmoothingEnabled { get; set; } = false;
         public int VoltageSmoothingWindow { get; set; } = 5; // odd, 3..15

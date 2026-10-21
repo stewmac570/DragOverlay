@@ -14,7 +14,7 @@ namespace CastleOverlayV2.Services
         /// <summary>
         /// Parses the telemetry section from a RaceBox CSV file and extracts all points for the selected run.
         /// </summary>
-        public LoadResult<List<RaceBoxPoint>> LoadTelemetry(string filePath, int selectedRunIndex)
+        public LoadResult<List<RaceBoxPoint>> LoadTelemetry(string filePath, int selectedRunIndex, bool keepFullLog = false)
         {
             var points = new List<RaceBoxPoint>();
 
@@ -158,9 +158,10 @@ namespace CastleOverlayV2.Services
 
             Logger.Log($"[RaceBoxLoader] Trimming to ±2.5s around launch (t0 = {t0:F2}s)...");
 
-            points = points
-                .Where(p => p.Time.TotalSeconds >= tMin && p.Time.TotalSeconds <= tMax)
-                .ToList();
+            if (!keepFullLog)
+                points = points
+                    .Where(p => p.Time.TotalSeconds >= tMin && p.Time.TotalSeconds <= tMax)
+                    .ToList();
 
             // Shift timestamps so launch becomes t = 0
             foreach (var p in points)

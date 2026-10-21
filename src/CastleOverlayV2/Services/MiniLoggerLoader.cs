@@ -63,7 +63,7 @@ namespace CastleOverlayV2.Services
             }
         }
 
-        public static LoadResult<RunData> Load(string filePath)
+        public static LoadResult<RunData> Load(string filePath, bool keepFullLog = false)
         {
             Logger.Log($"[MiniLoggerLoader] Load started: {Path.GetFileName(filePath)}");
 
@@ -137,7 +137,7 @@ namespace CastleOverlayV2.Services
             for (int i = 0; i < times.Count; i++)
             {
                 double t = times[i] - t0;
-                if (t < -PreLaunchSeconds || t > PostLaunchSeconds) continue;
+                if (!keepFullLog && (t < -PreLaunchSeconds || t > PostLaunchSeconds)) continue;
 
                 thrPts.Add(new DataPoint { Time = t, Y = throttlePct[i] });
                 rpmPts.Add(new DataPoint { Time = t, Y = rpm[i] });

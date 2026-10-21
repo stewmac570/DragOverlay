@@ -1381,6 +1381,13 @@ namespace CastleOverlayV2.Plot
             minX -= 0.10;
             maxX += 0.10;
 
+            // Full logs can run for minutes: let ScottPlot pick spacing that follows the zoom.
+            if (maxX - minX > 6.0)
+            {
+                _plot.Plot.Axes.Bottom.TickGenerator = new ScottPlot.TickGenerators.NumericAutomatic();
+                return;
+            }
+
             var manual = new ScottPlot.TickGenerators.NumericManual();
             for (double pos = Math.Ceiling(minX / 0.25) * 0.25; pos <= maxX; pos += 0.25)
                 manual.AddMajor(pos, pos.ToString("0.00"));

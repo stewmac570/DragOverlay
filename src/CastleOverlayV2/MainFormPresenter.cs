@@ -33,6 +33,8 @@ namespace CastleOverlayV2
 
         private bool _isFourPoleMode;
         private bool _isSpeedRunMode;
+        // Auto trim off: every loader keeps the whole log (still zeroed at the launch).
+        private bool _keepFullLogs;
         private int? _armedSlot;
         // A tune opened with no Castle run loaded, shown on the Tune page as a preview.
         private TuneSettings? _previewTune;
@@ -47,6 +49,7 @@ namespace CastleOverlayV2
         private const double ALIGN_COARSE_MS = 100;
 
         public bool IsSpeedRunMode => _isSpeedRunMode;
+        public bool IsAutoTrimOn => !_keepFullLogs;
         public bool IsAnyRunLoaded => _runs.Count > 0;
         public bool IsAlignmentArmed => _armedSlot.HasValue;
 
@@ -59,6 +62,8 @@ namespace CastleOverlayV2
             _tunePanel = tunePanel;
 
             _isFourPoleMode = _config.Config.IsFourPoleMode;
+            _keepFullLogs = !_config.Config.AutoTrim;
+            _view.SetAutoTrimUI(!_keepFullLogs);
             _plot.SetFourPoleMode(_isFourPoleMode);
             _plot.SetSpeedMode(_isSpeedRunMode);
 
@@ -137,7 +142,7 @@ namespace CastleOverlayV2
             try
             {
                 var loader = new CsvLoader(_config);
-                var result = await Task.Run(() => loader.Load(path, trimForDrag: !_isSpeedRunMode));
+                var result = await Task.Run(() => loader.Load(path, trimForDrag: !_isSpeedRunMode, keepFullLog: _keepFullLogs));
 
                 if (!result.Ok)
                 {
@@ -219,7 +224,7 @@ namespace CastleOverlayV2
                 if (RtProLoader.IsRtProCsv(path))
                 {
                     // RT Pro GPS logs load like a RaceBox run (same channels, splits worked out).
-                    var rtResult = await Task.Run(() => RtProLoader.Load(path));
+                    var rtResult = await Task.Run(() => RtProLoader.Load(path, _keepFullLogs));
                     if (!rtResult.Ok)
                     {
                         Logger.Log($"[Presenter] RT Pro load failed for slot {uiSlot}: {rtResult.Message}");
@@ -247,7 +252,7 @@ namespace CastleOverlayV2
                     }
 
                     var loader = new RaceBoxLoader();
-                    var telemetryResult = await Task.Run(() => loader.LoadTelemetry(path, rbData.FirstCompleteRunIndex.Value));
+                    var telemetryResult = await Task.Run(() => loader.LoadTelemetry(path, rbData.FirstCompleteRunIndex.Value, _keepFullLogs));
 
                     if (!telemetryResult.Ok)
                     {
@@ -312,6 +317,64 @@ namespace CastleOverlayV2
             RefreshTunePanelRuns();
         }
 
+        /// <summary>
+        /// Top bar "Auto trim" button. Saves the choice, then reloads every open log from its
+        /// file so it is cut (on) or kept whole (off). Tunes, time shifts, manual trims and
+        /// show/hide state carry over. A log that fails to reload keeps its previous data.
+        /// </summary>
+        public async Task SetAutoTrimAsync(bool on)
+        {
+            if (on == !_keepFullLogs) return;
+            _keepFullLogs = !on;
+            _config.Config.AutoTrim = on;
+            _config.Save();
+            _view.SetAutoTrimUI(on);
+
+            if (_armedSlot.HasValue)
+                DisarmAlignment();
+
+            var open = _runs.OrderBy(kv => kv.Key)
+                .Select(kv => (Slot: kv.Key, Run: kv.Value, Visible: _plot.GetRunVisibility(kv.Key)))
+                .ToList();
+
+            foreach (var (slot, old, visible) in open)
+            {
+                if (string.IsNullOrEmpty(old.SourcePath) || !File.Exists(old.SourcePath))
+                    continue;
+
+                _runs.Remove(slot);
+                int button = RunSlots.ButtonNumber(slot);
+                if (RunSlots.IsCastle(slot)) await LoadCastleRunFromPathAsync(slot, old.SourcePath);
+                else if (RunSlots.IsGps(slot)) await LoadRaceBoxRunFromPathAsync(button, old.SourcePath);
+                else await LoadMiniLoggerRunFromPathAsync(button, old.SourcePath);
+
+                if (!_runs.TryGetValue(slot, out var reloaded))
+                {
+                    _runs[slot] = old;
+                    _plot.SetRun(slot, old);
+                    _view.SetSlotLoadedUI(slot, old.SourcePath, visible, old.IsMiniLogger ? MiniLoggerTag : null);
+                    continue;
+                }
+
+                reloaded.Tune = old.Tune;
+                reloaded.TimeShiftMs = old.TimeShiftMs;
+                if (!string.IsNullOrEmpty(old.FileName)) reloaded.FileName = old.FileName;
+                if (RunSlots.IsCastle(slot) && (old.TrimStartTime.HasValue || old.TrimEndTime.HasValue))
+                {
+                    reloaded.TrimStartTime = old.TrimStartTime;
+                    reloaded.TrimEndTime = old.TrimEndTime;
+                    reloaded.ApplyManualTrim();
+                }
+                _plot.SetRunVisibility(slot, visible);
+                _view.SetSlotToggleText(slot, visible);
+            }
+
+            PlotAllRuns();
+            _plot.SetupAllAxes();
+            _plot.RefreshPlot();
+            RefreshTunePanelRuns();
+        }
+
         /// <summary>"Load Data Log N": pick a Mini Logger file for data log slot N.</summary>
         public async Task LoadDataLogRunAsync(int uiSlot)
         {
@@ -338,7 +401,7 @@ namespace CastleOverlayV2
 
             try
             {
-                var result = await Task.Run(() => MiniLoggerLoader.Load(path));
+                var result = await Task.Run(() => MiniLoggerLoader.Load(path, _keepFullLogs));
                 if (!result.Ok)
                 {
                     Logger.Log($"[Presenter] Mini Logger load failed for slot {uiSlot}: {result.Message}");
@@ -1113,6 +1176,7 @@ namespace CastleOverlayV2
                 AppBuild = _config.GetBuildNumber(),
                 CreatedUtc = DateTimeOffset.UtcNow,
                 RunMode = _isSpeedRunMode ? ProjectRunMode.Speed : ProjectRunMode.Drag,
+                FullLogs = _keepFullLogs,
                 ChannelVisibility = new Dictionary<string, bool>(
                     _drawer.GetChannelStates(),
                     StringComparer.OrdinalIgnoreCase)
@@ -1227,6 +1291,10 @@ namespace CastleOverlayV2
 
             // Apply manifest-level state.
             _isSpeedRunMode = restored.Manifest.RunMode == ProjectRunMode.Speed;
+            _keepFullLogs = restored.Manifest.FullLogs;
+            _config.Config.AutoTrim = !_keepFullLogs;
+            _config.Save();
+            _view.SetAutoTrimUI(!_keepFullLogs);
             _plot.SetSpeedMode(_isSpeedRunMode);
             _view.ApplyRunTypeUI(_isSpeedRunMode);
 

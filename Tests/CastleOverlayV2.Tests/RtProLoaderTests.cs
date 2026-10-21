@@ -13,9 +13,11 @@ namespace CastleOverlayV2.Tests
         {
             Assert.True(RtProLoader.IsRtProCsv(SamplePath));
 
-            string castle = Path.GetFullPath(Path.Combine(
-                AppContext.BaseDirectory, "..", "..", "..", "..", "Trrimed logs", "Session 55.csv"));
-            Assert.False(RtProLoader.IsRtProCsv(castle));
+            // A file that exists in the repo but isn't RT Pro (a missing file would also read false).
+            string other = Path.GetFullPath(Path.Combine(
+                AppContext.BaseDirectory, "..", "..", "..", "..", "tune settnigs", "yeti tune.dat"));
+            Assert.True(File.Exists(other), other);
+            Assert.False(RtProLoader.IsRtProCsv(other));
         }
 
         [Fact]
@@ -42,6 +44,19 @@ namespace CastleOverlayV2.Tests
             Assert.Equal(2, header.SplitTimes!.Count);
             Assert.InRange(header.SplitTimes[0], 0.2, 1.0);
             Assert.InRange(header.SplitTimes[1], header.SplitTimes[0], 1.5);
+        }
+
+        [Fact]
+        public void Full_log_keeps_every_sample_with_launch_still_at_zero()
+        {
+            var trimmed = RtProLoader.Load(SamplePath).Value.Points;
+            var full = RtProLoader.Load(SamplePath, keepFullLog: true).Value.Points;
+
+            // The sample covers 15-60 s of the session and the launch is near 39 s.
+            Assert.True(full.Count > trimmed.Count * 10);
+            Assert.InRange(full.First().Time.TotalSeconds, -25, -20);
+            Assert.InRange(full.Last().Time.TotalSeconds, 15, 25);
+            Assert.True(full.First(p => p.Time.TotalSeconds >= 0).SpeedMph <= 0.5);
         }
 
         [Fact]
