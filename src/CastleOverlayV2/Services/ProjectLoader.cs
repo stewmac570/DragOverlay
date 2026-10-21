@@ -122,6 +122,7 @@ namespace CastleOverlayV2.Services
                 var tuneLoader = new CastleTuneLoader();
 
                 bool trimForDrag = manifest.RunMode != ProjectRunMode.Speed;
+                bool keepFullLog = manifest.FullLogs;
 
                 foreach (var entry in manifest.Runs.OrderBy(r => r.PlotSlot))
                 {
@@ -130,7 +131,7 @@ namespace CastleOverlayV2.Services
                     RunData? run = null;
                     if (entry.SourceType == ProjectSourceType.Castle)
                     {
-                        var loadResult = castleLoader.Load(localPath, trimForDrag);
+                        var loadResult = castleLoader.Load(localPath, trimForDrag, keepFullLog);
                         if (!loadResult.Ok)
                         {
                             TryDeleteTempDir(tempDir);
@@ -141,7 +142,7 @@ namespace CastleOverlayV2.Services
                     }
                     else if (entry.SourceType == ProjectSourceType.MiniLogger)
                     {
-                        var loadResult = MiniLoggerLoader.Load(localPath);
+                        var loadResult = MiniLoggerLoader.Load(localPath, keepFullLog);
                         if (!loadResult.Ok)
                         {
                             TryDeleteTempDir(tempDir);
@@ -152,7 +153,7 @@ namespace CastleOverlayV2.Services
                     }
                     else if (RtProLoader.IsRtProCsv(localPath))
                     {
-                        var rtResult = RtProLoader.Load(localPath);
+                        var rtResult = RtProLoader.Load(localPath, keepFullLog);
                         if (!rtResult.Ok)
                         {
                             TryDeleteTempDir(tempDir);
@@ -182,7 +183,7 @@ namespace CastleOverlayV2.Services
                         }
                         var rbHeader = headerResult.Value!;
                         int runIndex = rbHeader.FirstCompleteRunIndex ?? 1;
-                        var telemetryResult = raceBoxLoader.LoadTelemetry(localPath, runIndex);
+                        var telemetryResult = raceBoxLoader.LoadTelemetry(localPath, runIndex, keepFullLog);
                         if (!telemetryResult.Ok)
                         {
                             TryDeleteTempDir(tempDir);

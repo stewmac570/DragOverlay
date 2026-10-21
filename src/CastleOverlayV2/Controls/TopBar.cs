@@ -30,10 +30,12 @@ namespace CastleOverlayV2.Controls
         private readonly TabButton _tuneTab;
         private readonly FlowLayoutPanel _actions;
         private readonly Button _saveProjectButton;
+        private readonly Button _autoTrimButton;
         private readonly ToolTip _toolTip;
 
         public event Action<AppPage>? PageSelected;
         public event Action? AutoLoadRequested;
+        public event Action? AutoTrimToggled;
         public event Action? OpenProjectRequested;
         public event Action? SaveProjectRequested;
         public event Action? SettingsRequested;
@@ -81,6 +83,11 @@ namespace CastleOverlayV2.Controls
             var autoLoad = MakeActionButton("⤓ Auto load", 96, TextAccent, "Load the most recent log + tune + RaceBox");
             autoLoad.Click += (_, _) => AutoLoadRequested?.Invoke();
             _actions.Controls.Add(autoLoad);
+
+            _autoTrimButton = MakeActionButton("✂ Auto trim: On", 118, TextPrimary,
+                "On: logs are cut to 0.5 s before launch → 2.5 s after.\nOff: logs load in full, still lined up at launch.");
+            _autoTrimButton.Click += (_, _) => AutoTrimToggled?.Invoke();
+            _actions.Controls.Add(_autoTrimButton);
 
             Controls.Add(_actions);
 
@@ -130,6 +137,14 @@ namespace CastleOverlayV2.Controls
         }
 
         public void SetSaveProjectEnabled(bool enabled) => _saveProjectButton.Enabled = enabled;
+
+        /// <summary>Show the auto trim state on its button (blue outline while off).</summary>
+        public void SetAutoTrim(bool on)
+        {
+            _autoTrimButton.Text = on ? "✂ Auto trim: On" : "✂ Auto trim: Off";
+            _autoTrimButton.ForeColor = on ? TextPrimary : TextAccent;
+            _autoTrimButton.FlatAppearance.BorderColor = on ? BorderDef : AccentBlue;
+        }
 
         public void SelectPage(AppPage page)
         {

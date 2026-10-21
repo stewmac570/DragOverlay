@@ -6,6 +6,8 @@ namespace CastleOverlayV2.Models
         public string AppBuild { get; set; } = "";
         public DateTimeOffset CreatedUtc { get; set; } = DateTimeOffset.UtcNow;
         public ProjectRunMode RunMode { get; set; } = ProjectRunMode.Drag;
+        // Auto trim off when saved: logs load in full. Older projects omit it (= trimmed).
+        public bool FullLogs { get; set; }
         public Dictionary<string, bool> ChannelVisibility { get; set; } =
             new(StringComparer.OrdinalIgnoreCase);
         public List<ProjectRunEntry> Runs { get; set; } = new();

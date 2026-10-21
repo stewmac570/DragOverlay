@@ -40,5 +40,8 @@ namespace CastleOverlayV2
 
         // Project
         void SetSaveProjectEnabled(bool enabled);
+
+        // Auto trim
+        void SetAutoTrimUI(bool on);
     }
 }

@@ -59,7 +59,7 @@ namespace CastleOverlayV2.Services
         /// Read the fastest pass. Points are re-zeroed to the launch and trimmed; the header
         /// carries the 66 / 132 ft split times (seconds after launch) for the split lines.
         /// </summary>
-        public static LoadResult<(RaceBoxData Header, List<RaceBoxPoint> Points)> Load(string filePath)
+        public static LoadResult<(RaceBoxData Header, List<RaceBoxPoint> Points)> Load(string filePath, bool keepFullLog = false)
         {
             Logger.Log($"[RtProLoader] Load started: {Path.GetFileName(filePath)}");
 
@@ -105,7 +105,7 @@ namespace CastleOverlayV2.Services
             var splitTimes = FindSplitTimes(samples, launch);
 
             var points = samples
-                .Where(s => s.Time >= t0 - PreLaunchSeconds && s.Time <= t0 + PostLaunchSeconds)
+                .Where(s => keepFullLog || (s.Time >= t0 - PreLaunchSeconds && s.Time <= t0 + PostLaunchSeconds))
                 .Select((s, i) => new RaceBoxPoint
                 {
                     Time = TimeSpan.FromSeconds(s.Time - t0),

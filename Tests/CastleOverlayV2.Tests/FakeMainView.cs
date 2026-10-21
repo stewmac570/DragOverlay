@@ -35,6 +35,8 @@ public sealed class FakeMainView : IMainView
     public int SettingsShown;
     public bool? SaveProjectEnabled;
     public void SetSaveProjectEnabled(bool enabled) => SaveProjectEnabled = enabled;
+    public bool? AutoTrimShown;
+    public void SetAutoTrimUI(bool on) => AutoTrimShown = on;
     public string? PickProjectFileToOpen() => ProjectOpenPathToReturn;
     public string? PickProjectFileToSave() => ProjectSavePathToReturn;
     public readonly List<(string title, string? initialDir)> FolderPicks = new();

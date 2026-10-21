@@ -14,7 +14,10 @@ namespace CastleOverlayV2.Services
             _configService = configService;
         }
 
-        public LoadResult<RunData> Load(string filePath, bool trimForDrag = true)
+        /// <param name="trimForDrag">Drag mode: find the launch and put it at t = 0.</param>
+        /// <param name="keepFullLog">With <paramref name="trimForDrag"/>: keep every sample instead of
+        /// cutting to -0.5 s .. +2.5 s around the launch.</param>
+        public LoadResult<RunData> Load(string filePath, bool trimForDrag = true, bool keepFullLog = false)
         {
             Logger.Log("CsvLoader.Load() entered.");
 
@@ -225,7 +228,9 @@ namespace CastleOverlayV2.Services
                     }
                     else
                     {
-                        runData.DataPoints = AutoTrim(runData.DataPoints, detection);
+                        runData.DataPoints = keepFullLog
+                            ? ZeroAtLaunch(runData.DataPoints, detection)
+                            : AutoTrim(runData.DataPoints, detection);
                         Logger.Log($"CsvLoader: Trimmed count = {runData.DataPoints.Count}");
                         Logger.Log($"CsvLoader: First Point Time = {runData.DataPoints[0].Time:F2}");
                         Logger.Log($"CsvLoader: Last Point Time = {runData.DataPoints[^1].Time:F2}");
@@ -282,6 +287,18 @@ namespace CastleOverlayV2.Services
         }
 
         private sealed record CastleCell(double Value, bool Valid);
+
+        // Full log, re-zeroed so the launch is t = 0 (auto trim off).
+        private static List<DataPoint> ZeroAtLaunch(List<DataPoint> data, DragPassDetectionResult detection)
+        {
+            if (!detection.Found || detection.LaunchIndex < 0 || detection.LaunchIndex >= data.Count)
+                return data;
+
+            double t0 = data[detection.LaunchIndex].Time;
+            foreach (var p in data)
+                p.Time -= t0;
+            return data;
+        }
 
         private static List<DataPoint> AutoTrim(List<DataPoint> data, DragPassDetectionResult detection)
         {
