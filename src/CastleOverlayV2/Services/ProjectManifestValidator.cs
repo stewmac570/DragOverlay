@@ -31,6 +31,7 @@ namespace CastleOverlayV2.Services
                 errors.Add($"RunMode '{manifest.RunMode}' is not supported.");
             if (manifest.ChannelVisibility == null)
                 errors.Add("ChannelVisibility is required.");
+            ValidatePanes(manifest, errors);
             if (manifest.Runs == null)
             {
                 errors.Add("Runs is required.");
@@ -57,6 +58,38 @@ namespace CastleOverlayV2.Services
             }
 
             return new ProjectManifestValidationResult(errors);
+        }
+
+        private static void ValidatePanes(ProjectManifest manifest, ICollection<string> errors)
+        {
+            if (manifest.PaneCount is < 1 or > 3)
+                errors.Add("PaneCount must be between 1 and 3.");
+
+            if (manifest.ChannelPanes == null)
+            {
+                errors.Add("ChannelPanes is required when present.");
+            }
+            else
+            {
+                foreach ((string channel, int paneNumber) in manifest.ChannelPanes)
+                {
+                    if (string.IsNullOrWhiteSpace(channel))
+                        errors.Add("ChannelPanes cannot contain an empty channel name.");
+                    if (paneNumber < 1 || paneNumber > Math.Clamp(manifest.PaneCount, 1, 3))
+                        errors.Add($"ChannelPanes['{channel}'] must be between 1 and PaneCount.");
+                }
+            }
+
+            if (manifest.PaneHeights == null)
+            {
+                errors.Add("PaneHeights is required when present.");
+                return;
+            }
+
+            if (manifest.PaneHeights.Count != Math.Clamp(manifest.PaneCount, 1, 3))
+                errors.Add("PaneHeights must contain one height per pane.");
+            if (manifest.PaneHeights.Any(height => !double.IsFinite(height) || height <= 0))
+                errors.Add("PaneHeights must contain positive finite numbers.");
         }
 
         public static bool IsSafePackagePath(string? path)

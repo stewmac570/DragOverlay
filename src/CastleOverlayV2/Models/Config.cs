@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Newtonsoft.Json;
 
 namespace CastleOverlayV2.Models
 {
@@ -51,6 +52,11 @@ namespace CastleOverlayV2.Models
         public int ChannelListWidth { get; set; } = 400;
         // Channel name -> share of the chart height and where that band sits.
         public Dictionary<string, ChannelBand> ChannelBands { get; set; } = new();
+        // Split-view state. Pane numbers are user-facing (1..3); heights are normalized shares.
+        public int PaneCount { get; set; } = 1;
+        public Dictionary<string, int> ChannelPanes { get; set; } = new();
+        [JsonProperty(ObjectCreationHandling = ObjectCreationHandling.Replace)]
+        public List<double> PaneHeights { get; set; } = new() { 1.0 };
 
 
         public Config()

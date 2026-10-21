@@ -20,6 +20,9 @@ public sealed class ProjectManifestTests
         Assert.Equal(ProjectFormat.CurrentSchemaVersion, loaded.SchemaVersion);
         Assert.Equal(ProjectRunMode.Drag, loaded.RunMode);
         Assert.False(loaded.ChannelVisibility["RPM"]);
+        Assert.Equal(3, loaded.PaneCount);
+        Assert.Equal(2, loaded.ChannelPanes["RaceBox Speed"]);
+        Assert.Equal(new[] { 0.5, 0.3, 0.2 }, loaded.PaneHeights);
         Assert.Equal(2, loaded.Runs.Count);
 
         ProjectRunEntry castle = loaded.Runs[0];
@@ -50,6 +53,22 @@ public sealed class ProjectManifestTests
 
         Assert.True(result.IsSuccess, string.Join(Environment.NewLine, result.Errors));
         Assert.Equal(2, result.Manifest?.Runs.Count);
+    }
+
+    [Fact]
+    public void Old_manifest_without_pane_fields_loads_as_one_pane()
+    {
+        JObject document = JObject.Parse(new ProjectManifestJson().Serialize(CreateManifest()));
+        document.Remove("paneCount");
+        document.Remove("channelPanes");
+        document.Remove("paneHeights");
+
+        ProjectManifestLoadResult result = new ProjectManifestJson().Deserialize(document.ToString());
+
+        Assert.True(result.IsSuccess, string.Join(Environment.NewLine, result.Errors));
+        Assert.Equal(1, result.Manifest!.PaneCount);
+        Assert.Empty(result.Manifest.ChannelPanes);
+        Assert.Equal(new[] { 1.0 }, result.Manifest.PaneHeights);
     }
 
     [Fact]
@@ -150,6 +169,14 @@ public sealed class ProjectManifestTests
             ["Throttle %"] = true,
             ["RaceBox Speed"] = true
         },
+        PaneCount = 3,
+        ChannelPanes = new Dictionary<string, int>
+        {
+            ["RPM"] = 1,
+            ["RaceBox Speed"] = 2,
+            ["Logger RPM"] = 3
+        },
+        PaneHeights = new List<double> { 0.5, 0.3, 0.2 },
         Runs =
         {
             new ProjectRunEntry
