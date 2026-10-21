@@ -54,7 +54,10 @@ namespace CastleOverlayV2
 
             // PlotManager needs formsPlot1, which exists after InitializeComponent().
             _plotManager = new PlotManager(formsPlot1);
-            formsPlot1.Dock = DockStyle.Fill;
+            // The stack keeps the Designer plot as pane 1 and supplies panes 2/3 on demand.
+            // Replace the plot's table cell with the host without changing the surrounding layout.
+            mainContainer.Controls.Remove(formsPlot1);
+            mainContainer.Controls.Add(_plotManager.ChartHost, 0, 1);
             _plotManager.SetupAllAxes();
             _plotManager.SetVoltageSmoothing(
                 _configService.Config.VoltageSmoothingEnabled,

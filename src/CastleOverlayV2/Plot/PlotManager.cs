@@ -14,7 +14,9 @@ namespace CastleOverlayV2.Plot
     public class PlotManager
     {
         private readonly FormsPlot _plot;
+        private readonly Controls.ChartStack _chartStack;
         private readonly List<ChartPane> _panes = new();
+        private readonly Dictionary<FormsPlot, ChartPane> _paneCache = new();
         private readonly ChannelPaneMap _channelPaneMap;
 
         private bool _alignmentMode;
@@ -42,6 +44,7 @@ namespace CastleOverlayV2.Plot
         public event Action<double>? TrimBeforeRequested;
         public event Action<double>? TrimAfterRequested;
         public event Action? TrimResetRequested;
+        public event Action<IReadOnlyList<double>>? PaneHeightsChanged;
 
         private ContextMenuStrip? _trimMenu;
         private ToolStripMenuItem? _trimBeforeItem;
@@ -88,32 +91,133 @@ namespace CastleOverlayV2.Plot
         public PlotManager(FormsPlot plotControl)
         {
             _plot = plotControl ?? throw new ArgumentNullException(nameof(plotControl));
+            _chartStack = new Controls.ChartStack(_plot);
             _channelPaneMap = new ChannelPaneMap(ChannelText.Order);
+            _chartStack.PaneHeightsChanged += heights => PaneHeightsChanged?.Invoke(heights);
 
-            // Stage 1 has one pane. Stage 2 can construct additional panes from the same
-            // map, link their X axes, and register their controls with these mouse handlers.
-            var paneChannels = ChannelText.Order.Where(channel => _channelPaneMap.GetPaneIndex(channel) == 0);
-            AddPane(new ChartPane(_plot, paneChannels));
+            RebuildPaneObjects();
 
             ReapplyAxisLocks();
             _plot.Refresh();
-
-            _plot.Controls.Add(_readout);
 
             BuildTrimMenu();
             _plot.Refresh();
         }
 
+        public Control ChartHost => _chartStack;
+        public int PaneCount => _channelPaneMap.PaneCount;
+        public IReadOnlyList<double> PaneHeights => _chartStack.PaneHeights;
+        public IReadOnlyDictionary<string, int> ChannelPanes => _channelPaneMap.GetAssignments();
+
+        public void SetPaneCount(int paneCount)
+        {
+            if (paneCount == PaneCount) return;
+
+            _channelPaneMap.SetPaneCount(paneCount);
+            _chartStack.SetPaneCount(paneCount);
+            RebuildPaneObjects();
+            ReplotCurrentState();
+        }
+
+        public void SetChannelPane(string channelName, int paneNumber)
+        {
+            _channelPaneMap.Assign(channelName, paneNumber - 1);
+            ReplotCurrentState();
+        }
+
+        public int MoveChannelToNextPane(string channelName)
+        {
+            int paneNumber = _channelPaneMap.MoveToNextPane(channelName) + 1;
+            ReplotCurrentState();
+            return paneNumber;
+        }
+
+        public void ApplyBySourcePanes()
+        {
+            _channelPaneMap.ApplyBySource();
+            _chartStack.SetPaneCount(3);
+            RebuildPaneObjects();
+            ReplotCurrentState();
+        }
+
+        public void ApplyPaneState(
+            int paneCount,
+            IReadOnlyDictionary<string, int>? channelPanes,
+            IEnumerable<double>? paneHeights)
+        {
+            paneCount = Math.Clamp(paneCount, 1, 3);
+            _channelPaneMap.SetPaneCount(paneCount);
+            _channelPaneMap.ApplyAssignments(channelPanes);
+            _chartStack.SetPaneCount(paneCount);
+            _chartStack.SetPaneHeights(paneHeights);
+            RebuildPaneObjects();
+            ReplotCurrentState();
+        }
+
+        public void SetPaneHeights(IEnumerable<double>? heights) => _chartStack.SetPaneHeights(heights);
+
+        private void RebuildPaneObjects()
+        {
+            foreach (ChartPane pane in _panes)
+            {
+                pane.PlotControl.Plot.Axes.UnlinkAll();
+                pane.PlotControl.MouseMove -= FormsPlot_MouseMove;
+                pane.PlotControl.MouseLeave -= FormsPlot_MouseLeave;
+                pane.PlotControl.MouseDown -= FormsPlot_MouseDown;
+                pane.PlotControl.MouseUp -= FormsPlot_MouseUp;
+            }
+
+            _readout.Parent?.Controls.Remove(_readout);
+            _panes.Clear();
+            for (int paneIndex = 0; paneIndex < _chartStack.PaneCount; paneIndex++)
+            {
+                FormsPlot plotControl = _chartStack.GetPaneControl(paneIndex);
+                if (!_paneCache.TryGetValue(plotControl, out ChartPane? pane))
+                {
+                    pane = new ChartPane(plotControl, _channelPaneMap, paneIndex);
+                    _paneCache[plotControl] = pane;
+                }
+                AddPane(pane);
+            }
+
+            _panes[0].PlotControl.Controls.Add(_readout);
+            _readout.BringToFront();
+            BuildTrimMenu();
+            RelinkTimeAxes();
+        }
+
+        private void ReplotCurrentState()
+        {
+            if (_runsBySlot.Count > 0)
+                PlotRuns(new Dictionary<int, RunData>(_runsBySlot));
+            else
+                ResetEmptyPlot();
+        }
+
         private void AddPane(ChartPane pane)
         {
-            if (_panes.Count > 0)
-                _panes[0].PlotControl.Plot.Axes.Link(pane.PlotControl, x: true, y: false);
-
             _panes.Add(pane);
+            try { pane.PlotControl.Menu?.Clear(); } catch { }
             pane.PlotControl.MouseMove += FormsPlot_MouseMove;
-            pane.PlotControl.MouseLeave += (_, _) => _readout.Visible = false;
+            pane.PlotControl.MouseLeave += FormsPlot_MouseLeave;
             pane.PlotControl.MouseDown += FormsPlot_MouseDown;
             pane.PlotControl.MouseUp += FormsPlot_MouseUp;
+        }
+
+        private void RelinkTimeAxes()
+        {
+            // ScottPlot 5.0.55 keeps links in LinkedAxisRules (separate from the vertical
+            // lock Rules collection). Recreate the complete ordered graph anyway because
+            // panes can be removed/re-added, and UnlinkAll prevents duplicate rules after
+            // every replot. Link rules copy limits directly and do not recursively fire.
+            foreach (ChartPane pane in _panes)
+                pane.PlotControl.Plot.Axes.UnlinkAll();
+
+            for (int source = 0; source < _panes.Count; source++)
+                for (int target = 0; target < _panes.Count; target++)
+                    if (source != target)
+                        _panes[source].PlotControl.Plot.Axes.Link(
+                            _panes[target].PlotControl, x: true, y: false);
         }
 
         /// <summary>Which channels the cursor box shows (picked in the channel list).</summary>
@@ -166,8 +270,10 @@ namespace CastleOverlayV2.Plot
 
         private void BuildTrimMenu()
         {
-            try { _plot.Menu?.Clear(); } catch { }
+            foreach (ChartPane pane in _panes)
+                try { pane.PlotControl.Menu?.Clear(); } catch { }
 
+            _trimMenu?.Dispose();
             _trimMenu = new ContextMenuStrip();
             _trimBeforeItem = new ToolStripMenuItem("Remove data before here",
                 null, (_, _) => TrimBeforeRequested?.Invoke(_lastRightClickPlotX));
@@ -423,8 +529,9 @@ namespace CastleOverlayV2.Plot
             {
                 pane.ApplyTimeRangeAndTicks(runsBySlot, _castleTimeShift, minX, maxX);
                 pane.ReapplyAxisLocks(ActiveScales, _isFourPoleMode, _channelBands);
-                pane.PlotControl.Refresh();
             }
+            RelinkTimeAxes();
+            RefreshPlot();
         }
 
         public void SetupAllAxes()
@@ -445,7 +552,9 @@ namespace CastleOverlayV2.Plot
         private void UpdateReadout(int pixelX, int pixelY, double time, Dictionary<string, double?[]> values)
         {
             var lines = new List<Controls.CursorReadout.Line>();
-            foreach (string channel in ChannelText.Order)
+            IEnumerable<string> orderedChannels = ChannelText.Order.Concat(
+                values.Keys.Where(channel => !ChannelText.Order.Contains(channel, StringComparer.OrdinalIgnoreCase)));
+            foreach (string channel in orderedChannels)
             {
                 if (!_readoutChannels.Contains(channel)) continue;
                 if (!values.TryGetValue(channel, out var channelValues) || channelValues.All(value => !value.HasValue))
@@ -458,6 +567,12 @@ namespace CastleOverlayV2.Plot
                     channelValues.Select(value => value.HasValue ? ChannelText.Format(channel, value.Value) : "–").ToArray()));
             }
             _readout.ShowAt(pixelX, pixelY, time, lines);
+        }
+
+        private void FormsPlot_MouseLeave(object? sender, EventArgs e)
+        {
+            if (ReferenceEquals(_readout.Parent, sender))
+                _readout.Visible = false;
         }
 
         private void FormsPlot_MouseMove(object? sender, MouseEventArgs e)
@@ -523,6 +638,12 @@ namespace CastleOverlayV2.Plot
             }
 
             CursorMoved?.Invoke(valuesAtCursor);
+            if (!ReferenceEquals(_readout.Parent, source))
+            {
+                _readout.Parent?.Controls.Remove(_readout);
+                source.Controls.Add(_readout);
+                _readout.BringToFront();
+            }
             UpdateReadout(e.X, e.Y, mouseCoordinates.X, valuesAtCursor);
             RefreshPlot();
         }
@@ -567,6 +688,7 @@ namespace CastleOverlayV2.Plot
         {
             foreach (ChartPane pane in _panes)
                 pane.ResetEmptyPlot(ActiveScales, _isFourPoleMode, _channelBands);
+            RelinkTimeAxes();
         }
 
         public void LogVisibilityStates()

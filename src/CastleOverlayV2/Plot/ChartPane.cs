@@ -17,7 +17,8 @@ namespace CastleOverlayV2.Plot
     /// <summary>Owns the ScottPlot state and rendering work for one chart pane.</summary>
     internal sealed class ChartPane
     {
-        private readonly HashSet<string> _channels;
+        private readonly ChannelPaneMap _channelPaneMap;
+        private readonly int _paneIndex;
         private readonly List<Scatter> _scatters = new();
         private readonly Dictionary<Scatter, double[]> _rawYMap = new();
         private readonly Dictionary<Scatter, int> _scatterSlotMap = new();
@@ -51,11 +52,11 @@ namespace CastleOverlayV2.Plot
         private static readonly ScottPlot.Color ThemeGrid = new(0xFF, 0xFF, 0xFF, 13);
         private static readonly ScottPlot.Color ThemeSplit = new(0x7C, 0x5A, 0x2E);
 
-        public ChartPane(FormsPlot plotControl, IEnumerable<string> channels)
+        public ChartPane(FormsPlot plotControl, ChannelPaneMap channelPaneMap, int paneIndex)
         {
             PlotControl = plotControl ?? throw new ArgumentNullException(nameof(plotControl));
-            _channels = new HashSet<string>(channels ?? throw new ArgumentNullException(nameof(channels)),
-                StringComparer.OrdinalIgnoreCase);
+            _channelPaneMap = channelPaneMap ?? throw new ArgumentNullException(nameof(channelPaneMap));
+            _paneIndex = paneIndex;
 
             PlotControl.Plot.Clear();
             PlotControl.Plot.FigureBackground.Color = ThemeWindow;
@@ -80,7 +81,9 @@ namespace CastleOverlayV2.Plot
         public bool HasScatters => _scatters.Count > 0;
         public bool HasCursor => _cursor is not null;
 
-        public bool DrawsChannel(string channelName) => _channels.Contains(channelName);
+        // The map is deliberately consulted at draw time. Unknown/future channels safely
+        // default to pane 1 instead of disappearing because they were absent from a name list.
+        public bool DrawsChannel(string channelName) => _channelPaneMap.GetPaneIndex(channelName) == _paneIndex;
 
         public (double Left, double Right) GetXLimits()
         {
@@ -265,8 +268,8 @@ namespace CastleOverlayV2.Plot
         {
             if (!run.IsRaceBox) return;
 
-            string[] channels = { "RaceBox Speed", "RaceBox Distance", "RaceBox G-Force X" };
-            foreach (string channel in channels)
+            foreach (string channel in run.Data.Keys.Where(channel =>
+                         channel.StartsWith("RaceBox ", StringComparison.OrdinalIgnoreCase)))
             {
                 if (!DrawsChannel(channel)) continue;
                 if (!run.Data.TryGetValue(channel, out var points) || points.Count == 0) continue;
@@ -293,7 +296,7 @@ namespace CastleOverlayV2.Plot
             if (!run.IsMiniLogger) return;
 
             double shiftSec = run.TimeShiftMs / 1000.0;
-            foreach (string channel in MiniLoggerLoader.Channels)
+            foreach (string channel in run.Data.Keys)
             {
                 if (!DrawsChannel(channel)) continue;
                 if (!run.Data.TryGetValue(channel, out var points) || points.Count < 2) continue;
@@ -546,7 +549,9 @@ namespace CastleOverlayV2.Plot
         public void ApplyTimeRangeAndTicks(Dictionary<int, RunData> runsBySlot, double castleTimeShift, double minX, double maxX)
         {
             ApplyManualTimeTicks(runsBySlot, castleTimeShift);
-            PixelPadding padding = new(left: 40, right: 40, top: 0, bottom: 50);
+            // Every pane uses identical margins so linked time coordinates line up vertically.
+            // The wider sides also leave room for six-digit RPM ticks and the focused-axis label.
+            PixelPadding padding = new(left: 80, right: 80, top: 0, bottom: 50);
             PlotControl.Plot.Layout.Fixed(padding);
             PlotControl.Plot.Legend.IsVisible = false;
 
@@ -726,7 +731,7 @@ namespace CastleOverlayV2.Plot
             message.LabelFontSize = 18;
             message.LabelFontColor = ThemeTextDim;
 
-            PixelPadding padding = new(left: 40, right: 40, top: 10, bottom: 50);
+            PixelPadding padding = new(left: 80, right: 80, top: 10, bottom: 50);
             PlotControl.Plot.Layout.Fixed(padding);
             PlotControl.Plot.Legend.IsVisible = false;
             ReapplyAxisLocks(scales, isFourPoleMode, channelBands);

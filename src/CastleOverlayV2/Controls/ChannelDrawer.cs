@@ -46,6 +46,10 @@ namespace CastleOverlayV2.Controls
         public event Action<string, bool>? ChannelBoldChanged;
         /// <summary>Line size changed: channel, height (0.1..1), position (0 bottom..1 top).</summary>
         public event Action<string, double, double>? ChannelBandChanged;
+        public event Action<int>? PaneCountChanged;
+        public event Action? BySourcePanesRequested;
+        /// <summary>Channel and user-facing pane number (1..3).</summary>
+        public event Action<string, int>? ChannelPaneChanged;
         /// <summary>The set of channels picked for the cursor box changed.</summary>
         public event Action<IReadOnlyCollection<string>>? CursorChannelsChanged;
         /// <summary>The user finished dragging the list's right edge to this width.</summary>
@@ -61,6 +65,8 @@ namespace CastleOverlayV2.Controls
         // Channels picked (by clicking their row) to show in the box that follows the chart cursor.
         private readonly HashSet<string> _picked = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, (double Height, double Position)> _bands = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, int> _channelPanes = new(StringComparer.OrdinalIgnoreCase);
+        private int _paneCount = 1;
 
         private readonly Panel _scroll;
         private readonly FlowLayoutPanel _list;
@@ -75,6 +81,7 @@ namespace CastleOverlayV2.Controls
         private bool _dragging;
         private readonly RunColumnHeader _columns;
         private readonly ToolTip _toolTip;
+        private readonly Button[] _paneCountButtons = new Button[3];
 
         public ChannelDrawer(List<string> channelNames, Dictionary<string, bool> initialStates)
         {
@@ -111,8 +118,9 @@ namespace CastleOverlayV2.Controls
             _columns = new RunColumnHeader { Dock = DockStyle.Top, Height = 24 };
             Controls.Add(_columns);
 
-            // Title bar: "Channels" + RPM pole toggle.
-            var title = _title = new Panel { Dock = DockStyle.Top, Height = 36, BackColor = SurfacePanel };
+            // Title bar: channel tools on the first line, split-view tools below them.
+            var title = _title = new Panel { Dock = DockStyle.Top, Height = 66, BackColor = SurfacePanel };
+            var topLine = new Panel { Dock = DockStyle.Fill, BackColor = SurfacePanel };
             var titleLbl = new Label
             {
                 Text = "Channels",
@@ -155,11 +163,51 @@ namespace CastleOverlayV2.Controls
             collapse.FlatAppearance.BorderSize = 0;
             collapse.Click += (_, _) => SetCollapsed(true);
             _toolTip.SetToolTip(collapse, "Hide the channel list");
-            title.Controls.Add(titleLbl);
-            title.Controls.Add(_poleButton);
-            title.Controls.Add(collapse);
+            topLine.Controls.Add(titleLbl);
+            topLine.Controls.Add(_poleButton);
+            topLine.Controls.Add(collapse);
+
+            var paneBar = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Bottom,
+                Height = 30,
+                FlowDirection = FlowDirection.LeftToRight,
+                WrapContents = false,
+                BackColor = SurfacePanel,
+                Padding = new Padding(8, 2, 0, 2),
+                Margin = Padding.Empty
+            };
+            paneBar.Controls.Add(new Label
+            {
+                Text = "Panes",
+                AutoSize = false,
+                Width = 44,
+                Height = 24,
+                TextAlign = ContentAlignment.MiddleLeft,
+                ForeColor = TextSecond
+            });
+            for (int paneNumber = 1; paneNumber <= 3; paneNumber++)
+            {
+                int selectedCount = paneNumber;
+                var button = MakeHeaderButton(paneNumber.ToString(), 26);
+                button.Click += (_, _) =>
+                {
+                    SetPaneCount(selectedCount);
+                    PaneCountChanged?.Invoke(selectedCount);
+                };
+                _paneCountButtons[paneNumber - 1] = button;
+                paneBar.Controls.Add(button);
+            }
+            var bySource = MakeHeaderButton("By source", 76);
+            bySource.Click += (_, _) => BySourcePanesRequested?.Invoke();
+            _toolTip.SetToolTip(bySource, "ESC in pane 1, GPS in pane 2, Mini Logger in pane 3");
+            paneBar.Controls.Add(bySource);
+
+            title.Controls.Add(topLine);
+            title.Controls.Add(paneBar);
             Controls.Add(title);
             SetRpmMode(false);
+            SetPaneCount(1);
 
             // Collapsed: a thin strip down the left edge; click it to bring the list back.
             _expandButton = new VerticalButton
@@ -226,6 +274,9 @@ namespace CastleOverlayV2.Controls
             row.SetBandActive(_bands.ContainsKey(channelName));
             row.SetFocused(channelName == _focusedChannel);
             row.SetPicked(_picked.Contains(channelName));
+            int paneNumber = _channelPanes.TryGetValue(channelName, out int savedPane) ? savedPane : 1;
+            _channelPanes[channelName] = paneNumber;
+            row.SetPane(paneNumber, _paneCount);
             row.VisibilityToggled += (n, v) => ChannelVisibilityChanged?.Invoke(n, v);
             row.NameClicked += TogglePicked;
             row.ColorClicked += PickColor;
@@ -243,6 +294,12 @@ namespace CastleOverlayV2.Controls
                 ChannelBoldChanged?.Invoke(n, bold);
             };
             row.BandClicked += ShowBandPopup;
+            row.PaneSelected += (name, selectedPane) =>
+            {
+                _channelPanes[name] = selectedPane;
+                row.SetPane(selectedPane, _paneCount);
+                ChannelPaneChanged?.Invoke(name, selectedPane);
+            };
             _rows[channelName] = row;
 
             RebuildList();
@@ -266,6 +323,38 @@ namespace CastleOverlayV2.Controls
         }
 
         public IReadOnlyCollection<string> CursorChannels => _picked;
+
+        public int PaneCount => _paneCount;
+
+        public void SetPaneCount(int paneCount)
+        {
+            _paneCount = Math.Clamp(paneCount, 1, 3);
+            for (int index = 0; index < _paneCountButtons.Length; index++)
+            {
+                bool active = index + 1 == _paneCount;
+                _paneCountButtons[index].BackColor = active ? AccentBlue : SurfaceBar;
+                _paneCountButtons[index].ForeColor = active ? Color.White : TextSecond;
+            }
+
+            foreach (string channel in _channelPanes.Keys.ToList())
+                if (_channelPanes[channel] > _paneCount)
+                    _channelPanes[channel] = 1;
+            foreach ((string name, ChannelRow row) in _rows)
+                row.SetPane(_channelPanes.TryGetValue(name, out int pane) ? pane : 1, _paneCount);
+        }
+
+        public void ApplyChannelPanes(IReadOnlyDictionary<string, int>? channelPanes)
+        {
+            if (channelPanes != null)
+                foreach ((string channel, int paneNumber) in channelPanes)
+                    _channelPanes[channel] = paneNumber >= 1 && paneNumber <= _paneCount ? paneNumber : 1;
+
+            foreach ((string name, ChannelRow row) in _rows)
+                row.SetPane(_channelPanes.TryGetValue(name, out int pane) ? pane : 1, _paneCount);
+        }
+
+        public IReadOnlyDictionary<string, int> GetChannelPanes() =>
+            new Dictionary<string, int>(_channelPanes, StringComparer.OrdinalIgnoreCase);
 
         // Clicking a row adds it to the cursor box (and gives it the chart's Y axis);
         // clicking it again takes it off.
@@ -446,6 +535,24 @@ namespace CastleOverlayV2.Controls
 
         private static string Format(string channelName, double v) => ChannelText.Format(channelName, v);
 
+        private static Button MakeHeaderButton(string text, int width)
+        {
+            var button = new Button
+            {
+                Text = text,
+                Width = width,
+                Height = 24,
+                Margin = new Padding(2, 0, 0, 0),
+                FlatStyle = FlatStyle.Flat,
+                BackColor = SurfaceBar,
+                ForeColor = TextSecond,
+                TabStop = false,
+                UseVisualStyleBackColor = false
+            };
+            button.FlatAppearance.BorderColor = BorderControl;
+            return button;
+        }
+
         // ============================================================
         // Nested: run column header (line style per run above the value columns)
         // ============================================================
@@ -582,11 +689,13 @@ namespace CastleOverlayV2.Controls
             public event Action<string>? ColorResetClicked;
             public event Action<string>? BoldClicked;
             public event Action<string, Control>? BandClicked;
+            public event Action<string, int>? PaneSelected;
 
             private readonly SmallToggle _tick;
             private readonly Swatch _swatch;
             private readonly SmallToggle _bold;
             private readonly SmallToggle _band;
+            private readonly SmallToggle _pane;
             private readonly Label _name;
             private readonly Label[] _values = new Label[3];
             private readonly ToolTip _toolTip;
@@ -627,6 +736,30 @@ namespace CastleOverlayV2.Controls
                 _band.Click += (_, _) => BandClicked?.Invoke(ChannelName, _band);
                 toolTip.SetToolTip(_band, "Line size: squeeze this channel into part of the chart");
 
+                _pane = new SmallToggle("1", showTextWhenOff: true) { On = true };
+                _pane.MouseUp += (_, e) =>
+                {
+                    if (!_pane.Visible) return;
+                    if (e.Button == MouseButtons.Left)
+                    {
+                        int current = int.TryParse(_pane.Text, out int value) ? value : 1;
+                        PaneSelected?.Invoke(ChannelName, current % _paneCount + 1);
+                    }
+                    else if (e.Button == MouseButtons.Right)
+                    {
+                        var menu = new ContextMenuStrip();
+                        for (int paneNumber = 1; paneNumber <= _paneCount; paneNumber++)
+                        {
+                            int selected = paneNumber;
+                            menu.Items.Add($"Pane {paneNumber}", null,
+                                (_, _) => PaneSelected?.Invoke(ChannelName, selected));
+                        }
+                        menu.Closed += (_, _) => menu.Dispose();
+                        menu.Show(_pane, new Point(0, _pane.Height));
+                    }
+                };
+                toolTip.SetToolTip(_pane, "Move this channel to another chart pane");
+
                 _name = new Label
                 {
                     Text = DisplayName(channelName),
@@ -657,6 +790,7 @@ namespace CastleOverlayV2.Controls
                 Controls.Add(_swatch);
                 Controls.Add(_bold);
                 Controls.Add(_band);
+                Controls.Add(_pane);
                 Controls.Add(_name);
 
                 SetStats(Array.Empty<string>());
@@ -672,6 +806,7 @@ namespace CastleOverlayV2.Controls
                 _swatch.SetBounds(34, y + 2, 16, 16);
                 _bold.SetBounds(56, y, 22, 20);
                 _band.SetBounds(82, y, 22, 20);
+                _pane.SetBounds(108, y, 22, 20);
 
                 int right = Width - 6;
                 for (int i = 2; i >= 0; i--)
@@ -679,7 +814,8 @@ namespace CastleOverlayV2.Controls
                     _values[i].SetBounds(right - ValueColumnWidth, 0, ValueColumnWidth, Height);
                     right -= ValueColumnWidth;
                 }
-                _name.SetBounds(110, 0, Math.Max(0, right - 112), Height);
+                int nameLeft = _pane.Visible ? 136 : 110;
+                _name.SetBounds(nameLeft, 0, Math.Max(0, right - nameLeft - 2), Height);
             }
 
             protected override void OnPaint(PaintEventArgs e)
@@ -718,6 +854,17 @@ namespace CastleOverlayV2.Controls
             public void SetColor(Color color) => _swatch.SwatchColor = color;
             public void SetBold(bool bold) => _bold.On = bold;
             public void SetBandActive(bool active) => _band.On = active;
+
+            private int _paneCount = 1;
+
+            public void SetPane(int paneNumber, int paneCount)
+            {
+                _paneCount = Math.Clamp(paneCount, 1, 3);
+                _pane.Text = Math.Clamp(paneNumber, 1, _paneCount).ToString();
+                _pane.Visible = _paneCount > 1;
+                _pane.Invalidate();
+                PerformLayout();
+            }
 
             public void SetValues(string[] values)
             {
