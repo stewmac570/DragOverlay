@@ -18,6 +18,8 @@ namespace CastleOverlayV2.Models
             new(StringComparer.OrdinalIgnoreCase);
         [JsonProperty(ObjectCreationHandling = ObjectCreationHandling.Replace)]
         public List<double> PaneHeights { get; set; } = new() { 1.0 };
+        // Optional/additive: user-facing pane number -> focused channel.
+        public Dictionary<int, string> PaneFocusedChannels { get; set; } = new();
         public List<ProjectRunEntry> Runs { get; set; } = new();
     }
 

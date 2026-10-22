@@ -56,7 +56,8 @@ namespace CastleOverlayV2.Controls
         public event Action<int>? PanelWidthChanged;
 
         // ---- State ----------------------------------------------------------
-        private string _focusedChannel = "RPM"; // matches PlotManager's initial focus
+        // User-facing pane number (1..3) -> focused channel. More than one row can be focused.
+        private readonly Dictionary<int, string> _focusedChannels = new();
         private bool _isFourPole;
         private readonly Dictionary<string, ChannelRow> _rows = new();
         private readonly Dictionary<ChannelGroup, GroupHeader> _groups = new();
@@ -272,7 +273,7 @@ namespace CastleOverlayV2.Controls
             row.SetColor(ColorFor(channelName));
             row.SetBold(_bold.Contains(channelName));
             row.SetBandActive(_bands.ContainsKey(channelName));
-            row.SetFocused(channelName == _focusedChannel);
+            row.SetFocused(_focusedChannels.Values.Contains(channelName, StringComparer.OrdinalIgnoreCase));
             row.SetPicked(_picked.Contains(channelName));
             int paneNumber = _channelPanes.TryGetValue(channelName, out int savedPane) ? savedPane : 1;
             _channelPanes[channelName] = paneNumber;
@@ -305,13 +306,26 @@ namespace CastleOverlayV2.Controls
             RebuildList();
         }
 
-        /// <summary>Mark <paramref name="channelName"/> as the channel that owns the Y axis.</summary>
+        /// <summary>Focus a channel in the pane to which that channel is assigned.</summary>
         public void SetFocusedChannel(string channelName)
         {
-            if (_focusedChannel == channelName) return;
-            if (_rows.TryGetValue(_focusedChannel, out var prev)) prev.SetFocused(false);
-            _focusedChannel = channelName;
-            if (_rows.TryGetValue(channelName, out var next)) next.SetFocused(true);
+            int paneNumber = _channelPanes.TryGetValue(channelName, out int assignedPane)
+                ? assignedPane
+                : 1;
+            _focusedChannels[paneNumber] = channelName;
+            RefreshFocusedRows();
+        }
+
+        public void SetFocusedChannels(IReadOnlyDictionary<int, string>? focusedChannels)
+        {
+            _focusedChannels.Clear();
+            if (focusedChannels != null)
+            {
+                foreach ((int paneNumber, string channel) in focusedChannels)
+                    if (paneNumber >= 1 && paneNumber <= _paneCount && !string.IsNullOrWhiteSpace(channel))
+                        _focusedChannels[paneNumber] = channel;
+            }
+            RefreshFocusedRows();
         }
 
         /// <summary>Saved cursor-box picks. Also applied to channels added later.</summary>
@@ -339,8 +353,11 @@ namespace CastleOverlayV2.Controls
             foreach (string channel in _channelPanes.Keys.ToList())
                 if (_channelPanes[channel] > _paneCount)
                     _channelPanes[channel] = 1;
+            foreach (int paneNumber in _focusedChannels.Keys.Where(number => number > _paneCount).ToList())
+                _focusedChannels.Remove(paneNumber);
             foreach ((string name, ChannelRow row) in _rows)
                 row.SetPane(_channelPanes.TryGetValue(name, out int pane) ? pane : 1, _paneCount);
+            RefreshFocusedRows();
         }
 
         public void ApplyChannelPanes(IReadOnlyDictionary<string, int>? channelPanes)
@@ -351,10 +368,17 @@ namespace CastleOverlayV2.Controls
 
             foreach ((string name, ChannelRow row) in _rows)
                 row.SetPane(_channelPanes.TryGetValue(name, out int pane) ? pane : 1, _paneCount);
+            RefreshFocusedRows();
         }
 
         public IReadOnlyDictionary<string, int> GetChannelPanes() =>
             new Dictionary<string, int>(_channelPanes, StringComparer.OrdinalIgnoreCase);
+
+        private void RefreshFocusedRows()
+        {
+            foreach ((string name, ChannelRow row) in _rows)
+                row.SetFocused(_focusedChannels.Values.Contains(name, StringComparer.OrdinalIgnoreCase));
+        }
 
         // Clicking a row adds it to the cursor box (and gives it the chart's Y axis);
         // clicking it again takes it off.

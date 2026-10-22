@@ -138,13 +138,18 @@ namespace CastleOverlayV2.Services
         public void SetPaneState(
             int paneCount,
             IReadOnlyDictionary<string, int> channelPanes,
-            IEnumerable<double> paneHeights)
+            IEnumerable<double> paneHeights,
+            IReadOnlyDictionary<int, string>? paneFocusedChannels = null)
         {
             _config.PaneCount = Math.Clamp(paneCount, 1, 3);
             _config.ChannelPanes = channelPanes
                 .Where(pair => pair.Value >= 1 && pair.Value <= _config.PaneCount)
                 .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase);
             _config.PaneHeights = NormalizeHeights(paneHeights, _config.PaneCount);
+            _config.PaneFocusedChannels = (paneFocusedChannels ?? new Dictionary<int, string>())
+                .Where(pair => pair.Key >= 1 && pair.Key <= _config.PaneCount &&
+                               !string.IsNullOrWhiteSpace(pair.Value))
+                .ToDictionary(pair => pair.Key, pair => pair.Value);
             Save();
         }
 
@@ -156,6 +161,11 @@ namespace CastleOverlayV2.Services
                 if (_config.ChannelPanes[channel] < 1 || _config.ChannelPanes[channel] > _config.PaneCount)
                     _config.ChannelPanes[channel] = 1;
             _config.PaneHeights = NormalizeHeights(_config.PaneHeights, _config.PaneCount);
+            _config.PaneFocusedChannels ??= new Dictionary<int, string>();
+            foreach (int paneNumber in _config.PaneFocusedChannels.Keys.ToList())
+                if (paneNumber < 1 || paneNumber > _config.PaneCount ||
+                    string.IsNullOrWhiteSpace(_config.PaneFocusedChannels[paneNumber]))
+                    _config.PaneFocusedChannels.Remove(paneNumber);
         }
 
         private static List<double> NormalizeHeights(IEnumerable<double>? heights, int paneCount)

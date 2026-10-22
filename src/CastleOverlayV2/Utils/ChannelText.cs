@@ -11,7 +11,7 @@ namespace CastleOverlayV2.Utils
             "RPM", "Throttle %", "Voltage", "Current", "Ripple", "PowerOut",
             "MotorTemp", "ESC Temp", "MotorTiming", "Acceleration",
             "RaceBox Speed", "RaceBox Distance", "RaceBox G-Force X",
-            "Logger Throttle %", "Logger RPM", "Logger Wheel Speed", "Logger Wheel rev/s",
+            "Logger RPM", "Logger Throttle %", "Logger Wheel Speed", "Logger Wheel rev/s",
         };
 
         public static string DisplayName(string channelName) => channelName switch

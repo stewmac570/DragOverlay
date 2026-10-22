@@ -75,6 +75,7 @@ namespace CastleOverlayV2
             _drawer.ChannelBandChanged += OnChannelBandChanged;
             _drawer.SetRpmMode(_isFourPoleMode);
             _drawer.SetPanelWidth(_config.Config.ChannelListWidth);
+            _plot.PaneFocusedChannelsChanged += OnPaneFocusedChannelsChanged;
             ApplySavedPaneState();
             _drawer.PaneCountChanged += OnPaneCountChanged;
             _drawer.BySourcePanesRequested += OnBySourcePanesRequested;
@@ -924,9 +925,14 @@ namespace CastleOverlayV2
         private void ApplySavedPaneState()
         {
             Config cfg = _config.Config;
-            _plot.ApplyPaneState(cfg.PaneCount, cfg.ChannelPanes, cfg.PaneHeights);
+            _plot.ApplyPaneState(
+                cfg.PaneCount,
+                cfg.ChannelPanes,
+                cfg.PaneHeights,
+                cfg.PaneFocusedChannels);
             _drawer.SetPaneCount(_plot.PaneCount);
             _drawer.ApplyChannelPanes(_plot.ChannelPanes);
+            _drawer.SetFocusedChannels(_plot.PaneFocusedChannels);
         }
 
         private void OnPaneCountChanged(int paneCount)
@@ -934,6 +940,7 @@ namespace CastleOverlayV2
             _plot.SetPaneCount(paneCount);
             _drawer.SetPaneCount(_plot.PaneCount);
             _drawer.ApplyChannelPanes(_plot.ChannelPanes);
+            _drawer.SetFocusedChannels(_plot.PaneFocusedChannels);
             SavePaneState();
         }
 
@@ -942,12 +949,20 @@ namespace CastleOverlayV2
             _plot.ApplyBySourcePanes();
             _drawer.SetPaneCount(_plot.PaneCount);
             _drawer.ApplyChannelPanes(_plot.ChannelPanes);
+            _drawer.SetFocusedChannels(_plot.PaneFocusedChannels);
             SavePaneState();
         }
 
         private void OnChannelPaneChanged(string channelName, int paneNumber)
         {
             _plot.SetChannelPane(channelName, paneNumber);
+            _drawer.SetFocusedChannels(_plot.PaneFocusedChannels);
+            SavePaneState();
+        }
+
+        private void OnPaneFocusedChannelsChanged(IReadOnlyDictionary<int, string> focusedChannels)
+        {
+            _drawer.SetFocusedChannels(focusedChannels);
             SavePaneState();
         }
 
@@ -971,7 +986,8 @@ namespace CastleOverlayV2
         private void SavePaneState() => _config.SetPaneState(
             _plot.PaneCount,
             _plot.ChannelPanes,
-            _plot.PaneHeights);
+            _plot.PaneHeights,
+            _plot.SavedPaneFocusedChannels);
 
         /// <summary>Restore saved colour / bold / line size choices to the channel list and plot.</summary>
         private void ApplySavedChannelDisplay()
@@ -1044,10 +1060,8 @@ namespace CastleOverlayV2
 
         private void OnChannelFocused(string channelName)
         {
-            // Mirror the focus state to the plot (which re-tints + re-binds the visible Y axis)
-            // and back to the drawer (which highlights the focused card).
+            // PlotManager resolves the channel's pane and publishes the complete focus set.
             _plot.SetFocusedChannel(channelName);
-            _drawer.SetFocusedChannel(channelName);
         }
 
         private void OnCursorMoved(Dictionary<string, double?[]> valuesAtCursor)
@@ -1241,7 +1255,8 @@ namespace CastleOverlayV2
                 ChannelPanes = new Dictionary<string, int>(
                     _plot.ChannelPanes,
                     StringComparer.OrdinalIgnoreCase),
-                PaneHeights = _plot.PaneHeights.ToList()
+                PaneHeights = _plot.PaneHeights.ToList(),
+                PaneFocusedChannels = new Dictionary<int, string>(_plot.SavedPaneFocusedChannels)
             };
 
             var files = new List<ProjectSnapshotFile>();
@@ -1366,9 +1381,11 @@ namespace CastleOverlayV2
             _plot.ApplyPaneState(
                 restored.Manifest.PaneCount,
                 restored.Manifest.ChannelPanes,
-                restored.Manifest.PaneHeights);
+                restored.Manifest.PaneHeights,
+                restored.Manifest.PaneFocusedChannels);
             _drawer.SetPaneCount(_plot.PaneCount);
             _drawer.ApplyChannelPanes(_plot.ChannelPanes);
+            _drawer.SetFocusedChannels(_plot.PaneFocusedChannels);
             SavePaneState();
 
             // Insert each restored run into its slot.

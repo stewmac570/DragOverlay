@@ -23,6 +23,9 @@ public sealed class ProjectManifestTests
         Assert.Equal(3, loaded.PaneCount);
         Assert.Equal(2, loaded.ChannelPanes["RaceBox Speed"]);
         Assert.Equal(new[] { 0.5, 0.3, 0.2 }, loaded.PaneHeights);
+        Assert.Equal("Voltage", loaded.PaneFocusedChannels[1]);
+        Assert.Equal("RaceBox Speed", loaded.PaneFocusedChannels[2]);
+        Assert.Equal("Logger RPM", loaded.PaneFocusedChannels[3]);
         Assert.Equal(2, loaded.Runs.Count);
 
         ProjectRunEntry castle = loaded.Runs[0];
@@ -62,6 +65,7 @@ public sealed class ProjectManifestTests
         document.Remove("paneCount");
         document.Remove("channelPanes");
         document.Remove("paneHeights");
+        document.Remove("paneFocusedChannels");
 
         ProjectManifestLoadResult result = new ProjectManifestJson().Deserialize(document.ToString());
 
@@ -69,6 +73,7 @@ public sealed class ProjectManifestTests
         Assert.Equal(1, result.Manifest!.PaneCount);
         Assert.Empty(result.Manifest.ChannelPanes);
         Assert.Equal(new[] { 1.0 }, result.Manifest.PaneHeights);
+        Assert.Empty(result.Manifest.PaneFocusedChannels);
     }
 
     [Fact]
@@ -177,6 +182,12 @@ public sealed class ProjectManifestTests
             ["Logger RPM"] = 3
         },
         PaneHeights = new List<double> { 0.5, 0.3, 0.2 },
+        PaneFocusedChannels = new Dictionary<int, string>
+        {
+            [1] = "Voltage",
+            [2] = "RaceBox Speed",
+            [3] = "Logger RPM"
+        },
         Runs =
         {
             new ProjectRunEntry

@@ -90,6 +90,29 @@ namespace CastleOverlayV2.Services
                 errors.Add("PaneHeights must contain one height per pane.");
             if (manifest.PaneHeights.Any(height => !double.IsFinite(height) || height <= 0))
                 errors.Add("PaneHeights must contain positive finite numbers.");
+
+            if (manifest.PaneFocusedChannels == null)
+            {
+                errors.Add("PaneFocusedChannels is required when present.");
+            }
+            else
+            {
+                foreach ((int paneNumber, string channel) in manifest.PaneFocusedChannels)
+                {
+                    if (paneNumber < 1 || paneNumber > Math.Clamp(manifest.PaneCount, 1, 3))
+                        errors.Add("PaneFocusedChannels keys must be between 1 and PaneCount.");
+                    if (string.IsNullOrWhiteSpace(channel))
+                        errors.Add("PaneFocusedChannels cannot contain an empty channel name.");
+                    int assignedPane = manifest.ChannelPanes != null &&
+                                       manifest.ChannelPanes.TryGetValue(channel, out int savedPane)
+                        ? savedPane
+                        : 1;
+                    if (assignedPane != paneNumber)
+                    {
+                        errors.Add($"PaneFocusedChannels[{paneNumber}] must name a channel assigned to that pane.");
+                    }
+                }
+            }
         }
 
         public static bool IsSafePackagePath(string? path)
