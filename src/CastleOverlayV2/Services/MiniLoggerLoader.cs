@@ -30,10 +30,14 @@ namespace CastleOverlayV2.Services
             ThrottleChannel, RpmChannel, WheelSpeedChannel, WheelRevsChannel
         };
 
-        // Front tyre outside diameter on Jayfab's car.
-        private const double TyreDiameterMm = 70.0;
+        public const double DefaultTyreDiameterMm = 70.0;
         private const double MetersPerSecToMph = 2.23694;
-        public const double MphPerRevPerSec = Math.PI * TyreDiameterMm / 1000.0 * MetersPerSecToMph;
+        public static double MphPerRevPerSec(double tyreDiameterMm)
+        {
+            if (!double.IsFinite(tyreDiameterMm) || tyreDiameterMm <= 0)
+                tyreDiameterMm = DefaultTyreDiameterMm;
+            return Math.PI * tyreDiameterMm / 1000.0 * MetersPerSecToMph;
+        }
 
         // Throttle crossing this share of rest → peak marks the launch (and the alignment point).
         public const double LaunchThrottlePercent = 50.0;
@@ -63,7 +67,10 @@ namespace CastleOverlayV2.Services
             }
         }
 
-        public static LoadResult<RunData> Load(string filePath, bool keepFullLog = false)
+        public static LoadResult<RunData> Load(
+            string filePath,
+            bool keepFullLog = false,
+            double tyreDiameterMm = DefaultTyreDiameterMm)
         {
             Logger.Log($"[MiniLoggerLoader] Load started: {Path.GetFileName(filePath)}");
 
@@ -141,7 +148,7 @@ namespace CastleOverlayV2.Services
 
                 thrPts.Add(new DataPoint { Time = t, Y = throttlePct[i] });
                 rpmPts.Add(new DataPoint { Time = t, Y = rpm[i] });
-                mphPts.Add(new DataPoint { Time = t, Y = wheelRps[i] * MphPerRevPerSec });
+                mphPts.Add(new DataPoint { Time = t, Y = wheelRps[i] * MphPerRevPerSec(tyreDiameterMm) });
                 rpsPts.Add(new DataPoint { Time = t, Y = wheelRps[i] });
             }
 

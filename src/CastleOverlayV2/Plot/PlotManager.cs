@@ -59,6 +59,7 @@ namespace CastleOverlayV2.Plot
         private double _lastRightClickPlotX;
 
         private bool _isFourPoleMode;
+        private double _miniLoggerTyreDiameterMm = MiniLoggerLoader.DefaultTyreDiameterMm;
         private bool _voltageSmoothingEnabled;
         private int _voltageSmoothingWindow = 5;
 
@@ -220,6 +221,7 @@ namespace CastleOverlayV2.Plot
                     pane = new ChartPane(plotControl, _channelPaneMap, paneIndex);
                     _paneCache[plotControl] = pane;
                 }
+                pane.SetMiniLoggerTyreDiameter(_miniLoggerTyreDiameterMm);
                 AddPane(pane);
             }
 
@@ -282,6 +284,17 @@ namespace CastleOverlayV2.Plot
 
             if (_runsBySlot.Count > 0)
                 PlotRuns(new Dictionary<int, RunData>(_runsBySlot));
+        }
+
+        public void SetMiniLoggerTyreDiameter(double diameterMm)
+        {
+            _miniLoggerTyreDiameterMm = diameterMm > 0
+                ? diameterMm
+                : MiniLoggerLoader.DefaultTyreDiameterMm;
+            foreach (ChartPane pane in _panes)
+                pane.SetMiniLoggerTyreDiameter(_miniLoggerTyreDiameterMm);
+            ReapplyAxisLocks();
+            RefreshPlot();
         }
 
         public void SetCastleTimeShift(double shiftSeconds)

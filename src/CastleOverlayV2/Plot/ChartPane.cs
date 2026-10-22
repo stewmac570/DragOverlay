@@ -42,6 +42,8 @@ namespace CastleOverlayV2.Plot
         private IYAxis? _raceBoxGxAxis;
         private IYAxis? _raceBoxDistanceAxis;
         private IYAxis? _wheelRevsAxis;
+        private double _miniLoggerMphPerRevPerSec =
+            MiniLoggerLoader.MphPerRevPerSec(MiniLoggerLoader.DefaultTyreDiameterMm);
 
         private VerticalLine? _cursor;
 
@@ -80,6 +82,9 @@ namespace CastleOverlayV2.Plot
         public FormsPlot PlotControl { get; }
         public bool HasScatters => _scatters.Count > 0;
         public bool HasCursor => _cursor is not null;
+
+        public void SetMiniLoggerTyreDiameter(double diameterMm) =>
+            _miniLoggerMphPerRevPerSec = MiniLoggerLoader.MphPerRevPerSec(diameterMm);
 
         // The map is deliberately consulted at draw time. Unknown/future channels safely
         // default to pane 1 instead of disappearing because they were absent from a name list.
@@ -633,7 +638,7 @@ namespace CastleOverlayV2.Plot
             AddLock(_raceBoxSpeedAxis, 0, 110, channelBands);
             AddLock(_raceBoxGxAxis, -5, 7, channelBands);
             AddLock(_raceBoxDistanceAxis, 0, 1000, channelBands);
-            AddLock(_wheelRevsAxis, 0, 110 / MiniLoggerLoader.MphPerRevPerSec, channelBands);
+            AddLock(_wheelRevsAxis, 0, 110 / _miniLoggerMphPerRevPerSec, channelBands);
             if (_splitLabelAxis is not null)
                 PlotControl.Plot.Axes.Rules.Add(new LockedVertical(_splitLabelAxis, 0.0, 1.0));
 

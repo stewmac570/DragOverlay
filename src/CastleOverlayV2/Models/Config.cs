@@ -35,6 +35,9 @@ namespace CastleOverlayV2.Models
         public string TuneDirectory { get; set; } = "";
         public string DataLogDirectory { get; set; } = "";
 
+        /// <summary>Front tyre outside diameter used to convert Mini Logger wheel rev/s to mph.</summary>
+        public double FrontTyreDiameterMm { get; set; } = 70.0;
+
         // Auto trim on: logs are cut to -0.5 s .. +2.5 s around the launch. Off: full logs.
         public bool AutoTrim { get; set; } = true;
 

@@ -21,6 +21,7 @@ namespace CastleOverlayV2
         private readonly TextBox _raceboxDir = new();
         private readonly TextBox _tuneDir = new();
         private readonly TextBox _dataLogDir = new();
+        private readonly NumericUpDown _frontTyreDiameter = new();
         private readonly CheckBox _smoothingEnabled = new();
         private readonly NumericUpDown _smoothingWindow = new();
 
@@ -34,7 +35,7 @@ namespace CastleOverlayV2
             MinimizeBox = false;
             MaximizeBox = false;
             Width = 540;
-            Height = 395;
+            Height = 445;
             Font = new Font("Segoe UI", 9f);
             BackColor = SurfaceWindow;
             ForeColor = TextPrimary;
@@ -51,9 +52,10 @@ namespace CastleOverlayV2
             {
                 Dock = DockStyle.Fill,
                 ColumnCount = 1,
-                RowCount = 3,
+                RowCount = 4,
                 Padding = new Padding(12),
             };
+            root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
@@ -62,6 +64,9 @@ namespace CastleOverlayV2
             // -------- Default folders -------------
             root.Controls.Add(MakeSectionLabel("Default open folders"), 0, 0);
             root.Controls.Add(BuildFolderPanel(), 0, 1);
+
+            // -------- Car settings ----------------
+            root.Controls.Add(BuildCarPanel(), 0, 2);
 
             // -------- Voltage smoothing -----------
             var smoothingPanel = new FlowLayoutPanel
@@ -98,10 +103,49 @@ namespace CastleOverlayV2
             bottom.Controls.Add(smoothingPanel);
             bottom.Controls.Add(MakeSectionLabel("Voltage smoothing"));
             bottom.Controls.Add(BuildOkCancelRow());
-            root.Controls.Add(bottom, 0, 2);
+            root.Controls.Add(bottom, 0, 3);
 
             // Lay out top-down inside `bottom`.
             bottom.Controls[bottom.Controls.Count - 1].Dock = DockStyle.Bottom;
+        }
+
+        private Control BuildCarPanel()
+        {
+            var section = new Panel { Dock = DockStyle.Top, Height = 67 };
+            var row = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Bottom,
+                Height = 35,
+                FlowDirection = FlowDirection.LeftToRight,
+                WrapContents = false
+            };
+            row.Controls.Add(new Label
+            {
+                Text = "Front tyre diameter",
+                Width = 130,
+                Height = 28,
+                TextAlign = ContentAlignment.MiddleLeft,
+                ForeColor = TextSecond
+            });
+            _frontTyreDiameter.Minimum = 20;
+            _frontTyreDiameter.Maximum = 200;
+            _frontTyreDiameter.DecimalPlaces = 1;
+            _frontTyreDiameter.Increment = 0.5M;
+            _frontTyreDiameter.Width = 90;
+            _frontTyreDiameter.BackColor = SurfaceInput;
+            _frontTyreDiameter.ForeColor = TextPrimary;
+            _frontTyreDiameter.BorderStyle = BorderStyle.FixedSingle;
+            row.Controls.Add(_frontTyreDiameter);
+            row.Controls.Add(new Label
+            {
+                Text = "mm",
+                AutoSize = true,
+                Margin = new Padding(5, 6, 0, 0),
+                ForeColor = TextSecond
+            });
+            section.Controls.Add(row);
+            section.Controls.Add(MakeSectionLabel("Car"));
+            return section;
         }
 
         private Label MakeSectionLabel(string text) => new()
@@ -223,6 +267,11 @@ namespace CastleOverlayV2
             _raceboxDir.Text = c.RaceBoxLogDirectory ?? "";
             _tuneDir.Text = c.TuneDirectory ?? "";
             _dataLogDir.Text = c.DataLogDirectory ?? "";
+            double tyreDiameter = double.IsFinite(c.FrontTyreDiameterMm) && c.FrontTyreDiameterMm > 0
+                ? c.FrontTyreDiameterMm
+                : MiniLoggerLoader.DefaultTyreDiameterMm;
+            _frontTyreDiameter.Value = Math.Clamp((decimal)tyreDiameter,
+                _frontTyreDiameter.Minimum, _frontTyreDiameter.Maximum);
             _smoothingEnabled.Checked = c.VoltageSmoothingEnabled;
             _smoothingWindow.Value = Math.Max(3, Math.Min(15, c.VoltageSmoothingWindow | 1));
         }
@@ -234,6 +283,7 @@ namespace CastleOverlayV2
             c.RaceBoxLogDirectory = _raceboxDir.Text.Trim();
             c.TuneDirectory = _tuneDir.Text.Trim();
             c.DataLogDirectory = _dataLogDir.Text.Trim();
+            c.FrontTyreDiameterMm = (double)_frontTyreDiameter.Value;
             c.VoltageSmoothingEnabled = _smoothingEnabled.Checked;
             int win = (int)_smoothingWindow.Value;
             if (win % 2 == 0) win += 1; // force odd
