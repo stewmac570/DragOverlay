@@ -1,6 +1,6 @@
 # Split view plan: up to three stacked charts
 
-Status: planning. Nothing here is built yet.
+Status: stage 1 built (#151). Stages 2 and 3 not started.
 
 ## Goal
 
@@ -94,6 +94,34 @@ three of them:
   made fast earlier (single pass); this needs checking on a full log with auto
   trim off.
 - Projects saved before panes open as one pane.
+
+## Stage 1 review notes (for stage 2)
+
+Stage 1 (`Plot/ChartPane.cs`, `Plot/ChannelPaneMap.cs`, the slimmed `PlotManager`)
+was written by Codex and reviewed line by line. It changes nothing today: same
+public methods, identical hover values on real logs. Things stage 2 must fix:
+
+1. **Time-axis link is one way.** `PlotManager.AddPane` links pane 1 to each new
+   pane, but not back. Zooming in pane 2 or 3 would not move pane 1. Link every
+   pair in both directions, and check the link survives a replot:
+   `ChartPane.ClearForPlot` and `ResetEmptyPlot` call `Axes.Rules.Clear()`.
+2. **The cursor box only lives in pane 1.** It is added to pane 1's chart, but
+   `UpdateReadout` positions it with the mouse position of whichever pane the
+   mouse is over. Over pane 2 or 3 it would appear in the wrong place. Move it to
+   the hovered pane, or host it above all panes.
+3. **Channels not in `ChannelText.Order` are never drawn.** Each pane draws a
+   fixed set of names taken from that list. Any new channel added later would
+   silently disappear. Panes should ask the channel map which pane a channel
+   belongs to, with unknown channels going to pane 1.
+
+Minor: most of the old explanatory comments in the chart code were dropped in
+the move. Worth restoring the ones that explain why (axis locks, hover,
+"PlotManager skips runs with empty DataPoints").
+
+**Likely cause of the missing RPM scale (stage 3):** each chart is laid out with
+fixed 40 px margins (`Layout.Fixed(new PixelPadding(left: 40, right: 40, ...))`).
+The RPM axis is a right-hand axis, and 40 px is too narrow for its numbers, so
+they are clipped. This is a guess from the code, not yet tested.
 
 ## Open question
 
