@@ -71,15 +71,21 @@ namespace CastleOverlayV2.Services
         private const int RestSampleCount = 200;          // firmware keeps 1 s before the trigger
         private const double MinThrottleTravelMs = 0.1;    // firmware trigger is 100 µs above rest
 
-        /// <summary>True if the file's first line is the Mini Logger CSV header.</summary>
+        /// <summary>
+        /// True if the file starts with the Mini Logger CSV header. A raw serial capture that kept
+        /// the logger's "BEGIN run_NNNN.csv" line above the header counts too; its "END" line is
+        /// skipped by the row parser like any other non-numeric line.
+        /// </summary>
         public static bool IsMiniLoggerCsv(string filePath)
         {
             try
             {
                 using var reader = new StreamReader(filePath);
-                string? first = reader.ReadLine();
+                string? first = reader.ReadLine()?.Trim().TrimStart('﻿');
+                if (first != null && first.StartsWith("BEGIN ", StringComparison.Ordinal))
+                    first = reader.ReadLine()?.Trim();
                 return first != null &&
-                       first.Trim().TrimStart('﻿').Equals(HeaderLine, StringComparison.OrdinalIgnoreCase);
+                       first.Equals(HeaderLine, StringComparison.OrdinalIgnoreCase);
             }
             catch (IOException)
             {
