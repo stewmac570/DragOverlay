@@ -43,5 +43,25 @@ namespace CastleOverlayV2.Tests
                 File.Delete(path);
             }
         }
+
+        [Fact]
+        public void Loads_a_raw_capture_with_begin_and_end_lines()
+        {
+            string path = WriteRun();
+            try
+            {
+                // A serial capture that kept the logger's BEGIN / END markers.
+                File.WriteAllText(path, "BEGIN run_0013.csv\r\n" + File.ReadAllText(path) + "END\r\n");
+
+                Assert.True(MiniLoggerLoader.IsMiniLoggerCsv(path));
+                var result = MiniLoggerLoader.Load(path, keepFullLog: true);
+                Assert.True(result.Ok, result.Message);
+                Assert.Equal(3000, result.Value!.Data[MiniLoggerLoader.ThrottleChannel].Count);
+            }
+            finally
+            {
+                File.Delete(path);
+            }
+        }
     }
 }
