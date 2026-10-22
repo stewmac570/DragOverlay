@@ -34,6 +34,21 @@ public class DragPassDetectorTests
     }
 
     [Fact]
+    public void Short_bench_blip_still_marks_the_launch()
+    {
+        // Wheels-up test: 90 A, 84k rpm for 5 samples, nowhere near a full pass.
+        List<DataPoint> data = Idle(40);
+        int expectedLaunch = data.Count;
+        AddBurst(data, current: 90, power: 80, rpm: 84_000, acceleration: 0.5, samples: 5);
+        data.AddRange(Idle(60, data.Count));
+
+        DragPassDetectionResult result = DragPassDetector.Detect(data, 0.05);
+
+        Assert.True(result.Found);
+        Assert.InRange(result.LaunchIndex, expectedLaunch, expectedLaunch + 2);
+    }
+
+    [Fact]
     public void Ignores_bad_marked_power_when_detecting_launch()
     {
         List<DataPoint> data = Idle(20);

@@ -71,7 +71,6 @@ namespace CastleOverlayV2.Controls
 
         private readonly Panel _scroll;
         private readonly FlowLayoutPanel _list;
-        private readonly Button _poleButton;
         private readonly Panel _title;
         private readonly Button _expandButton;
         private const int CollapsedWidth = 30;
@@ -82,7 +81,6 @@ namespace CastleOverlayV2.Controls
         private bool _dragging;
         private readonly RunColumnHeader _columns;
         private readonly ToolTip _toolTip;
-        private readonly Button[] _paneCountButtons = new Button[3];
 
         public ChannelDrawer(List<string> channelNames, Dictionary<string, bool> initialStates)
         {
@@ -119,8 +117,8 @@ namespace CastleOverlayV2.Controls
             _columns = new RunColumnHeader { Dock = DockStyle.Top, Height = 24 };
             Controls.Add(_columns);
 
-            // Title bar: channel tools on the first line, split-view tools below them.
-            var title = _title = new Panel { Dock = DockStyle.Top, Height = 66, BackColor = SurfacePanel };
+            // Title bar. Panes and RPM poles live in the top bar's View menu.
+            var title = _title = new Panel { Dock = DockStyle.Top, Height = 36, BackColor = SurfacePanel };
             var topLine = new Panel { Dock = DockStyle.Fill, BackColor = SurfacePanel };
             var titleLbl = new Label
             {
@@ -132,23 +130,6 @@ namespace CastleOverlayV2.Controls
                 ForeColor = TextPrimary,
                 Font = new Font(SystemFonts.DefaultFont.FontFamily, 10f, FontStyle.Bold)
             };
-            _poleButton = new Button
-            {
-                Dock = DockStyle.Right,
-                Width = 104,
-                FlatStyle = FlatStyle.Flat,
-                BackColor = SurfaceBar,
-                ForeColor = TextSecond,
-                TabStop = false,
-                UseVisualStyleBackColor = false
-            };
-            _poleButton.FlatAppearance.BorderColor = BorderDef;
-            _poleButton.Click += (_, _) =>
-            {
-                SetRpmMode(!_isFourPole);
-                RpmModeChanged?.Invoke(_isFourPole);
-            };
-            _toolTip.SetToolTip(_poleButton, "Motor poles for the RPM channel (4 pole halves the value)");
             var collapse = new Button
             {
                 Text = "‹",
@@ -165,47 +146,9 @@ namespace CastleOverlayV2.Controls
             collapse.Click += (_, _) => SetCollapsed(true);
             _toolTip.SetToolTip(collapse, "Hide the channel list");
             topLine.Controls.Add(titleLbl);
-            topLine.Controls.Add(_poleButton);
             topLine.Controls.Add(collapse);
 
-            var paneBar = new FlowLayoutPanel
-            {
-                Dock = DockStyle.Bottom,
-                Height = 30,
-                FlowDirection = FlowDirection.LeftToRight,
-                WrapContents = false,
-                BackColor = SurfacePanel,
-                Padding = new Padding(8, 2, 0, 2),
-                Margin = Padding.Empty
-            };
-            paneBar.Controls.Add(new Label
-            {
-                Text = "Panes",
-                AutoSize = false,
-                Width = 44,
-                Height = 24,
-                TextAlign = ContentAlignment.MiddleLeft,
-                ForeColor = TextSecond
-            });
-            for (int paneNumber = 1; paneNumber <= 3; paneNumber++)
-            {
-                int selectedCount = paneNumber;
-                var button = MakeHeaderButton(paneNumber.ToString(), 26);
-                button.Click += (_, _) =>
-                {
-                    SetPaneCount(selectedCount);
-                    PaneCountChanged?.Invoke(selectedCount);
-                };
-                _paneCountButtons[paneNumber - 1] = button;
-                paneBar.Controls.Add(button);
-            }
-            var bySource = MakeHeaderButton("By source", 76);
-            bySource.Click += (_, _) => BySourcePanesRequested?.Invoke();
-            _toolTip.SetToolTip(bySource, "ESC in pane 1, GPS in pane 2, Mini Logger in pane 3");
-            paneBar.Controls.Add(bySource);
-
             title.Controls.Add(topLine);
-            title.Controls.Add(paneBar);
             Controls.Add(title);
             SetRpmMode(false);
             SetPaneCount(1);
@@ -343,12 +286,6 @@ namespace CastleOverlayV2.Controls
         public void SetPaneCount(int paneCount)
         {
             _paneCount = Math.Clamp(paneCount, 1, 3);
-            for (int index = 0; index < _paneCountButtons.Length; index++)
-            {
-                bool active = index + 1 == _paneCount;
-                _paneCountButtons[index].BackColor = active ? AccentBlue : SurfaceBar;
-                _paneCountButtons[index].ForeColor = active ? Color.White : TextSecond;
-            }
 
             foreach (string channel in _channelPanes.Keys.ToList())
                 if (_channelPanes[channel] > _paneCount)
@@ -440,10 +377,24 @@ namespace CastleOverlayV2.Controls
             ResumeLayout(true);
         }
 
-        public void SetRpmMode(bool isFourPole)
+        public void SetRpmMode(bool isFourPole) => _isFourPole = isFourPole;
+
+        public bool IsFourPole => _isFourPole;
+
+        // Picks from the top bar's View menu, raised as if the user changed them here.
+        public void RequestPaneCount(int paneCount)
         {
-            _isFourPole = isFourPole;
-            _poleButton.Text = isFourPole ? "RPM: 4 pole" : "RPM: 2 pole";
+            SetPaneCount(paneCount);
+            PaneCountChanged?.Invoke(_paneCount);
+        }
+
+        public void RequestBySourcePanes() => BySourcePanesRequested?.Invoke();
+
+        public void RequestRpmMode(bool isFourPole)
+        {
+            if (isFourPole == _isFourPole) return;
+            SetRpmMode(isFourPole);
+            RpmModeChanged?.Invoke(_isFourPole);
         }
 
         /// <summary>Saved colour / bold / line size choices. Also applied to channels added later.</summary>
@@ -558,24 +509,6 @@ namespace CastleOverlayV2.Controls
         internal static string DisplayName(string channelName) => ChannelText.DisplayName(channelName);
 
         private static string Format(string channelName, double v) => ChannelText.Format(channelName, v);
-
-        private static Button MakeHeaderButton(string text, int width)
-        {
-            var button = new Button
-            {
-                Text = text,
-                Width = width,
-                Height = 24,
-                Margin = new Padding(2, 0, 0, 0),
-                FlatStyle = FlatStyle.Flat,
-                BackColor = SurfaceBar,
-                ForeColor = TextSecond,
-                TabStop = false,
-                UseVisualStyleBackColor = false
-            };
-            button.FlatAppearance.BorderColor = BorderControl;
-            return button;
-        }
 
         // ============================================================
         // Nested: run column header (line style per run above the value columns)
