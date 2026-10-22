@@ -28,6 +28,7 @@ namespace CastleOverlayV2.Controls
 
         private readonly TabButton _logsTab;
         private readonly TabButton _tuneTab;
+        private readonly TabButton _viewTab;
         private readonly FlowLayoutPanel _actions;
         private readonly Button _saveProjectButton;
         private readonly Button _autoTrimButton;
@@ -40,6 +41,12 @@ namespace CastleOverlayV2.Controls
         public event Action? OpenProjectRequested;
         public event Action? SaveProjectRequested;
         public event Action? SettingsRequested;
+        public event Action<int>? PaneCountRequested;
+        public event Action? BySourcePanesRequested;
+        public event Action<bool>? RpmModeRequested;
+
+        /// <summary>Asked when the View menu opens: (pane count, RPM is 4 pole), for the ticks.</summary>
+        public Func<(int PaneCount, bool FourPole)>? ViewState { get; set; }
 
         public AppPage SelectedPage { get; private set; } = AppPage.Logs;
 
@@ -128,6 +135,11 @@ namespace CastleOverlayV2.Controls
             _tuneTab.Click += (_, _) => SelectPage(AppPage.Tune);
             left.Controls.Add(_tuneTab);
 
+            _viewTab = new TabButton("View ▾");
+            _viewTab.Click += (_, _) => ShowViewMenu();
+            _toolTip.SetToolTip(_viewTab, "Chart panes and RPM motor poles");
+            left.Controls.Add(_viewTab);
+
             Controls.Add(left);
             left.BringToFront();
 
@@ -160,6 +172,28 @@ namespace CastleOverlayV2.Controls
             SelectedPage = page;
             ApplyTabState();
             PageSelected?.Invoke(page);
+        }
+
+        private void ShowViewMenu()
+        {
+            var (paneCount, fourPole) = ViewState?.Invoke() ?? (1, false);
+            var menu = new ContextMenuStrip();
+            for (int count = 1; count <= 3; count++)
+            {
+                int selected = count;
+                var item = new ToolStripMenuItem(count == 1 ? "1 pane" : $"{count} panes", null,
+                    (_, _) => PaneCountRequested?.Invoke(selected)) { Checked = count == paneCount };
+                menu.Items.Add(item);
+            }
+            menu.Items.Add(new ToolStripMenuItem("Panes by source (ESC, GPS, data log)", null,
+                (_, _) => BySourcePanesRequested?.Invoke()));
+            menu.Items.Add(new ToolStripSeparator());
+            menu.Items.Add(new ToolStripMenuItem("RPM: 2 pole", null,
+                (_, _) => RpmModeRequested?.Invoke(false)) { Checked = !fourPole });
+            menu.Items.Add(new ToolStripMenuItem("RPM: 4 pole (halves the value)", null,
+                (_, _) => RpmModeRequested?.Invoke(true)) { Checked = fourPole });
+            menu.Closed += (_, _) => BeginInvoke(menu.Dispose);
+            menu.Show(_viewTab, new Point(0, _viewTab.Height));
         }
 
         private void ApplyTabState()

@@ -26,6 +26,8 @@ namespace CastleOverlayV2.Services
             int postLaunchSamples = Math.Max(1, (int)Math.Round(PostLaunchSeconds / sampleIntervalSeconds));
 
             Candidate? best = null;
+            // Bench tests and short blips never reach a full pass; the biggest burst still marks the launch.
+            Candidate? biggestBurst = null;
             int i = 1;
             while (i < data.Count - 1)
             {
@@ -43,10 +45,13 @@ namespace CastleOverlayV2.Services
                 Candidate candidate = ScoreCandidate(data, burstStart, burstEnd, scoreWindow);
                 if (candidate.IsViable && (best == null || candidate.Score > best.Score))
                     best = candidate;
+                if (biggestBurst == null || candidate.Score > biggestBurst.Score)
+                    biggestBurst = candidate;
 
                 i = Math.Max(burstEnd + 1, i + 1);
             }
 
+            best ??= biggestBurst;
             if (best == null)
                 return NotFound();
 

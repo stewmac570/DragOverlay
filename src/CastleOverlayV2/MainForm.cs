@@ -127,6 +127,10 @@ namespace CastleOverlayV2
             _topBar.OpenProjectRequested += () => _presenter.OpenProject();
             _topBar.SaveProjectRequested += () => _presenter.SaveProject();
             _topBar.SettingsRequested += ShowSettingsDialog;
+            _topBar.ViewState = () => (_channelDrawer.PaneCount, _channelDrawer.IsFourPole);
+            _topBar.PaneCountRequested += count => _channelDrawer.RequestPaneCount(count);
+            _topBar.BySourcePanesRequested += () => _channelDrawer.RequestBySourcePanes();
+            _topBar.RpmModeRequested += fourPole => _channelDrawer.RequestRpmMode(fourPole);
 
             // Logs page: channel list (left), alignment bar (top, over the plot only),
             // plot (fill). WinForms docks from the back of the z-order, so the fill
