@@ -24,6 +24,7 @@ namespace CastleOverlayV2
         private readonly PlotManager _plot;
         private readonly ChannelDrawer _drawer;
         private readonly TunePanel _tunePanel;
+        private readonly Func<IMiniLoggerUsbClient> _miniLoggerUsbFactory;
 
         // Active runs by slot. Castle = 1..3, GPS = 4..6, data logs = 7..9 (see RunSlots).
         private readonly Dictionary<int, RunData> _runs = new();
@@ -53,19 +54,27 @@ namespace CastleOverlayV2
         public bool IsAnyRunLoaded => _runs.Count > 0;
         public bool IsAlignmentArmed => _armedSlot.HasValue;
 
-        public MainFormPresenter(IMainView view, ConfigService config, PlotManager plot, ChannelDrawer drawer, TunePanel tunePanel)
+        public MainFormPresenter(
+            IMainView view,
+            ConfigService config,
+            PlotManager plot,
+            ChannelDrawer drawer,
+            TunePanel tunePanel,
+            Func<IMiniLoggerUsbClient>? miniLoggerUsbFactory = null)
         {
             _view = view;
             _config = config;
             _plot = plot;
             _drawer = drawer;
             _tunePanel = tunePanel;
+            _miniLoggerUsbFactory = miniLoggerUsbFactory ?? (() => new MiniLoggerUsb());
 
             _isFourPoleMode = _config.Config.IsFourPoleMode;
             _keepFullLogs = !_config.Config.AutoTrim;
             _view.SetAutoTrimUI(!_keepFullLogs);
             _plot.SetFourPoleMode(_isFourPoleMode);
             _plot.SetSpeedMode(_isSpeedRunMode);
+            _plot.SetMiniLoggerTyreDiameter(_config.Config.FrontTyreDiameterMm);
 
             _drawer.ChannelVisibilityChanged += OnChannelVisibilityChanged;
             _drawer.RpmModeChanged += OnRpmModeChanged;
@@ -407,7 +416,7 @@ namespace CastleOverlayV2
 
             try
             {
-                var result = await Task.Run(() => MiniLoggerLoader.Load(path, _keepFullLogs));
+                var result = await Task.Run(() => LoadMiniLoggerFromConfig(path));
                 if (!result.Ok)
                 {
                     Logger.Log($"[Presenter] Mini Logger load failed for slot {uiSlot}: {result.Message}");
@@ -441,6 +450,72 @@ namespace CastleOverlayV2
 
         private const string MiniLoggerTag = "LOG";
 
+        private LoadResult<RunData> LoadMiniLoggerFromConfig(string path)
+        {
+            Config car = _config.Config;
+            return MiniLoggerLoader.Load(path, _keepFullLogs,
+                car.FrontTyreDiameterMm,
+                car.RearWheelDiameterMm,
+                car.PinionTeeth,
+                car.SpurTeeth,
+                car.TransmissionRatio);
+        }
+
+        /// <summary>
+        /// Rebuilds only the loaded Mini Logger runs after a car setting changes. Manual
+        /// alignment and run visibility are restored after each source file is parsed again.
+        /// </summary>
+        public async Task ReloadMiniLoggerRunsAsync()
+        {
+            var open = _runs
+                .Where(pair => pair.Value.IsMiniLogger)
+                .OrderBy(pair => pair.Key)
+                .Select(pair => (Slot: pair.Key, Run: pair.Value,
+                    Visible: _plot.GetRunVisibility(pair.Key)))
+                .ToList();
+
+            foreach (var (slot, old, visible) in open)
+            {
+                if (string.IsNullOrEmpty(old.SourcePath) || !File.Exists(old.SourcePath))
+                    continue;
+
+                LoadResult<RunData> result;
+                try
+                {
+                    result = await Task.Run(() => LoadMiniLoggerFromConfig(old.SourcePath));
+                }
+                catch (Exception ex)
+                {
+                    Logger.Log($"Mini Logger settings reload failed for slot {slot}: {ex.Message}");
+                    _view.ShowError("Mini Logger",
+                        "The log could not be reloaded after the car settings changed. " +
+                        "Its previous data was kept.\n\n" + ex.Message);
+                    continue;
+                }
+                if (!result.Ok)
+                {
+                    ShowResultMessage(result);
+                    continue;
+                }
+
+                RunData reloaded = result.Value!;
+                reloaded.TimeShiftMs = old.TimeShiftMs;
+                if (!string.IsNullOrEmpty(old.FileName))
+                    reloaded.FileName = old.FileName;
+
+                _runs[slot] = reloaded;
+                _plot.SetRun(slot, reloaded);
+                _plot.SetRunVisibility(slot, visible);
+                _view.SetSlotLoadedUI(slot, reloaded.SourcePath ?? old.SourcePath, visible, MiniLoggerTag);
+            }
+
+            EnsureMiniLoggerChannelsInToggleBar();
+            PlotAllRuns();
+            _plot.SetupAllAxes();
+            _plot.RefreshPlot();
+            RefreshTunePanelRuns();
+        }
+
         /// <summary>The Castle run Mini Logger runs line up with: the lowest loaded Castle slot.</summary>
         private RunData? ReferenceCastleRun() =>
             _runs.Where(kv => kv.Key <= 3 && !kv.Value.HasChannelData)
@@ -453,7 +528,9 @@ namespace CastleOverlayV2
             var states = _drawer.GetChannelStates();
             var saved = _config.Config.ChannelVisibility;
             bool added = false;
-            foreach (var ch in MiniLoggerLoader.Channels)
+            var loadedChannels = MiniLoggerLoader.Channels.Where(channel =>
+                _runs.Values.Any(run => run.IsMiniLogger && run.Data.ContainsKey(channel)));
+            foreach (var ch in loadedChannels)
             {
                 if (states.ContainsKey(ch)) continue;
                 // rev/s is the same trace as Wheel Speed (mph), so it starts hidden.
@@ -736,6 +813,162 @@ namespace CastleOverlayV2
 
             Logger.Log($"Auto Load: attached tune to Run {slot}: {Path.GetFileName(path)}");
             RefreshTunePanelRuns();
+        }
+
+        /// <summary>Find a Mini Logger over USB, download selected runs, then load the first three.</summary>
+        public async Task DownloadFromMiniLoggerAsync()
+        {
+            if (!_view.ConfirmMiniLoggerUsbSafety())
+                return;
+
+            using IMiniLoggerUsbClient logger = _miniLoggerUsbFactory();
+            MiniLoggerConnectResult connection;
+            _view.SetMiniLoggerSearchState(true);
+            try
+            {
+                connection = await Task.Run(() => logger.Connect());
+            }
+            catch (Exception ex)
+            {
+                Logger.Log($"Mini Logger search failed: {ex.Message}");
+                _view.ShowError("Mini Logger", "Could not search for the Mini Logger.\n\n" + ex.Message);
+                return;
+            }
+            finally
+            {
+                _view.SetMiniLoggerSearchState(false);
+            }
+
+            if (connection.Status == MiniLoggerConnectStatus.PortBusy)
+            {
+                _view.ShowError("Mini Logger",
+                    "The Mini Logger's USB port could not be opened.\n\n" +
+                    "Close Arduino's Serial Monitor or any other program using the logger and try again.");
+                return;
+            }
+            if (connection.Status != MiniLoggerConnectStatus.Connected)
+            {
+                _view.ShowInfo("Mini Logger",
+                    "No Mini Logger was found.\n\nPlug the Mini Logger in with the USB cable and try again.");
+                return;
+            }
+
+            IReadOnlyList<MiniLoggerRunInfo> availableRuns;
+            try
+            {
+                availableRuns = await Task.Run(() => logger.ListRuns());
+            }
+            catch (MiniLoggerStoppedRespondingException)
+            {
+                _view.ShowError("Mini Logger", "The Mini Logger stopped answering. Please reconnect it and try again.");
+                return;
+            }
+
+            if (availableRuns.Count == 0)
+            {
+                _view.ShowInfo("Mini Logger", "No runs are saved on the Mini Logger.");
+                return;
+            }
+
+            IReadOnlyList<MiniLoggerRunInfo>? selectedRuns = _view.SelectMiniLoggerRuns(availableRuns);
+            if (selectedRuns is null || selectedRuns.Count == 0)
+                return;
+
+            string root = _config.Config.DataLogDirectory;
+            if (string.IsNullOrWhiteSpace(root))
+            {
+                root = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                    "Mini Logger Runs");
+                _config.Config.DataLogDirectory = root;
+                _config.Save();
+            }
+
+            string sessionFolder;
+            try
+            {
+                sessionFolder = CreateDownloadSessionFolder(root, DateTime.Now);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _view.ShowError("Mini Logger", "Could not create the download folder.\n\n" + ex.Message);
+                return;
+            }
+
+            var downloaded = new List<string>();
+            bool cancelled = false;
+            using IMiniLoggerDownloadSession downloadUi = _view.BeginMiniLoggerDownload(selectedRuns.Count);
+            var progress = new Progress<MiniLoggerDownloadProgress>(downloadUi.Report);
+            try
+            {
+                for (int index = 0; index < selectedRuns.Count; index++)
+                {
+                    MiniLoggerRunInfo run = selectedRuns[index];
+                    string destination = Path.Combine(sessionFolder, run.FileName);
+                    downloadUi.Report(new MiniLoggerDownloadProgress(
+                        run.Number, index + 1, selectedRuns.Count, 0, run.SizeKb * 1024));
+                    MiniLoggerDumpResult result = await Task.Run(() => logger.DumpRun(
+                        run, destination, progress, index + 1, selectedRuns.Count,
+                        downloadUi.CancellationToken));
+                    if (result.Found && result.FilePath is not null)
+                    {
+                        downloaded.Add(result.FilePath);
+                    }
+                    else
+                    {
+                        _view.ShowError("Mini Logger", $"Run {run.Number} was not found on the logger.");
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                cancelled = true;
+            }
+            catch (MiniLoggerStoppedRespondingException)
+            {
+                _view.ShowError("Mini Logger", "The Mini Logger stopped answering. The partial file was deleted.");
+            }
+            catch (Exception ex)
+            {
+                Logger.Log($"Mini Logger download failed: {ex.Message}");
+                _view.ShowError("Mini Logger", "The download failed. The partial file was deleted.\n\n" + ex.Message);
+            }
+            finally
+            {
+                downloadUi.Complete();
+            }
+
+            for (int slot = 1; slot <= Math.Min(3, downloaded.Count); slot++)
+            {
+                DeleteRun(RunSlots.DataLog(slot));
+                await LoadMiniLoggerRunFromPathAsync(slot, downloaded[slot - 1]);
+            }
+
+            if (cancelled)
+            {
+                _view.ShowInfo("Mini Logger",
+                    $"Download cancelled. {downloaded.Count} complete run{(downloaded.Count == 1 ? " was" : "s were")} kept in:\n{sessionFolder}");
+            }
+            else if (downloaded.Count > 3)
+            {
+                _view.ShowInfo("Mini Logger",
+                    $"The first three runs were loaded. The other {downloaded.Count - 3} run(s) were saved in:\n{sessionFolder}");
+            }
+        }
+
+        internal static string CreateDownloadSessionFolder(string root, DateTime started)
+        {
+            Directory.CreateDirectory(root);
+            string baseName = started.ToString("yyyy-MM-dd_HHmm", System.Globalization.CultureInfo.InvariantCulture);
+            for (int suffix = 1; ; suffix++)
+            {
+                string name = suffix == 1 ? baseName : $"{baseName}_{suffix}";
+                string candidate = Path.Combine(root, name);
+                if (Directory.Exists(candidate))
+                    continue;
+                Directory.CreateDirectory(candidate);
+                return candidate;
+            }
         }
 
         /// <summary>
@@ -1135,7 +1368,8 @@ namespace CastleOverlayV2
             "ESC Temp", "MotorTemp", "MotorTiming", "Acceleration",
             "RaceBox Speed", "RaceBox Distance", "RaceBox G-Force X",
             MiniLoggerLoader.ThrottleChannel, MiniLoggerLoader.RpmChannel,
-            MiniLoggerLoader.WheelSpeedChannel, MiniLoggerLoader.WheelRevsChannel,
+            MiniLoggerLoader.WheelSpeedChannel, MiniLoggerLoader.RearSpeedChannel,
+            MiniLoggerLoader.SlipChannel, MiniLoggerLoader.WheelRevsChannel,
         };
 
         private void PushAllStatsToDrawer()

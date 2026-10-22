@@ -35,6 +35,7 @@ namespace CastleOverlayV2.Controls
 
         public event Action<AppPage>? PageSelected;
         public event Action? AutoLoadRequested;
+        public event Action? DownloadFromLoggerRequested;
         public event Action? AutoTrimToggled;
         public event Action? OpenProjectRequested;
         public event Action? SaveProjectRequested;
@@ -83,6 +84,11 @@ namespace CastleOverlayV2.Controls
             var autoLoad = MakeActionButton("⤓ Auto load", 96, TextAccent, "Load the most recent log + tune + RaceBox");
             autoLoad.Click += (_, _) => AutoLoadRequested?.Invoke();
             _actions.Controls.Add(autoLoad);
+
+            var fromLogger = MakeActionButton("⤓ From logger", 108, TextAccent,
+                "Find the Mini Logger over USB and download saved runs");
+            fromLogger.Click += (_, _) => DownloadFromLoggerRequested?.Invoke();
+            _actions.Controls.Add(fromLogger);
 
             _autoTrimButton = MakeActionButton("✂ Auto trim: On", 118, TextPrimary,
                 "On: logs are cut to 0.5 s before launch → 2.5 s after.\nOff: logs load in full, still lined up at launch.");

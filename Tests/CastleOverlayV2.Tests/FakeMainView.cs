@@ -1,4 +1,5 @@
 using CastleOverlayV2;
+using CastleOverlayV2.Services;
 
 namespace CastleOverlayV2.Tests;
 
@@ -16,6 +17,9 @@ public sealed class FakeMainView : IMainView
 
     public readonly List<(string title, string message)> Errors = new();
     public readonly List<(string title, string message)> Infos = new();
+    public bool MiniLoggerSafetyConfirmed { get; set; }
+    public readonly List<bool> MiniLoggerSearchStates = new();
+    public IReadOnlyList<MiniLoggerRunInfo>? MiniLoggerRunsToSelect { get; set; }
     public readonly List<(int slot, string fullPath, bool isVisible)> SlotLoaded = new();
     public readonly List<int> SlotReset = new();
     public readonly List<(int slot, bool isVisible)> SlotToggle = new();
@@ -48,6 +52,12 @@ public sealed class FakeMainView : IMainView
 
     public void ShowError(string title, string message) => Errors.Add((title, message));
     public void ShowInfo(string title, string message) => Infos.Add((title, message));
+    public bool ConfirmMiniLoggerUsbSafety() => MiniLoggerSafetyConfirmed;
+    public void SetMiniLoggerSearchState(bool searching) => MiniLoggerSearchStates.Add(searching);
+    public IReadOnlyList<MiniLoggerRunInfo>? SelectMiniLoggerRuns(IReadOnlyList<MiniLoggerRunInfo> runs) =>
+        MiniLoggerRunsToSelect;
+    public IMiniLoggerDownloadSession BeginMiniLoggerDownload(int runCount) =>
+        new FakeMiniLoggerDownloadSession();
 
     public void SetSlotLoadedUI(int slot, string fullPath, bool isVisible, string? sourceTag = null) =>
         SlotLoaded.Add((slot, fullPath, isVisible));
@@ -65,4 +75,12 @@ public sealed class FakeMainView : IMainView
     public void HideAlignmentUI() => AlignmentHidden++;
     public void SetAlignmentOffsetUI(double offsetMs) =>
         AlignmentOffsets.Add(offsetMs);
+
+    private sealed class FakeMiniLoggerDownloadSession : IMiniLoggerDownloadSession
+    {
+        public CancellationToken CancellationToken => CancellationToken.None;
+        public void Report(MiniLoggerDownloadProgress progress) { }
+        public void Complete() { }
+        public void Dispose() { }
+    }
 }

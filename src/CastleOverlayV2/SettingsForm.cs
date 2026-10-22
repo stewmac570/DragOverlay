@@ -1,5 +1,6 @@
 using CastleOverlayV2.Models;
 using CastleOverlayV2.Services;
+using System.Globalization;
 
 namespace CastleOverlayV2
 {
@@ -21,6 +22,11 @@ namespace CastleOverlayV2
         private readonly TextBox _raceboxDir = new();
         private readonly TextBox _tuneDir = new();
         private readonly TextBox _dataLogDir = new();
+        private readonly NumericUpDown _frontTyreDiameter = new();
+        private readonly TextBox _rearWheelDiameter = new();
+        private readonly TextBox _pinionTeeth = new();
+        private readonly TextBox _spurTeeth = new();
+        private readonly TextBox _transmissionRatio = new();
         private readonly CheckBox _smoothingEnabled = new();
         private readonly NumericUpDown _smoothingWindow = new();
 
@@ -34,7 +40,7 @@ namespace CastleOverlayV2
             MinimizeBox = false;
             MaximizeBox = false;
             Width = 540;
-            Height = 395;
+            Height = 565;
             Font = new Font("Segoe UI", 9f);
             BackColor = SurfaceWindow;
             ForeColor = TextPrimary;
@@ -51,9 +57,10 @@ namespace CastleOverlayV2
             {
                 Dock = DockStyle.Fill,
                 ColumnCount = 1,
-                RowCount = 3,
+                RowCount = 4,
                 Padding = new Padding(12),
             };
+            root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
@@ -62,6 +69,9 @@ namespace CastleOverlayV2
             // -------- Default folders -------------
             root.Controls.Add(MakeSectionLabel("Default open folders"), 0, 0);
             root.Controls.Add(BuildFolderPanel(), 0, 1);
+
+            // -------- Car settings ----------------
+            root.Controls.Add(BuildCarPanel(), 0, 2);
 
             // -------- Voltage smoothing -----------
             var smoothingPanel = new FlowLayoutPanel
@@ -98,10 +108,76 @@ namespace CastleOverlayV2
             bottom.Controls.Add(smoothingPanel);
             bottom.Controls.Add(MakeSectionLabel("Voltage smoothing"));
             bottom.Controls.Add(BuildOkCancelRow());
-            root.Controls.Add(bottom, 0, 2);
+            root.Controls.Add(bottom, 0, 3);
 
             // Lay out top-down inside `bottom`.
             bottom.Controls[bottom.Controls.Count - 1].Dock = DockStyle.Bottom;
+        }
+
+        private Control BuildCarPanel()
+        {
+            var section = new Panel { Dock = DockStyle.Top, Height = 187 };
+            var fields = new TableLayoutPanel
+            {
+                Dock = DockStyle.Bottom,
+                Height = 155,
+                ColumnCount = 2,
+                RowCount = 5,
+            };
+            fields.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 215));
+            fields.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110));
+
+            ConfigureNumericInput(_frontTyreDiameter);
+            _frontTyreDiameter.Minimum = 0.1M;
+            _frontTyreDiameter.Maximum = 1000;
+            _frontTyreDiameter.DecimalPlaces = 1;
+            _frontTyreDiameter.Increment = 0.5M;
+
+            ConfigureCarTextBox(_rearWheelDiameter);
+            ConfigureCarTextBox(_pinionTeeth);
+            ConfigureCarTextBox(_spurTeeth);
+            ConfigureCarTextBox(_transmissionRatio);
+
+            AddCarRow(fields, 0, "Front wheel diameter (mm)", _frontTyreDiameter);
+            AddCarRow(fields, 1, "Rear wheel diameter (mm)", _rearWheelDiameter);
+            AddCarRow(fields, 2, "Pinion (teeth)", _pinionTeeth);
+            AddCarRow(fields, 3, "Spur (teeth)", _spurTeeth);
+            AddCarRow(fields, 4, "Transmission ratio", _transmissionRatio);
+
+            section.Controls.Add(fields);
+            section.Controls.Add(MakeSectionLabel("Car"));
+            return section;
+        }
+
+        private static void AddCarRow(TableLayoutPanel panel, int row, string label, Control input)
+        {
+            panel.Controls.Add(new Label
+            {
+                Text = label,
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleLeft,
+                Margin = new Padding(0, 2, 8, 2),
+                ForeColor = TextSecond,
+            }, 0, row);
+            input.Dock = DockStyle.Fill;
+            input.Margin = new Padding(0, 2, 0, 2);
+            panel.Controls.Add(input, 1, row);
+        }
+
+        private static void ConfigureNumericInput(NumericUpDown input)
+        {
+            input.BackColor = SurfaceInput;
+            input.ForeColor = TextPrimary;
+            input.BorderStyle = BorderStyle.FixedSingle;
+            input.TextAlign = HorizontalAlignment.Right;
+        }
+
+        private static void ConfigureCarTextBox(TextBox input)
+        {
+            input.BackColor = SurfaceInput;
+            input.ForeColor = TextPrimary;
+            input.BorderStyle = BorderStyle.FixedSingle;
+            input.TextAlign = HorizontalAlignment.Right;
         }
 
         private Label MakeSectionLabel(string text) => new()
@@ -194,7 +270,6 @@ namespace CastleOverlayV2
                 Padding = new Padding(0, 8, 0, 0),
             };
             var ok = MakeDarkButton("OK");
-            ok.DialogResult = DialogResult.OK;
             ok.Width = 80;
             ok.Anchor = AnchorStyles.Right | AnchorStyles.Top;
             ok.Location = new Point(row.Width - 180, 4);
@@ -207,7 +282,12 @@ namespace CastleOverlayV2
             row.Controls.Add(cancel);
             AcceptButton = ok;
             CancelButton = cancel;
-            ok.Click += (_, _) => SaveToConfig();
+            ok.Click += (_, _) =>
+            {
+                if (!SaveToConfig()) return;
+                DialogResult = DialogResult.OK;
+                Close();
+            };
             row.Resize += (_, _) =>
             {
                 ok.Location = new Point(row.ClientSize.Width - 180, 4);
@@ -223,22 +303,79 @@ namespace CastleOverlayV2
             _raceboxDir.Text = c.RaceBoxLogDirectory ?? "";
             _tuneDir.Text = c.TuneDirectory ?? "";
             _dataLogDir.Text = c.DataLogDirectory ?? "";
+            double tyreDiameter = double.IsFinite(c.FrontTyreDiameterMm) && c.FrontTyreDiameterMm > 0
+                ? c.FrontTyreDiameterMm
+                : MiniLoggerLoader.DefaultTyreDiameterMm;
+            _frontTyreDiameter.Value = Math.Clamp((decimal)tyreDiameter,
+                _frontTyreDiameter.Minimum, _frontTyreDiameter.Maximum);
+            _rearWheelDiameter.Text = FormatNullable(c.RearWheelDiameterMm);
+            _pinionTeeth.Text = c.PinionTeeth?.ToString(CultureInfo.InvariantCulture) ?? "";
+            _spurTeeth.Text = c.SpurTeeth?.ToString(CultureInfo.InvariantCulture) ?? "";
+            _transmissionRatio.Text = FormatNullable(c.TransmissionRatio);
             _smoothingEnabled.Checked = c.VoltageSmoothingEnabled;
             _smoothingWindow.Value = Math.Max(3, Math.Min(15, c.VoltageSmoothingWindow | 1));
         }
 
-        private void SaveToConfig()
+        private bool SaveToConfig()
         {
+            if (!TryParsePositiveDouble(_rearWheelDiameter.Text, "Rear wheel diameter", out double? rearDiameter) ||
+                !TryParsePositiveInt(_pinionTeeth.Text, "Pinion teeth", out int? pinion) ||
+                !TryParsePositiveInt(_spurTeeth.Text, "Spur teeth", out int? spur) ||
+                !TryParsePositiveDouble(_transmissionRatio.Text, "Transmission ratio", out double? ratio))
+                return false;
+
             var c = _configService.Config;
             c.CastleLogDirectory = _castleDir.Text.Trim();
             c.RaceBoxLogDirectory = _raceboxDir.Text.Trim();
             c.TuneDirectory = _tuneDir.Text.Trim();
             c.DataLogDirectory = _dataLogDir.Text.Trim();
+            c.FrontTyreDiameterMm = (double)_frontTyreDiameter.Value;
+            c.RearWheelDiameterMm = rearDiameter;
+            c.PinionTeeth = pinion;
+            c.SpurTeeth = spur;
+            c.TransmissionRatio = ratio;
             c.VoltageSmoothingEnabled = _smoothingEnabled.Checked;
             int win = (int)_smoothingWindow.Value;
             if (win % 2 == 0) win += 1; // force odd
             c.VoltageSmoothingWindow = Math.Max(3, Math.Min(15, win));
             _configService.Save();
+            return true;
         }
+
+        private bool TryParsePositiveDouble(string text, string label, out double? value)
+        {
+            value = null;
+            if (string.IsNullOrWhiteSpace(text)) return true;
+            if (double.TryParse(text.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture,
+                    out double parsed) && double.IsFinite(parsed) && parsed > 0)
+            {
+                value = parsed;
+                return true;
+            }
+
+            ShowValidationError($"{label} must be a positive number.");
+            return false;
+        }
+
+        private bool TryParsePositiveInt(string text, string label, out int? value)
+        {
+            value = null;
+            if (string.IsNullOrWhiteSpace(text)) return true;
+            if (int.TryParse(text.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture,
+                    out int parsed) && parsed > 0)
+            {
+                value = parsed;
+                return true;
+            }
+
+            ShowValidationError($"{label} must be a positive whole number.");
+            return false;
+        }
+
+        private void ShowValidationError(string message) => MessageBox.Show(
+            this, message, "Settings", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+
+        private static string FormatNullable(double? value) => value?.ToString(
+            "0.###", CultureInfo.InvariantCulture) ?? "";
     }
 }

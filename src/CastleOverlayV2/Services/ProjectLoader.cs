@@ -142,7 +142,12 @@ namespace CastleOverlayV2.Services
                     }
                     else if (entry.SourceType == ProjectSourceType.MiniLogger)
                     {
-                        var loadResult = MiniLoggerLoader.Load(localPath, keepFullLog);
+                        var loadResult = MiniLoggerLoader.Load(localPath, keepFullLog,
+                            _configService.Config.FrontTyreDiameterMm,
+                            _configService.Config.RearWheelDiameterMm,
+                            _configService.Config.PinionTeeth,
+                            _configService.Config.SpurTeeth,
+                            _configService.Config.TransmissionRatio);
                         if (!loadResult.Ok)
                         {
                             TryDeleteTempDir(tempDir);

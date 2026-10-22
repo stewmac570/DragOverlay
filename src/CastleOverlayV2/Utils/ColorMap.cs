@@ -37,6 +37,8 @@ namespace CastleOverlayV2.Utils
             { "Logger Throttle %", new ScottPlot.Color(0xFF, 0xE0, 0x66) },  // #FFE066  yellow
             { "Logger RPM", new ScottPlot.Color(0xF2, 0x9E, 0x86) },         // #F29E86  light rust
             { "Logger Wheel Speed", new ScottPlot.Color(0xFF, 0x8F, 0xB1) }, // #FF8FB1  pink
+            { "Logger Rear Speed", new ScottPlot.Color(0x66, 0xCC, 0xFF) },  // #66CCFF  sky blue
+            { "Logger Slip %", new ScottPlot.Color(0xB8, 0xE9, 0x86) },      // #B8E986  lime
             { "Logger Wheel rev/s", new ScottPlot.Color(0xFF, 0x8F, 0xB1) }, // same quantity as Wheel Speed
         };
 

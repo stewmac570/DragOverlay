@@ -35,6 +35,18 @@ namespace CastleOverlayV2.Models
         public string TuneDirectory { get; set; } = "";
         public string DataLogDirectory { get; set; } = "";
 
+        /// <summary>Front wheel outside diameter used to convert Mini Logger wheel rev/s to mph.</summary>
+        public double FrontTyreDiameterMm { get; set; } = 70.0;
+
+        /// <summary>Rear wheel outside diameter used for the Mini Logger derived rear speed.</summary>
+        public double? RearWheelDiameterMm { get; set; }
+
+        public int? PinionTeeth { get; set; }
+        public int? SpurTeeth { get; set; }
+
+        /// <summary>Additional gearbox reduction. 1.0 means no gearbox.</summary>
+        public double? TransmissionRatio { get; set; } = 1.0;
+
         // Auto trim on: logs are cut to -0.5 s .. +2.5 s around the launch. Off: full logs.
         public bool AutoTrim { get; set; } = true;
 

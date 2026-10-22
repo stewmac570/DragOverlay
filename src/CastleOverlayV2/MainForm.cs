@@ -25,6 +25,7 @@ namespace CastleOverlayV2
         private Panel _logsPage;
         private Panel _tunePage;
         private MainFormPresenter _presenter;
+        private MiniLoggerLookingForm? _miniLoggerLooking;
 
         public MainForm(ConfigService configService)
         {
@@ -62,6 +63,7 @@ namespace CastleOverlayV2
             _plotManager.SetVoltageSmoothing(
                 _configService.Config.VoltageSmoothingEnabled,
                 _configService.Config.VoltageSmoothingWindow);
+            _plotManager.SetMiniLoggerTyreDiameter(_configService.Config.FrontTyreDiameterMm);
 
             // Build canonical channel list + normalize saved visibility keys.
             var channelNames = new List<string>
@@ -120,6 +122,7 @@ namespace CastleOverlayV2
             headerRow.Visible = false;
             _topBar.PageSelected += ShowPage;
             _topBar.AutoLoadRequested += () => _ = _presenter.AutoLoadAsync();
+            _topBar.DownloadFromLoggerRequested += () => _ = _presenter.DownloadFromMiniLoggerAsync();
             _topBar.AutoTrimToggled += () => _ = _presenter.SetAutoTrimAsync(!_presenter.IsAutoTrimOn);
             _topBar.OpenProjectRequested += () => _presenter.OpenProject();
             _topBar.SaveProjectRequested += () => _presenter.SaveProject();
@@ -254,13 +257,31 @@ namespace CastleOverlayV2
             return sfd.ShowDialog() == DialogResult.OK ? sfd.FileName : null;
         }
 
-        public void ShowSettingsDialog()
+        public async void ShowSettingsDialog()
         {
+            var before = (
+                _configService.Config.FrontTyreDiameterMm,
+                _configService.Config.RearWheelDiameterMm,
+                _configService.Config.PinionTeeth,
+                _configService.Config.SpurTeeth,
+                _configService.Config.TransmissionRatio);
             using var dlg = new SettingsForm(_configService);
             if (dlg.ShowDialog(this) == DialogResult.OK)
+            {
                 _plotManager?.SetVoltageSmoothing(
                     _configService.Config.VoltageSmoothingEnabled,
                     _configService.Config.VoltageSmoothingWindow);
+                _plotManager?.SetMiniLoggerTyreDiameter(_configService.Config.FrontTyreDiameterMm);
+
+                var after = (
+                    _configService.Config.FrontTyreDiameterMm,
+                    _configService.Config.RearWheelDiameterMm,
+                    _configService.Config.PinionTeeth,
+                    _configService.Config.SpurTeeth,
+                    _configService.Config.TransmissionRatio);
+                if (before != after)
+                    await _presenter.ReloadMiniLoggerRunsAsync();
+            }
         }
 
         public void SetSaveProjectEnabled(bool enabled) => _topBar.SetSaveProjectEnabled(enabled);
@@ -282,6 +303,46 @@ namespace CastleOverlayV2
 
         public void ShowInfo(string title, string message) =>
             MessageBox.Show(message, title, MessageBoxButtons.OK, MessageBoxIcon.Information);
+
+        public bool ConfirmMiniLoggerUsbSafety() =>
+            MessageBox.Show(
+                "Before connecting the USB cable:\n\n" +
+                "SWITCH THE CAR OFF and UNPLUG THE LOGGER'S RECEIVER LEAD.\n\n" +
+                "The car's BEC can feed back into the PC through the USB cable.",
+                "Mini Logger USB safety",
+                MessageBoxButtons.OKCancel,
+                MessageBoxIcon.Warning,
+                MessageBoxDefaultButton.Button2) == DialogResult.OK;
+
+        public void SetMiniLoggerSearchState(bool searching)
+        {
+            if (searching)
+            {
+                _miniLoggerLooking?.Dispose();
+                _miniLoggerLooking = new MiniLoggerLookingForm();
+                _miniLoggerLooking.Show(this);
+                _miniLoggerLooking.Refresh();
+            }
+            else
+            {
+                _miniLoggerLooking?.Close();
+                _miniLoggerLooking?.Dispose();
+                _miniLoggerLooking = null;
+            }
+        }
+
+        public IReadOnlyList<MiniLoggerRunInfo>? SelectMiniLoggerRuns(IReadOnlyList<MiniLoggerRunInfo> runs)
+        {
+            using var dialog = new MiniLoggerRunSelectionForm(runs);
+            return dialog.ShowDialog(this) == DialogResult.OK ? dialog.SelectedRuns : null;
+        }
+
+        public IMiniLoggerDownloadSession BeginMiniLoggerDownload(int runCount)
+        {
+            var dialog = new MiniLoggerDownloadForm(runCount);
+            dialog.Show(this);
+            return dialog;
+        }
 
         /// <summary>A run was successfully loaded into <paramref name="slot"/>. Updates the run-strip chip.</summary>
         public void SetSlotLoadedUI(int slot, string fullPath, bool isVisible, string? sourceTag = null) =>
