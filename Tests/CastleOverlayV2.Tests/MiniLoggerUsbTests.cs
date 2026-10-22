@@ -93,6 +93,32 @@ public sealed class MiniLoggerUsbTests : IDisposable
     }
 
     [Fact]
+    public void Dump_progress_is_throttled_for_long_runs()
+    {
+        // ~100,000 lines (~2.3 MB): reporting per line would post 100,000 UI updates.
+        var replies = new List<string?> { "BEGIN run_0006.csv", MiniLoggerLoader.HeaderLine };
+        for (int i = 0; i < 100_000; i++)
+            replies.Add($"{i / 1000.0:0.000},1.520,15528,0.00");
+        replies.Add("END");
+        var transport = ConnectedTransport(replies.ToArray());
+        using var client = Client(transport);
+        client.Connect();
+        var reports = new List<MiniLoggerDownloadProgress>();
+        var progress = new SynchronousProgress(reports.Add);
+
+        client.DumpRun(new MiniLoggerRunInfo(6, 2300), Path.Combine(_workDir, "run_0006.csv"), progress);
+
+        long fileBytes = new FileInfo(Path.Combine(_workDir, "run_0006.csv")).Length;
+        Assert.InRange(reports.Count, 2, fileBytes / MiniLoggerUsb.ProgressReportBytes + 2);
+        Assert.Equal(reports.Max(r => r.BytesReceived), reports.Last().BytesReceived);
+    }
+
+    private sealed class SynchronousProgress(Action<MiniLoggerDownloadProgress> report) : IProgress<MiniLoggerDownloadProgress>
+    {
+        public void Report(MiniLoggerDownloadProgress value) => report(value);
+    }
+
+    [Fact]
     public void Dump_handles_run_not_found_without_creating_a_file()
     {
         var transport = ConnectedTransport("Run 9 not found\r\n");

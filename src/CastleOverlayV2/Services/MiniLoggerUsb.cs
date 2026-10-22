@@ -78,6 +78,9 @@ public sealed class MiniLoggerUsb : IMiniLoggerUsbClient
     public static readonly TimeSpan ReplyTimeout = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan HandshakeTimeout = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan StartupDelay = TimeSpan.FromMilliseconds(1500);
+    // A long run is ~900,000 lines. Reporting every line would flood the UI thread with
+    // progress posts, so report at most once per this many bytes (plus once at the end).
+    public const long ProgressReportBytes = 64 * 1024;
     private static readonly Regex RunLine = new(
         @"^Run (?<number>\d+): (?<size>\d+) KB$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
@@ -206,6 +209,7 @@ public sealed class MiniLoggerUsb : IMiniLoggerUsbClient
                 return new MiniLoggerDumpResult(false, null);
 
             long bytesReceived = 0;
+            long lastReported = 0;
             long expectedBytes = run.SizeKb * 1024;
             using (var writer = new StreamWriter(partialPath, false, new UTF8Encoding(false), 64 * 1024))
             {
@@ -230,9 +234,16 @@ public sealed class MiniLoggerUsb : IMiniLoggerUsbClient
 
                     writer.WriteLine(line);
                     bytesReceived += Encoding.UTF8.GetByteCount(line) + Environment.NewLine.Length;
-                    progress?.Report(new MiniLoggerDownloadProgress(
-                        run.Number, runIndex, runCount, bytesReceived, expectedBytes));
+                    if (bytesReceived - lastReported >= ProgressReportBytes)
+                    {
+                        lastReported = bytesReceived;
+                        progress?.Report(new MiniLoggerDownloadProgress(
+                            run.Number, runIndex, runCount, bytesReceived, expectedBytes));
+                    }
                 }
+
+                progress?.Report(new MiniLoggerDownloadProgress(
+                    run.Number, runIndex, runCount, bytesReceived, expectedBytes));
 
                 if (!headerWritten)
                     throw new InvalidDataException("The Mini Logger did not send a CSV header.");
