@@ -106,6 +106,7 @@ namespace CastleOverlayV2.Plot
             _cursor.Color = ScottPlot.Colors.Red;
 
             var xAxis = PlotControl.Plot.Axes.Bottom;
+            xAxis.IsVisible = true;
             xAxis.Label.IsVisible = true;
             xAxis.TickLabelStyle.IsVisible = true;
             xAxis.MajorTickStyle.Length = 5;
@@ -372,6 +373,7 @@ namespace CastleOverlayV2.Plot
             focusAxis.MajorTickStyle.Length = 5;
             focusAxis.MinorTickStyle.Length = 3;
             focusAxis.FrameLineStyle.Width = 1;
+            focusAxis.IsVisible = true;
             ApplyDarkAxisStyle(focusAxis, getTraceColor(focusedChannel));
         }
 
@@ -719,6 +721,7 @@ namespace CastleOverlayV2.Plot
             axes.AddRange(KnownAxes());
             foreach (IAxis axis in axes.Where(axis => axis is not null)!)
             {
+                axis.IsVisible = false;
                 axis.Label.IsVisible = false;
                 axis.TickLabelStyle.IsVisible = false;
                 axis.MajorTickStyle.Length = 0;
@@ -822,6 +825,11 @@ namespace CastleOverlayV2.Plot
 
         private static void HideAxis(IAxis axis)
         {
+            // An axis is also a layout panel in ScottPlot 5. Keeping an undecorated panel
+            // visible still reserves its outward-stacked position and can push a later
+            // focused axis beyond the fixed plot padding. Panel visibility does not remove
+            // the axis, so its plottables and LockedVertical rules continue to use it.
+            axis.IsVisible = false;
             axis.Label.IsVisible = false;
             axis.TickLabelStyle.IsVisible = false;
             axis.MajorTickStyle.Length = 0;

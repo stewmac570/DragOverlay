@@ -2,6 +2,7 @@ using CastleOverlayV2.Models;
 using CastleOverlayV2.Plot;
 using CastleOverlayV2.Services;
 using CastleOverlayV2.Utils;
+using ScottPlot.Plottables;
 using ScottPlot.WinForms;
 using System.Runtime.ExceptionServices;
 using System.Windows.Forms;
@@ -42,6 +43,67 @@ public sealed class PlotManagerPaneTests
                 .Count(axis => axis.Label.IsVisible && axis.TickLabelStyle.IsVisible);
             Assert.Equal(1, visibleScales);
         });
+    }
+
+    [Fact]
+    public void Every_focused_channel_axis_is_inside_the_figure_without_moving_other_traces()
+    {
+        using var firstPlot = new FormsPlot();
+        var manager = new PlotManager(firstPlot);
+        LoadAllSources(manager);
+        manager.PlotRuns(new Dictionary<int, RunData>(manager.Runs));
+
+        FormsPlot plotControl = Assert.Single(Descendants(manager.ChartHost).OfType<FormsPlot>());
+        string[] channels =
+        {
+            "RPM", "Throttle %", "Voltage", "Current", "Ripple", "PowerOut",
+            "ESC Temp", "MotorTemp", "MotorTiming", "Acceleration",
+            "RaceBox Speed", "RaceBox Distance", "RaceBox G-Force X",
+            MiniLoggerLoader.ThrottleChannel, MiniLoggerLoader.RpmChannel,
+            MiniLoggerLoader.WheelSpeedChannel
+        };
+
+        foreach (string channel in channels)
+        {
+            manager.SetFocusedChannel(channel);
+            plotControl.Plot.RenderInMemory(1400, 400);
+
+            ScottPlot.IAxis[] sideAxes = plotControl.Plot.Axes.GetAxes(ScottPlot.Edge.Left)
+                .Concat(plotControl.Plot.Axes.GetAxes(ScottPlot.Edge.Right))
+                .ToArray();
+            ScottPlot.IAxis focusedAxis = Assert.Single(sideAxes,
+                axis => axis.IsVisible && axis.Label.IsVisible && axis.TickLabelStyle.IsVisible);
+
+            ScottPlot.Layout layout = plotControl.Plot.LastRender.Layout;
+            ScottPlot.PixelRect panelRect = focusedAxis.GetPanelRect(
+                layout.DataRect,
+                layout.PanelSizes[focusedAxis],
+                layout.PanelOffsets[focusedAxis]);
+
+            Assert.InRange(panelRect.Left, layout.FigureRect.Left, layout.FigureRect.Right);
+            Assert.InRange(panelRect.Right, layout.FigureRect.Left, layout.FigureRect.Right);
+            Assert.InRange(panelRect.Top, layout.FigureRect.Top, layout.FigureRect.Bottom);
+            Assert.InRange(panelRect.Bottom, layout.FigureRect.Top, layout.FigureRect.Bottom);
+            if (focusedAxis.Edge == ScottPlot.Edge.Left)
+                Assert.Equal(layout.DataRect.Left, panelRect.Right, 3);
+            else
+                Assert.Equal(layout.DataRect.Right, panelRect.Left, 3);
+        }
+
+        Scatter voltage = Assert.Single(plotControl.Plot.GetPlottables<Scatter>(),
+            scatter => scatter.LegendText == "Voltage");
+        manager.SetFocusedChannel("Voltage");
+        plotControl.Plot.RenderInMemory(1400, 400);
+        ScottPlot.Pixel voltagePixel = plotControl.Plot.GetPixel(
+            new ScottPlot.Coordinates(0, 7), voltage.Axes.XAxis, voltage.Axes.YAxis);
+
+        manager.SetFocusedChannel("RaceBox Speed");
+        plotControl.Plot.RenderInMemory(1400, 400);
+        ScottPlot.Pixel voltagePixelAfterFocusChange = plotControl.Plot.GetPixel(
+            new ScottPlot.Coordinates(0, 7), voltage.Axes.XAxis, voltage.Axes.YAxis);
+
+        Assert.Equal(voltagePixel.X, voltagePixelAfterFocusChange.X, 3);
+        Assert.Equal(voltagePixel.Y, voltagePixelAfterFocusChange.Y, 3);
     }
 
     [Fact]
