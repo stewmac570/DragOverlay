@@ -1,3 +1,5 @@
+using Newtonsoft.Json;
+
 namespace CastleOverlayV2.Models
 {
     public sealed class ProjectManifest
@@ -10,6 +12,14 @@ namespace CastleOverlayV2.Models
         public bool FullLogs { get; set; }
         public Dictionary<string, bool> ChannelVisibility { get; set; } =
             new(StringComparer.OrdinalIgnoreCase);
+        // Optional/additive split-view state. Missing fields deserialize to one pane.
+        public int PaneCount { get; set; } = 1;
+        public Dictionary<string, int> ChannelPanes { get; set; } =
+            new(StringComparer.OrdinalIgnoreCase);
+        [JsonProperty(ObjectCreationHandling = ObjectCreationHandling.Replace)]
+        public List<double> PaneHeights { get; set; } = new() { 1.0 };
+        // Optional/additive: user-facing pane number -> focused channel.
+        public Dictionary<int, string> PaneFocusedChannels { get; set; } = new();
         public List<ProjectRunEntry> Runs { get; set; } = new();
     }
 

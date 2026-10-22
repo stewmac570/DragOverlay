@@ -14,7 +14,9 @@ namespace CastleOverlayV2.Plot
     public class PlotManager
     {
         private readonly FormsPlot _plot;
+        private readonly Controls.ChartStack _chartStack;
         private readonly List<ChartPane> _panes = new();
+        private readonly Dictionary<FormsPlot, ChartPane> _paneCache = new();
         private readonly ChannelPaneMap _channelPaneMap;
 
         private bool _alignmentMode;
@@ -24,7 +26,11 @@ namespace CastleOverlayV2.Plot
         private readonly Controls.CursorReadout _readout = new();
         private readonly HashSet<string> _readoutChannels = new(StringComparer.OrdinalIgnoreCase);
 
-        private string _focusedChannel = "RPM";
+        // Pane indexes are internal (0..2). Active focus is always drawable, visible, and
+        // backed by loaded data. Pending focus preserves config/project choices until the
+        // corresponding source data has been loaded.
+        private readonly Dictionary<int, string> _focusedChannels = new();
+        private readonly Dictionary<int, string> _pendingFocusedChannels = new();
         private const float FocusedLineWidth = 2.0f;
         private const float BoldLineWidth = 4.0f;
 
@@ -42,6 +48,8 @@ namespace CastleOverlayV2.Plot
         public event Action<double>? TrimBeforeRequested;
         public event Action<double>? TrimAfterRequested;
         public event Action? TrimResetRequested;
+        public event Action<IReadOnlyList<double>>? PaneHeightsChanged;
+        public event Action<IReadOnlyDictionary<int, string>>? PaneFocusedChannelsChanged;
 
         private ContextMenuStrip? _trimMenu;
         private ToolStripMenuItem? _trimBeforeItem;
@@ -88,32 +96,171 @@ namespace CastleOverlayV2.Plot
         public PlotManager(FormsPlot plotControl)
         {
             _plot = plotControl ?? throw new ArgumentNullException(nameof(plotControl));
+            _chartStack = new Controls.ChartStack(_plot);
             _channelPaneMap = new ChannelPaneMap(ChannelText.Order);
+            _chartStack.PaneHeightsChanged += heights => PaneHeightsChanged?.Invoke(heights);
 
-            // Stage 1 has one pane. Stage 2 can construct additional panes from the same
-            // map, link their X axes, and register their controls with these mouse handlers.
-            var paneChannels = ChannelText.Order.Where(channel => _channelPaneMap.GetPaneIndex(channel) == 0);
-            AddPane(new ChartPane(_plot, paneChannels));
+            RebuildPaneObjects();
 
             ReapplyAxisLocks();
             _plot.Refresh();
-
-            _plot.Controls.Add(_readout);
 
             BuildTrimMenu();
             _plot.Refresh();
         }
 
+        public Control ChartHost => _chartStack;
+        public int PaneCount => _channelPaneMap.PaneCount;
+        public IReadOnlyList<double> PaneHeights => _chartStack.PaneHeights;
+        public IReadOnlyDictionary<string, int> ChannelPanes => _channelPaneMap.GetAssignments();
+        /// <summary>Active focused channel by user-facing pane number (1..3).</summary>
+        public IReadOnlyDictionary<int, string> PaneFocusedChannels => GetActiveFocusState();
+        /// <summary>Focus state to persist, including choices waiting for their data to load.</summary>
+        public IReadOnlyDictionary<int, string> SavedPaneFocusedChannels => GetSavedFocusState();
+
+        public void SetPaneCount(int paneCount)
+        {
+            if (paneCount == PaneCount) return;
+
+            Dictionary<int, string> previousFocus = GetActiveFocusStateInternal();
+            Dictionary<int, string> previousPending = new(_pendingFocusedChannels);
+            _channelPaneMap.SetPaneCount(paneCount);
+            _chartStack.SetPaneCount(paneCount);
+            RemapFocusCandidates(previousFocus, previousPending);
+            RebuildPaneObjects();
+            ReplotCurrentState();
+            NotifyFocusChanged(previousFocus);
+        }
+
+        public void SetChannelPane(string channelName, int paneNumber)
+        {
+            Dictionary<int, string> previousFocus = GetActiveFocusStateInternal();
+            Dictionary<int, string> previousPending = new(_pendingFocusedChannels);
+            _channelPaneMap.Assign(channelName, paneNumber - 1);
+            RemapFocusCandidates(previousFocus, previousPending);
+            ReplotCurrentState();
+            NotifyFocusChanged(previousFocus);
+        }
+
+        public int MoveChannelToNextPane(string channelName)
+        {
+            Dictionary<int, string> previousFocus = GetActiveFocusStateInternal();
+            Dictionary<int, string> previousPending = new(_pendingFocusedChannels);
+            int paneNumber = _channelPaneMap.MoveToNextPane(channelName) + 1;
+            RemapFocusCandidates(previousFocus, previousPending);
+            ReplotCurrentState();
+            NotifyFocusChanged(previousFocus);
+            return paneNumber;
+        }
+
+        public void ApplyBySourcePanes()
+        {
+            Dictionary<int, string> previousFocus = GetActiveFocusStateInternal();
+            Dictionary<int, string> previousPending = new(_pendingFocusedChannels);
+            _channelPaneMap.ApplyBySource();
+            _chartStack.SetPaneCount(3);
+            RemapFocusCandidates(previousFocus, previousPending);
+            RebuildPaneObjects();
+            ReplotCurrentState();
+            NotifyFocusChanged(previousFocus);
+        }
+
+        public void ApplyPaneState(
+            int paneCount,
+            IReadOnlyDictionary<string, int>? channelPanes,
+            IEnumerable<double>? paneHeights,
+            IReadOnlyDictionary<int, string>? paneFocusedChannels = null)
+        {
+            Dictionary<int, string> previousFocus = GetActiveFocusStateInternal();
+            paneCount = Math.Clamp(paneCount, 1, 3);
+            _channelPaneMap.SetPaneCount(paneCount);
+            _channelPaneMap.ApplyAssignments(channelPanes);
+            _chartStack.SetPaneCount(paneCount);
+            _chartStack.SetPaneHeights(paneHeights);
+            _focusedChannels.Clear();
+            _pendingFocusedChannels.Clear();
+            if (paneFocusedChannels != null)
+            {
+                foreach ((int paneNumber, string channel) in paneFocusedChannels)
+                {
+                    int paneIndex = paneNumber - 1;
+                    if (paneIndex >= 0 && paneIndex < paneCount &&
+                        !string.IsNullOrWhiteSpace(channel) &&
+                        _channelPaneMap.GetPaneIndex(channel) == paneIndex)
+                    {
+                        _pendingFocusedChannels[paneIndex] = channel;
+                    }
+                }
+            }
+            RebuildPaneObjects();
+            ReplotCurrentState();
+            NotifyFocusChanged(previousFocus);
+        }
+
+        public void SetPaneHeights(IEnumerable<double>? heights) => _chartStack.SetPaneHeights(heights);
+
+        private void RebuildPaneObjects()
+        {
+            foreach (ChartPane pane in _panes)
+            {
+                pane.PlotControl.Plot.Axes.UnlinkAll();
+                pane.PlotControl.MouseMove -= FormsPlot_MouseMove;
+                pane.PlotControl.MouseLeave -= FormsPlot_MouseLeave;
+                pane.PlotControl.MouseDown -= FormsPlot_MouseDown;
+                pane.PlotControl.MouseUp -= FormsPlot_MouseUp;
+            }
+
+            _readout.Parent?.Controls.Remove(_readout);
+            _panes.Clear();
+            for (int paneIndex = 0; paneIndex < _chartStack.PaneCount; paneIndex++)
+            {
+                FormsPlot plotControl = _chartStack.GetPaneControl(paneIndex);
+                if (!_paneCache.TryGetValue(plotControl, out ChartPane? pane))
+                {
+                    pane = new ChartPane(plotControl, _channelPaneMap, paneIndex);
+                    _paneCache[plotControl] = pane;
+                }
+                AddPane(pane);
+            }
+
+            _panes[0].PlotControl.Controls.Add(_readout);
+            _readout.BringToFront();
+            BuildTrimMenu();
+            RelinkTimeAxes();
+        }
+
+        private void ReplotCurrentState()
+        {
+            if (_runsBySlot.Count > 0)
+                PlotRuns(new Dictionary<int, RunData>(_runsBySlot));
+            else
+                ResetEmptyPlot();
+        }
+
         private void AddPane(ChartPane pane)
         {
-            if (_panes.Count > 0)
-                _panes[0].PlotControl.Plot.Axes.Link(pane.PlotControl, x: true, y: false);
-
             _panes.Add(pane);
+            try { pane.PlotControl.Menu?.Clear(); } catch { }
             pane.PlotControl.MouseMove += FormsPlot_MouseMove;
-            pane.PlotControl.MouseLeave += (_, _) => _readout.Visible = false;
+            pane.PlotControl.MouseLeave += FormsPlot_MouseLeave;
             pane.PlotControl.MouseDown += FormsPlot_MouseDown;
             pane.PlotControl.MouseUp += FormsPlot_MouseUp;
+        }
+
+        private void RelinkTimeAxes()
+        {
+            // ScottPlot 5.0.55 keeps links in LinkedAxisRules (separate from the vertical
+            // lock Rules collection). Recreate the complete ordered graph anyway because
+            // panes can be removed/re-added, and UnlinkAll prevents duplicate rules after
+            // every replot. Link rules copy limits directly and do not recursively fire.
+            foreach (ChartPane pane in _panes)
+                pane.PlotControl.Plot.Axes.UnlinkAll();
+
+            for (int source = 0; source < _panes.Count; source++)
+                for (int target = 0; target < _panes.Count; target++)
+                    if (source != target)
+                        _panes[source].PlotControl.Plot.Axes.Link(
+                            _panes[target].PlotControl, x: true, y: false);
         }
 
         /// <summary>Which channels the cursor box shows (picked in the channel list).</summary>
@@ -166,8 +313,10 @@ namespace CastleOverlayV2.Plot
 
         private void BuildTrimMenu()
         {
-            try { _plot.Menu?.Clear(); } catch { }
+            foreach (ChartPane pane in _panes)
+                try { pane.PlotControl.Menu?.Clear(); } catch { }
 
+            _trimMenu?.Dispose();
             _trimMenu = new ContextMenuStrip();
             _trimBeforeItem = new ToolStripMenuItem("Remove data before here",
                 null, (_, _) => TrimBeforeRequested?.Invoke(_lastRightClickPlotX));
@@ -187,18 +336,30 @@ namespace CastleOverlayV2.Plot
             _manualTrimAvailable = available;
         }
 
-        public string FocusedChannel => _focusedChannel;
+        /// <summary>Legacy single-pane accessor. Empty when pane 1 has no valid focus.</summary>
+        public string FocusedChannel => GetFocusedChannel(1) ?? string.Empty;
 
+        public string? GetFocusedChannel(int paneNumber)
+        {
+            if (paneNumber < 1 || paneNumber > PaneCount)
+                throw new ArgumentOutOfRangeException(nameof(paneNumber));
+            return _focusedChannels.TryGetValue(paneNumber - 1, out string? channel) ? channel : null;
+        }
+
+        /// <summary>Focus a channel in the pane to which that channel is assigned.</summary>
         public void SetFocusedChannel(string channelName)
         {
-            if (_focusedChannel == channelName) return;
-            _focusedChannel = channelName;
+            ArgumentException.ThrowIfNullOrWhiteSpace(channelName);
+            Dictionary<int, string> previous = GetActiveFocusStateInternal();
+            int paneIndex = _channelPaneMap.GetPaneIndex(channelName);
+            _pendingFocusedChannels.Remove(paneIndex);
+            _focusedChannels[paneIndex] = channelName;
+            ReconcilePaneFocuses();
 
             foreach (ChartPane pane in _panes)
-            {
                 pane.UpdateAllTraceStyles(GetTraceColor, WidthFor);
-                pane.ApplyFocusToAxes(_focusedChannel, GetTraceColor);
-            }
+            ApplyPaneFocusToAxes();
+            NotifyFocusChanged(previous);
             RefreshPlot();
         }
 
@@ -219,10 +380,8 @@ namespace CastleOverlayV2.Plot
 
             ScottPlot.Color traceColor = GetTraceColor(channelName);
             foreach (ChartPane pane in _panes)
-            {
                 pane.UpdateTraceColor(channelName, traceColor);
-                pane.ApplyFocusToAxes(_focusedChannel, GetTraceColor);
-            }
+            ApplyPaneFocusToAxes();
             RefreshPlot();
         }
 
@@ -284,9 +443,24 @@ namespace CastleOverlayV2.Plot
 
         public void SetChannelVisibility(string channelName, bool isVisible)
         {
+            Dictionary<int, string> previous = GetActiveFocusStateInternal();
             _channelVisibility[channelName] = isVisible;
             foreach (ChartPane pane in _panes)
                 pane.SetChannelVisibility(channelName, isVisible, _runVisibility);
+            if (!isVisible)
+            {
+                foreach (int paneIndex in _focusedChannels
+                             .Where(pair => pair.Value.Equals(channelName, StringComparison.OrdinalIgnoreCase))
+                             .Select(pair => pair.Key).ToList())
+                    _focusedChannels.Remove(paneIndex);
+                foreach (int paneIndex in _pendingFocusedChannels
+                             .Where(pair => pair.Value.Equals(channelName, StringComparison.OrdinalIgnoreCase))
+                             .Select(pair => pair.Key).ToList())
+                    _pendingFocusedChannels.Remove(paneIndex);
+            }
+            ReconcilePaneFocuses();
+            ApplyPaneFocusToAxes();
+            NotifyFocusChanged(previous);
             RefreshPlot();
         }
 
@@ -299,6 +473,10 @@ namespace CastleOverlayV2.Plot
                     Logger.Log($"   • {pair.Key} = {(pair.Value ? "Visible" : "Hidden")}");
             }
             _channelVisibility = visibilityMap ?? new();
+            Dictionary<int, string> previous = GetActiveFocusStateInternal();
+            ReconcilePaneFocuses();
+            ApplyPaneFocusToAxes();
+            NotifyFocusChanged(previous);
         }
 
         public void RefreshPlot()
@@ -329,12 +507,23 @@ namespace CastleOverlayV2.Plot
 
         public void SetRun(int slot, RunData run)
         {
-            _runsBySlot[slot] = run;
-            _runVisibility[slot] = run != null;
-
+            Dictionary<int, string> previous = GetActiveFocusStateInternal();
             if (run == null)
+            {
+                _runsBySlot.Remove(slot);
+                _runVisibility[slot] = false;
                 foreach (ChartPane pane in _panes)
                     pane.RemoveSlot(slot);
+            }
+            else
+            {
+                _runsBySlot[slot] = run;
+                _runVisibility[slot] = true;
+            }
+
+            ReconcilePaneFocuses();
+            ApplyPaneFocusToAxes();
+            NotifyFocusChanged(previous);
         }
 
         public void LoadRun(RunData run)
@@ -347,9 +536,18 @@ namespace CastleOverlayV2.Plot
         {
             if (runsBySlot == null || runsBySlot.Count == 0)
             {
+                _runsBySlot.Clear();
                 ResetEmptyPlot();
                 return;
             }
+
+            Dictionary<int, string> previousFocus = GetActiveFocusStateInternal();
+            _runsBySlot.Clear();
+            foreach ((int slot, RunData run) in runsBySlot)
+                if (run != null)
+                    _runsBySlot[slot] = run;
+            ReconcilePaneFocuses();
+            NotifyFocusChanged(previousFocus);
 
             (double previousLeft, double previousRight) = _panes[0].GetXLimits();
             bool preserveAlignmentZoom =
@@ -359,10 +557,11 @@ namespace CastleOverlayV2.Plot
                 double.IsFinite(previousRight) &&
                 previousRight > previousLeft;
 
-            foreach (ChartPane pane in _panes)
+            for (int paneIndex = 0; paneIndex < _panes.Count; paneIndex++)
             {
+                ChartPane pane = _panes[paneIndex];
                 pane.ClearForPlot();
-                pane.SetupAllAxes(_focusedChannel, GetTraceColor);
+                pane.SetupAllAxes(FocusedChannelForPane(paneIndex), GetTraceColor);
                 pane.EnsureSplitLabelAxis();
             }
 
@@ -423,14 +622,15 @@ namespace CastleOverlayV2.Plot
             {
                 pane.ApplyTimeRangeAndTicks(runsBySlot, _castleTimeShift, minX, maxX);
                 pane.ReapplyAxisLocks(ActiveScales, _isFourPoleMode, _channelBands);
-                pane.PlotControl.Refresh();
             }
+            RelinkTimeAxes();
+            RefreshPlot();
         }
 
         public void SetupAllAxes()
         {
-            foreach (ChartPane pane in _panes)
-                pane.SetupAllAxes(_focusedChannel, GetTraceColor);
+            for (int paneIndex = 0; paneIndex < _panes.Count; paneIndex++)
+                _panes[paneIndex].SetupAllAxes(FocusedChannelForPane(paneIndex), GetTraceColor);
         }
 
         private IReadOnlyDictionary<string, (double Min, double Max)> ActiveScales =>
@@ -445,7 +645,9 @@ namespace CastleOverlayV2.Plot
         private void UpdateReadout(int pixelX, int pixelY, double time, Dictionary<string, double?[]> values)
         {
             var lines = new List<Controls.CursorReadout.Line>();
-            foreach (string channel in ChannelText.Order)
+            IEnumerable<string> orderedChannels = ChannelText.Order.Concat(
+                values.Keys.Where(channel => !ChannelText.Order.Contains(channel, StringComparer.OrdinalIgnoreCase)));
+            foreach (string channel in orderedChannels)
             {
                 if (!_readoutChannels.Contains(channel)) continue;
                 if (!values.TryGetValue(channel, out var channelValues) || channelValues.All(value => !value.HasValue))
@@ -458,6 +660,12 @@ namespace CastleOverlayV2.Plot
                     channelValues.Select(value => value.HasValue ? ChannelText.Format(channel, value.Value) : "–").ToArray()));
             }
             _readout.ShowAt(pixelX, pixelY, time, lines);
+        }
+
+        private void FormsPlot_MouseLeave(object? sender, EventArgs e)
+        {
+            if (ReferenceEquals(_readout.Parent, sender))
+                _readout.Visible = false;
         }
 
         private void FormsPlot_MouseMove(object? sender, MouseEventArgs e)
@@ -523,6 +731,12 @@ namespace CastleOverlayV2.Plot
             }
 
             CursorMoved?.Invoke(valuesAtCursor);
+            if (!ReferenceEquals(_readout.Parent, source))
+            {
+                _readout.Parent?.Controls.Remove(_readout);
+                source.Controls.Add(_readout);
+                _readout.BringToFront();
+            }
             UpdateReadout(e.X, e.Y, mouseCoordinates.X, valuesAtCursor);
             RefreshPlot();
         }
@@ -565,8 +779,145 @@ namespace CastleOverlayV2.Plot
 
         public void ResetEmptyPlot()
         {
+            Dictionary<int, string> previous = GetActiveFocusStateInternal();
+            ReconcilePaneFocuses();
+            NotifyFocusChanged(previous);
             foreach (ChartPane pane in _panes)
                 pane.ResetEmptyPlot(ActiveScales, _isFourPoleMode, _channelBands);
+            RelinkTimeAxes();
+        }
+
+        private string FocusedChannelForPane(int paneIndex) =>
+            _focusedChannels.TryGetValue(paneIndex, out string? channel) ? channel : string.Empty;
+
+        private void ApplyPaneFocusToAxes()
+        {
+            for (int paneIndex = 0; paneIndex < _panes.Count; paneIndex++)
+                _panes[paneIndex].ApplyFocusToAxes(FocusedChannelForPane(paneIndex), GetTraceColor);
+        }
+
+        private void ReconcilePaneFocuses()
+        {
+            foreach (int paneIndex in _focusedChannels.Keys.Where(index => index >= PaneCount).ToList())
+                _focusedChannels.Remove(paneIndex);
+            foreach (int paneIndex in _pendingFocusedChannels.Keys.Where(index => index >= PaneCount).ToList())
+                _pendingFocusedChannels.Remove(paneIndex);
+
+            for (int paneIndex = 0; paneIndex < PaneCount; paneIndex++)
+            {
+                if (_focusedChannels.TryGetValue(paneIndex, out string? current) &&
+                    IsValidFocus(current, paneIndex))
+                {
+                    continue;
+                }
+
+                _focusedChannels.Remove(paneIndex);
+                if (_pendingFocusedChannels.TryGetValue(paneIndex, out string? pending))
+                {
+                    if (_channelPaneMap.GetPaneIndex(pending) != paneIndex)
+                    {
+                        _pendingFocusedChannels.Remove(paneIndex);
+                    }
+                    else if (IsValidFocus(pending, paneIndex))
+                    {
+                        _focusedChannels[paneIndex] = pending;
+                        _pendingFocusedChannels.Remove(paneIndex);
+                        continue;
+                    }
+                    else if (!IsChannelVisible(pending))
+                    {
+                        _pendingFocusedChannels.Remove(paneIndex);
+                    }
+                }
+
+                string? fallback = ChannelText.Order.FirstOrDefault(channel => IsValidFocus(channel, paneIndex));
+                if (fallback != null)
+                {
+                    _focusedChannels[paneIndex] = fallback;
+                    _pendingFocusedChannels.Remove(paneIndex);
+                }
+            }
+        }
+
+        private bool IsValidFocus(string channel, int paneIndex) =>
+            _channelPaneMap.GetPaneIndex(channel) == paneIndex &&
+            IsChannelVisible(channel) &&
+            ChannelHasLoadedData(channel);
+
+        private bool IsChannelVisible(string channel) =>
+            !_channelVisibility.TryGetValue(channel, out bool visible) || visible;
+
+        private bool ChannelHasLoadedData(string channel)
+        {
+            if (channel.StartsWith("RaceBox ", StringComparison.OrdinalIgnoreCase) ||
+                channel.StartsWith("Logger ", StringComparison.OrdinalIgnoreCase))
+            {
+                return _runsBySlot.Values.Any(run =>
+                    run != null && run.Data.TryGetValue(channel, out var points) && points.Count > 0);
+            }
+
+            bool isCastleChannel = ChannelText.Order.TakeWhile(name =>
+                !name.StartsWith("RaceBox ", StringComparison.OrdinalIgnoreCase) &&
+                !name.StartsWith("Logger ", StringComparison.OrdinalIgnoreCase))
+                .Contains(channel, StringComparer.OrdinalIgnoreCase);
+            return isCastleChannel && _runsBySlot.Values.Any(run =>
+                run != null && !run.HasChannelData && run.DataPoints.Count > 0);
+        }
+
+        private Dictionary<int, string> GetFocusCandidates()
+        {
+            var result = new Dictionary<int, string>(_pendingFocusedChannels);
+            foreach ((int paneIndex, string channel) in _focusedChannels)
+                result[paneIndex] = channel;
+            return result;
+        }
+
+        private void RemapFocusCandidates(
+            IReadOnlyDictionary<int, string> previousActive,
+            IReadOnlyDictionary<int, string> previousPending)
+        {
+            _focusedChannels.Clear();
+            _pendingFocusedChannels.Clear();
+
+            // A pane's existing active focus wins. An active focus that moved then fills its
+            // destination only when that pane retained no active focus. Pending restored
+            // choices have lower priority because they are not currently displayed.
+            AddCandidates(previousActive, moved: false);
+            AddCandidates(previousActive, moved: true);
+            AddCandidates(previousPending, moved: false);
+            AddCandidates(previousPending, moved: true);
+
+            ReconcilePaneFocuses();
+
+            void AddCandidates(IReadOnlyDictionary<int, string> candidates, bool moved)
+            {
+                foreach ((int oldPaneIndex, string channel) in candidates)
+                {
+                    int newPaneIndex = _channelPaneMap.GetPaneIndex(channel);
+                    if ((newPaneIndex != oldPaneIndex) == moved && newPaneIndex < PaneCount)
+                        _pendingFocusedChannels.TryAdd(newPaneIndex, channel);
+                }
+            }
+        }
+
+        private Dictionary<int, string> GetActiveFocusStateInternal() => new(_focusedChannels);
+
+        private IReadOnlyDictionary<int, string> GetActiveFocusState() =>
+            _focusedChannels.ToDictionary(pair => pair.Key + 1, pair => pair.Value);
+
+        private IReadOnlyDictionary<int, string> GetSavedFocusState() =>
+            GetFocusCandidates().ToDictionary(pair => pair.Key + 1, pair => pair.Value);
+
+        private void NotifyFocusChanged(IReadOnlyDictionary<int, string> previous)
+        {
+            if (previous.Count == _focusedChannels.Count && previous.All(pair =>
+                    _focusedChannels.TryGetValue(pair.Key, out string? channel) &&
+                    channel.Equals(pair.Value, StringComparison.OrdinalIgnoreCase)))
+            {
+                return;
+            }
+
+            PaneFocusedChannelsChanged?.Invoke(GetActiveFocusState());
         }
 
         public void LogVisibilityStates()

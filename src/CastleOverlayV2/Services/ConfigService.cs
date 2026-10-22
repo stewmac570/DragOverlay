@@ -49,6 +49,7 @@ namespace CastleOverlayV2.Services
                     _config = JsonConvert.DeserializeObject<Config>(json) ?? new Config();
                     // An older saved file carries an older build number; the running app wins.
                     _config.BuildNumber = Config.CurrentBuildNumber;
+                    NormalizePaneSettings();
                 }
                 catch
                 {
@@ -132,6 +133,48 @@ namespace CastleOverlayV2.Services
             if (height >= 1.0) _config.ChannelBands.Remove(channelName);
             else _config.ChannelBands[channelName] = new ChannelBand { Height = height, Position = position };
             Save();
+        }
+
+        public void SetPaneState(
+            int paneCount,
+            IReadOnlyDictionary<string, int> channelPanes,
+            IEnumerable<double> paneHeights,
+            IReadOnlyDictionary<int, string>? paneFocusedChannels = null)
+        {
+            _config.PaneCount = Math.Clamp(paneCount, 1, 3);
+            _config.ChannelPanes = channelPanes
+                .Where(pair => pair.Value >= 1 && pair.Value <= _config.PaneCount)
+                .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase);
+            _config.PaneHeights = NormalizeHeights(paneHeights, _config.PaneCount);
+            _config.PaneFocusedChannels = (paneFocusedChannels ?? new Dictionary<int, string>())
+                .Where(pair => pair.Key >= 1 && pair.Key <= _config.PaneCount &&
+                               !string.IsNullOrWhiteSpace(pair.Value))
+                .ToDictionary(pair => pair.Key, pair => pair.Value);
+            Save();
+        }
+
+        private void NormalizePaneSettings()
+        {
+            _config.PaneCount = Math.Clamp(_config.PaneCount, 1, 3);
+            _config.ChannelPanes ??= new Dictionary<string, int>();
+            foreach (string channel in _config.ChannelPanes.Keys.ToList())
+                if (_config.ChannelPanes[channel] < 1 || _config.ChannelPanes[channel] > _config.PaneCount)
+                    _config.ChannelPanes[channel] = 1;
+            _config.PaneHeights = NormalizeHeights(_config.PaneHeights, _config.PaneCount);
+            _config.PaneFocusedChannels ??= new Dictionary<int, string>();
+            foreach (int paneNumber in _config.PaneFocusedChannels.Keys.ToList())
+                if (paneNumber < 1 || paneNumber > _config.PaneCount ||
+                    string.IsNullOrWhiteSpace(_config.PaneFocusedChannels[paneNumber]))
+                    _config.PaneFocusedChannels.Remove(paneNumber);
+        }
+
+        private static List<double> NormalizeHeights(IEnumerable<double>? heights, int paneCount)
+        {
+            double[] values = heights?.Take(paneCount).ToArray() ?? Array.Empty<double>();
+            if (values.Length != paneCount || values.Any(value => !double.IsFinite(value) || value <= 0))
+                values = Enumerable.Repeat(1.0 / paneCount, paneCount).ToArray();
+            double total = values.Sum();
+            return values.Select(value => value / total).ToList();
         }
 
         public bool IsDebugLoggingEnabled() => _config?.EnableDebugLogging ?? false;
