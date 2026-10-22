@@ -1,6 +1,6 @@
 # Split view plan: up to three stacked charts
 
-Status: stage 1 built (#151). Stages 2 and 3 not started.
+Status: built. Stage 1 in #151, stages 2 and 3 in #153. Hand checks: issue #154.
 
 ## Goal
 

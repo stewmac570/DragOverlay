@@ -29,7 +29,7 @@ Treat these versions as constraints, not suggestions:
 
 ## Architecture
 
-The window is a top bar (Logs / Tune tabs), the run strip, then one page. The Logs page is the channel list (left) and the plot; the Tune page compares every run's tune. See `Docs/UI_Layout_Plan.md`.
+The window is a top bar (Logs / Tune tabs), the run strip, then one page. The Logs page is the channel list (left) and the chart, which can be split into 1-3 stacked panes sharing one time axis; the Tune page compares every run's tune. See `Docs/UI_Layout_Plan.md` and `Docs/Split_View_Plan.md`.
 
 Data flows in one direction: **CSV → Loader → `RunData` → `PlotManager` → ScottPlot `FormsPlot`**. `MainFormPresenter` owns the runs and all business logic; `MainForm` is the view (`IMainView`) and forwards control events to it. `ConfigService` reads/writes user prefs to `%AppData%\Roaming\DragOverlay\config.json`.
 
@@ -84,10 +84,12 @@ src/CastleOverlayV2/
 ├─ Program.cs, MainForm.cs(/.Designer.cs/.resx)
 ├─ MainFormPresenter.cs, IMainView.cs
 ├─ Controls/   TopBar (Logs/Tune tabs + actions), RunStrip, ChannelDrawer (left channel list),
-│              AlignmentBar, TunePanel (Tune page: side-by-side tune comparison), TuneCurvePreview
+│              AlignmentBar, TunePanel (Tune page: side-by-side tune comparison), TuneCurvePreview,
+│              ChartStack (stacked chart panes with draggable dividers), CursorReadout
 ├─ Models/     RunData, DataPoint, Config, RaceBoxData, RaceBoxPoint
 ├─ Services/   CsvLoader, RaceBoxLoader, ConfigService, Logger, ThrottlePercent
-├─ Plot/       PlotManager (all ScottPlot setup lives here)
+├─ Plot/       PlotManager (coordinator: shared state, hover, cursor box, alignment, trim menu),
+│              ChartPane (one ScottPlot chart: lines, axes, locks), ChannelPaneMap (channel → pane)
 ├─ Utils/      ColorMap, LineStyleHelper
 └─ Resources/  icon + screenshots
 Docs/          FEATURES, DELIVERY_PLAN, STRUCTURE, DEVELOPMENT_LOG, audit/
