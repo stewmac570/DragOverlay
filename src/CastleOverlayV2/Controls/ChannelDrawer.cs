@@ -35,7 +35,7 @@ namespace CastleOverlayV2.Controls
         private const int MinPanelWidth = 260;
         private const int MaxPanelWidth = 900;
         private const int RowHeight = 30;
-        private const int ValueColumnWidth = 66;
+        private const int ValueColumnWidth = 54;
 
         // ---- Public surface ---------------------------------------------------
         public event Action<string, bool>? ChannelVisibilityChanged;
@@ -765,6 +765,7 @@ namespace CastleOverlayV2.Controls
                     Text = DisplayName(channelName),
                     AutoSize = false,
                     AutoEllipsis = true,
+                    UseCompatibleTextRendering = false,
                     TextAlign = ContentAlignment.MiddleLeft,
                     Font = new Font(SystemFonts.DefaultFont.FontFamily, 9f),
                     Cursor = Cursors.Hand
@@ -802,11 +803,11 @@ namespace CastleOverlayV2.Controls
                 base.OnLayout(levent);
                 if (_name == null || _values[2] == null) return; // laid out mid-constructor, before every child exists
                 int y = (Height - 20) / 2;
-                _tick.SetBounds(10, y + 1, 18, 18);
-                _swatch.SetBounds(34, y + 2, 16, 16);
-                _bold.SetBounds(56, y, 22, 20);
-                _band.SetBounds(82, y, 22, 20);
-                _pane.SetBounds(108, y, 22, 20);
+                _tick.SetBounds(8, y + 1, 18, 18);
+                _swatch.SetBounds(30, y + 2, 16, 16);
+                _bold.SetBounds(51, y, 20, 20);
+                _band.SetBounds(75, y, 20, 20);
+                _pane.SetBounds(99, y, 20, 20);
 
                 int right = Width - 6;
                 for (int i = 2; i >= 0; i--)
@@ -814,8 +815,8 @@ namespace CastleOverlayV2.Controls
                     _values[i].SetBounds(right - ValueColumnWidth, 0, ValueColumnWidth, Height);
                     right -= ValueColumnWidth;
                 }
-                int nameLeft = _pane.Visible ? 136 : 110;
-                _name.SetBounds(nameLeft, 0, Math.Max(0, right - nameLeft - 2), Height);
+                int nameLeft = _pane.Visible ? 123 : 99;
+                _name.SetBounds(nameLeft, y, Math.Max(0, right - nameLeft - 2), 20);
             }
 
             protected override void OnPaint(PaintEventArgs e)

@@ -20,6 +20,8 @@ namespace CastleOverlayV2.Controls
         private SplitContainer? _innerSplit;
         private double[] _heights = { 1.0 };
         private bool _applyingLayout;
+        private bool _applyQueued;
+        private SplitContainer? _draggedSplit;
 
         public ChartStack(FormsPlot firstPlot)
         {
@@ -38,7 +40,9 @@ namespace CastleOverlayV2.Controls
                 plot.Padding = Padding.Empty;
             }
 
-            Resize += (_, _) => ApplySplitterDistances();
+            Resize += (_, _) => QueueSplitterDistanceApply();
+            Layout += (_, _) => QueueSplitterDistanceApply();
+            VisibleChanged += (_, _) => QueueSplitterDistanceApply();
             SetPaneCount(1);
         }
 
@@ -101,7 +105,7 @@ namespace CastleOverlayV2.Controls
             Controls.Add(_layoutRoot);
             _layoutRoot.BringToFront();
             ResumeLayout(true);
-            BeginInvokeIfReady(ApplySplitterDistances);
+            BeginInvokeIfReady(QueueSplitterDistanceApply);
         }
 
         private Control BuildSinglePane()
@@ -116,7 +120,7 @@ namespace CastleOverlayV2.Controls
             _outerSplit = NewSplitContainer();
             _outerSplit.Panel1.Controls.Add(_plots[0]);
             _outerSplit.Panel2.Controls.Add(_plots[1]);
-            _outerSplit.SplitterMoved += (_, _) => CaptureHeights();
+            MonitorSplitContainer(_outerSplit);
             return _outerSplit;
         }
 
@@ -128,9 +132,27 @@ namespace CastleOverlayV2.Controls
             _outerSplit.Panel2.Controls.Add(_innerSplit);
             _innerSplit.Panel1.Controls.Add(_plots[1]);
             _innerSplit.Panel2.Controls.Add(_plots[2]);
-            _outerSplit.SplitterMoved += (_, _) => CaptureHeights();
-            _innerSplit.SplitterMoved += (_, _) => CaptureHeights();
+            MonitorSplitContainer(_outerSplit);
+            MonitorSplitContainer(_innerSplit);
             return _outerSplit;
+        }
+
+        private void MonitorSplitContainer(SplitContainer split)
+        {
+            // A docked inner split receives its final height only after the outer split
+            // has laid out. Re-apply then, not just when ChartStack itself resizes.
+            split.Resize += (_, _) => QueueSplitterDistanceApply();
+            split.Layout += (_, _) => QueueSplitterDistanceApply();
+            split.SplitterMoving += (_, _) => _draggedSplit = split;
+            split.SplitterMoved += (_, _) =>
+            {
+                if (!ReferenceEquals(_draggedSplit, split))
+                    return;
+
+                _draggedSplit = null;
+                if (!_applyingLayout)
+                    CaptureHeights();
+            };
         }
 
         private static Panel NewPanel() => new()
@@ -156,7 +178,7 @@ namespace CastleOverlayV2.Controls
 
         private void ApplySplitterDistances()
         {
-            if (_outerSplit is null || _outerSplit.Height <= SplitterWidth)
+            if (_applyingLayout || _draggedSplit is not null || _outerSplit is null || _outerSplit.Height <= SplitterWidth)
                 return;
 
             _applyingLayout = true;
@@ -180,6 +202,20 @@ namespace CastleOverlayV2.Controls
             {
                 _applyingLayout = false;
             }
+        }
+
+        private void QueueSplitterDistanceApply()
+        {
+            if (_applyingLayout || _draggedSplit is not null || _applyQueued || !IsHandleCreated || IsDisposed)
+                return;
+
+            _applyQueued = true;
+            BeginInvoke((Action)(() =>
+            {
+                _applyQueued = false;
+                if (!IsDisposed && _draggedSplit is null)
+                    ApplySplitterDistances();
+            }));
         }
 
         private static int SafeDistance(int available, double ratio)
