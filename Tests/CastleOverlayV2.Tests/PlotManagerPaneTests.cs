@@ -60,7 +60,8 @@ public sealed class PlotManagerPaneTests
             "ESC Temp", "MotorTemp", "MotorTiming", "Acceleration",
             "RaceBox Speed", "RaceBox Distance", "RaceBox G-Force X",
             MiniLoggerLoader.ThrottleChannel, MiniLoggerLoader.RpmChannel,
-            MiniLoggerLoader.WheelSpeedChannel
+            MiniLoggerLoader.WheelSpeedChannel, MiniLoggerLoader.RearSpeedChannel,
+            MiniLoggerLoader.SlipChannel
         };
 
         foreach (string channel in channels)

@@ -257,8 +257,14 @@ namespace CastleOverlayV2
             return sfd.ShowDialog() == DialogResult.OK ? sfd.FileName : null;
         }
 
-        public void ShowSettingsDialog()
+        public async void ShowSettingsDialog()
         {
+            var before = (
+                _configService.Config.FrontTyreDiameterMm,
+                _configService.Config.RearWheelDiameterMm,
+                _configService.Config.PinionTeeth,
+                _configService.Config.SpurTeeth,
+                _configService.Config.TransmissionRatio);
             using var dlg = new SettingsForm(_configService);
             if (dlg.ShowDialog(this) == DialogResult.OK)
             {
@@ -266,6 +272,15 @@ namespace CastleOverlayV2
                     _configService.Config.VoltageSmoothingEnabled,
                     _configService.Config.VoltageSmoothingWindow);
                 _plotManager?.SetMiniLoggerTyreDiameter(_configService.Config.FrontTyreDiameterMm);
+
+                var after = (
+                    _configService.Config.FrontTyreDiameterMm,
+                    _configService.Config.RearWheelDiameterMm,
+                    _configService.Config.PinionTeeth,
+                    _configService.Config.SpurTeeth,
+                    _configService.Config.TransmissionRatio);
+                if (before != after)
+                    await _presenter.ReloadMiniLoggerRunsAsync();
             }
         }
 

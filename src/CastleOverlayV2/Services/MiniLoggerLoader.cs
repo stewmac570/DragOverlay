@@ -23,11 +23,14 @@ namespace CastleOverlayV2.Services
         public const string ThrottleChannel = "Logger Throttle %";
         public const string RpmChannel = "Logger RPM";
         public const string WheelSpeedChannel = "Logger Wheel Speed";
+        public const string RearSpeedChannel = "Logger Rear Speed";
+        public const string SlipChannel = "Logger Slip %";
         public const string WheelRevsChannel = "Logger Wheel rev/s";
 
         public static readonly string[] Channels =
         {
-            ThrottleChannel, RpmChannel, WheelSpeedChannel, WheelRevsChannel
+            ThrottleChannel, RpmChannel, WheelSpeedChannel, RearSpeedChannel, SlipChannel,
+            WheelRevsChannel
         };
 
         public const double DefaultTyreDiameterMm = 70.0;
@@ -37,6 +40,27 @@ namespace CastleOverlayV2.Services
             if (!double.IsFinite(tyreDiameterMm) || tyreDiameterMm <= 0)
                 tyreDiameterMm = DefaultTyreDiameterMm;
             return Math.PI * tyreDiameterMm / 1000.0 * MetersPerSecToMph;
+        }
+
+        public static double RearSpeedMph(
+            double motorRpm,
+            double rearWheelDiameterMm,
+            int pinionTeeth,
+            int spurTeeth,
+            double transmissionRatio = 1.0)
+        {
+            double rearWheelRevsPerSecond = (motorRpm / 60.0) /
+                ((double)spurTeeth / pinionTeeth) / transmissionRatio;
+            return rearWheelRevsPerSecond * MphPerRevPerSec(rearWheelDiameterMm);
+        }
+
+        public static double SlipPercent(double rearSpeedMph, double frontSpeedMph)
+        {
+            if (rearSpeedMph < 2.0)
+                return 0.0;
+
+            return Math.Clamp((rearSpeedMph - frontSpeedMph) / rearSpeedMph * 100.0,
+                -100.0, 100.0);
         }
 
         // Throttle crossing this share of rest → peak marks the launch (and the alignment point).
@@ -70,7 +94,11 @@ namespace CastleOverlayV2.Services
         public static LoadResult<RunData> Load(
             string filePath,
             bool keepFullLog = false,
-            double tyreDiameterMm = DefaultTyreDiameterMm)
+            double tyreDiameterMm = DefaultTyreDiameterMm,
+            double? rearWheelDiameterMm = null,
+            int? pinionTeeth = null,
+            int? spurTeeth = null,
+            double? transmissionRatio = 1.0)
         {
             Logger.Log($"[MiniLoggerLoader] Load started: {Path.GetFileName(filePath)}");
 
@@ -139,7 +167,13 @@ namespace CastleOverlayV2.Services
             var thrPts = new List<DataPoint>();
             var rpmPts = new List<DataPoint>();
             var mphPts = new List<DataPoint>();
+            var rearMphPts = new List<DataPoint>();
+            var slipPts = new List<DataPoint>();
             var rpsPts = new List<DataPoint>();
+            double effectiveTransmissionRatio = transmissionRatio ?? 1.0;
+            bool produceRearChannels = rearWheelDiameterMm is > 0 &&
+                pinionTeeth is > 0 && spurTeeth is > 0 &&
+                double.IsFinite(effectiveTransmissionRatio) && effectiveTransmissionRatio > 0;
 
             for (int i = 0; i < times.Count; i++)
             {
@@ -148,13 +182,26 @@ namespace CastleOverlayV2.Services
 
                 thrPts.Add(new DataPoint { Time = t, Y = throttlePct[i] });
                 rpmPts.Add(new DataPoint { Time = t, Y = rpm[i] });
-                mphPts.Add(new DataPoint { Time = t, Y = wheelRps[i] * MphPerRevPerSec(tyreDiameterMm) });
+                double frontSpeedMph = wheelRps[i] * MphPerRevPerSec(tyreDiameterMm);
+                mphPts.Add(new DataPoint { Time = t, Y = frontSpeedMph });
+                if (produceRearChannels)
+                {
+                    double rearSpeedMph = RearSpeedMph(rpm[i], rearWheelDiameterMm!.Value,
+                        pinionTeeth!.Value, spurTeeth!.Value, effectiveTransmissionRatio);
+                    rearMphPts.Add(new DataPoint { Time = t, Y = rearSpeedMph });
+                    slipPts.Add(new DataPoint { Time = t, Y = SlipPercent(rearSpeedMph, frontSpeedMph) });
+                }
                 rpsPts.Add(new DataPoint { Time = t, Y = wheelRps[i] });
             }
 
             run.Data[ThrottleChannel] = thrPts;
             run.Data[RpmChannel] = rpmPts;
             run.Data[WheelSpeedChannel] = mphPts;
+            if (produceRearChannels)
+            {
+                run.Data[RearSpeedChannel] = rearMphPts;
+                run.Data[SlipChannel] = slipPts;
+            }
             run.Data[WheelRevsChannel] = rpsPts;
             // PlotManager skips runs with empty DataPoints — populate with time-only dummies.
             run.DataPoints = thrPts.Select(p => new DataPoint { Time = p.Time }).ToList();

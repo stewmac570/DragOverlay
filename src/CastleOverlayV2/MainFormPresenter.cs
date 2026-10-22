@@ -416,8 +416,7 @@ namespace CastleOverlayV2
 
             try
             {
-                var result = await Task.Run(() => MiniLoggerLoader.Load(
-                    path, _keepFullLogs, _config.Config.FrontTyreDiameterMm));
+                var result = await Task.Run(() => LoadMiniLoggerFromConfig(path));
                 if (!result.Ok)
                 {
                     Logger.Log($"[Presenter] Mini Logger load failed for slot {uiSlot}: {result.Message}");
@@ -451,6 +450,72 @@ namespace CastleOverlayV2
 
         private const string MiniLoggerTag = "LOG";
 
+        private LoadResult<RunData> LoadMiniLoggerFromConfig(string path)
+        {
+            Config car = _config.Config;
+            return MiniLoggerLoader.Load(path, _keepFullLogs,
+                car.FrontTyreDiameterMm,
+                car.RearWheelDiameterMm,
+                car.PinionTeeth,
+                car.SpurTeeth,
+                car.TransmissionRatio);
+        }
+
+        /// <summary>
+        /// Rebuilds only the loaded Mini Logger runs after a car setting changes. Manual
+        /// alignment and run visibility are restored after each source file is parsed again.
+        /// </summary>
+        public async Task ReloadMiniLoggerRunsAsync()
+        {
+            var open = _runs
+                .Where(pair => pair.Value.IsMiniLogger)
+                .OrderBy(pair => pair.Key)
+                .Select(pair => (Slot: pair.Key, Run: pair.Value,
+                    Visible: _plot.GetRunVisibility(pair.Key)))
+                .ToList();
+
+            foreach (var (slot, old, visible) in open)
+            {
+                if (string.IsNullOrEmpty(old.SourcePath) || !File.Exists(old.SourcePath))
+                    continue;
+
+                LoadResult<RunData> result;
+                try
+                {
+                    result = await Task.Run(() => LoadMiniLoggerFromConfig(old.SourcePath));
+                }
+                catch (Exception ex)
+                {
+                    Logger.Log($"Mini Logger settings reload failed for slot {slot}: {ex.Message}");
+                    _view.ShowError("Mini Logger",
+                        "The log could not be reloaded after the car settings changed. " +
+                        "Its previous data was kept.\n\n" + ex.Message);
+                    continue;
+                }
+                if (!result.Ok)
+                {
+                    ShowResultMessage(result);
+                    continue;
+                }
+
+                RunData reloaded = result.Value!;
+                reloaded.TimeShiftMs = old.TimeShiftMs;
+                if (!string.IsNullOrEmpty(old.FileName))
+                    reloaded.FileName = old.FileName;
+
+                _runs[slot] = reloaded;
+                _plot.SetRun(slot, reloaded);
+                _plot.SetRunVisibility(slot, visible);
+                _view.SetSlotLoadedUI(slot, reloaded.SourcePath ?? old.SourcePath, visible, MiniLoggerTag);
+            }
+
+            EnsureMiniLoggerChannelsInToggleBar();
+            PlotAllRuns();
+            _plot.SetupAllAxes();
+            _plot.RefreshPlot();
+            RefreshTunePanelRuns();
+        }
+
         /// <summary>The Castle run Mini Logger runs line up with: the lowest loaded Castle slot.</summary>
         private RunData? ReferenceCastleRun() =>
             _runs.Where(kv => kv.Key <= 3 && !kv.Value.HasChannelData)
@@ -463,7 +528,9 @@ namespace CastleOverlayV2
             var states = _drawer.GetChannelStates();
             var saved = _config.Config.ChannelVisibility;
             bool added = false;
-            foreach (var ch in MiniLoggerLoader.Channels)
+            var loadedChannels = MiniLoggerLoader.Channels.Where(channel =>
+                _runs.Values.Any(run => run.IsMiniLogger && run.Data.ContainsKey(channel)));
+            foreach (var ch in loadedChannels)
             {
                 if (states.ContainsKey(ch)) continue;
                 // rev/s is the same trace as Wheel Speed (mph), so it starts hidden.
@@ -1301,7 +1368,8 @@ namespace CastleOverlayV2
             "ESC Temp", "MotorTemp", "MotorTiming", "Acceleration",
             "RaceBox Speed", "RaceBox Distance", "RaceBox G-Force X",
             MiniLoggerLoader.ThrottleChannel, MiniLoggerLoader.RpmChannel,
-            MiniLoggerLoader.WheelSpeedChannel, MiniLoggerLoader.WheelRevsChannel,
+            MiniLoggerLoader.WheelSpeedChannel, MiniLoggerLoader.RearSpeedChannel,
+            MiniLoggerLoader.SlipChannel, MiniLoggerLoader.WheelRevsChannel,
         };
 
         private void PushAllStatsToDrawer()

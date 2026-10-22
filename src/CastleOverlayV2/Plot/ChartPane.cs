@@ -42,6 +42,7 @@ namespace CastleOverlayV2.Plot
         private IYAxis? _raceBoxGxAxis;
         private IYAxis? _raceBoxDistanceAxis;
         private IYAxis? _wheelRevsAxis;
+        private IYAxis? _slipAxis;
         private double _miniLoggerMphPerRevPerSec =
             MiniLoggerLoader.MphPerRevPerSec(MiniLoggerLoader.DefaultTyreDiameterMm);
 
@@ -219,6 +220,13 @@ namespace CastleOverlayV2.Plot
                 HideAxis(_wheelRevsAxis);
             }
 
+            if (_slipAxis is null)
+            {
+                _slipAxis = PlotControl.Plot.Axes.AddRightAxis();
+                _slipAxis.Label.Text = "Slip (%)";
+                HideAxis(_slipAxis);
+            }
+
             ApplyFocusToAxes(focusedChannel, getTraceColor);
         }
 
@@ -361,6 +369,8 @@ namespace CastleOverlayV2.Plot
             MiniLoggerLoader.ThrottleChannel => _throttleAxis!,
             MiniLoggerLoader.RpmChannel => _rpmAxis!,
             MiniLoggerLoader.WheelSpeedChannel => _raceBoxSpeedAxis!,
+            MiniLoggerLoader.RearSpeedChannel => _raceBoxSpeedAxis!,
+            MiniLoggerLoader.SlipChannel => _slipAxis!,
             MiniLoggerLoader.WheelRevsChannel => _wheelRevsAxis!,
             _ => _throttleAxis!,
         };
@@ -639,6 +649,7 @@ namespace CastleOverlayV2.Plot
             AddLock(_raceBoxGxAxis, -5, 7, channelBands);
             AddLock(_raceBoxDistanceAxis, 0, 1000, channelBands);
             AddLock(_wheelRevsAxis, 0, 110 / _miniLoggerMphPerRevPerSec, channelBands);
+            AddLock(_slipAxis, -20, 100, channelBands);
             if (_splitLabelAxis is not null)
                 PlotControl.Plot.Axes.Rules.Add(new LockedVertical(_splitLabelAxis, 0.0, 1.0));
 
@@ -764,6 +775,8 @@ namespace CastleOverlayV2.Plot
             MiniLoggerLoader.ThrottleChannel => _throttleAxis,
             MiniLoggerLoader.RpmChannel => _rpmAxis,
             MiniLoggerLoader.WheelSpeedChannel => _raceBoxSpeedAxis,
+            MiniLoggerLoader.RearSpeedChannel => _raceBoxSpeedAxis,
+            MiniLoggerLoader.SlipChannel => _slipAxis,
             MiniLoggerLoader.WheelRevsChannel => _wheelRevsAxis,
             _ => null,
         };
@@ -784,6 +797,7 @@ namespace CastleOverlayV2.Plot
             yield return _raceBoxGxAxis;
             yield return _raceBoxDistanceAxis;
             yield return _wheelRevsAxis;
+            yield return _slipAxis;
         }
 
         private static IEnumerable<(string Label, double[] Values)> GetCastleChannels(RunData run)
