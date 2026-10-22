@@ -22,11 +22,12 @@ namespace CastleOverlayV2
         private readonly TextBox _raceboxDir = new();
         private readonly TextBox _tuneDir = new();
         private readonly TextBox _dataLogDir = new();
-        private readonly NumericUpDown _frontTyreDiameter = new();
+        private readonly TextBox _frontTyreDiameter = new();
         private readonly TextBox _rearWheelDiameter = new();
         private readonly TextBox _pinionTeeth = new();
         private readonly TextBox _spurTeeth = new();
         private readonly TextBox _transmissionRatio = new();
+        private readonly Label _finalDriveRatio = new();
         private readonly CheckBox _smoothingEnabled = new();
         private readonly NumericUpDown _smoothingWindow = new();
 
@@ -40,7 +41,7 @@ namespace CastleOverlayV2
             MinimizeBox = false;
             MaximizeBox = false;
             Width = 540;
-            Height = 565;
+            Height = 592;
             Font = new Font("Segoe UI", 9f);
             BackColor = SurfaceWindow;
             ForeColor = TextPrimary;
@@ -116,23 +117,21 @@ namespace CastleOverlayV2
 
         private Control BuildCarPanel()
         {
-            var section = new Panel { Dock = DockStyle.Top, Height = 187 };
+            const int rowHeight = 27;
+            var section = new Panel { Dock = DockStyle.Top, Height = 32 + 6 * rowHeight };
             var fields = new TableLayoutPanel
             {
                 Dock = DockStyle.Bottom,
-                Height = 155,
+                Height = 6 * rowHeight,
                 ColumnCount = 2,
-                RowCount = 5,
+                RowCount = 6,
             };
             fields.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 215));
             fields.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110));
+            for (int i = 0; i < 6; i++)
+                fields.RowStyles.Add(new RowStyle(SizeType.Absolute, rowHeight));
 
-            ConfigureNumericInput(_frontTyreDiameter);
-            _frontTyreDiameter.Minimum = 0.1M;
-            _frontTyreDiameter.Maximum = 1000;
-            _frontTyreDiameter.DecimalPlaces = 1;
-            _frontTyreDiameter.Increment = 0.5M;
-
+            ConfigureCarTextBox(_frontTyreDiameter);
             ConfigureCarTextBox(_rearWheelDiameter);
             ConfigureCarTextBox(_pinionTeeth);
             ConfigureCarTextBox(_spurTeeth);
@@ -143,6 +142,13 @@ namespace CastleOverlayV2
             AddCarRow(fields, 2, "Pinion (teeth)", _pinionTeeth);
             AddCarRow(fields, 3, "Spur (teeth)", _spurTeeth);
             AddCarRow(fields, 4, "Transmission ratio", _transmissionRatio);
+
+            // FDR = (spur / pinion) x transmission ratio, worked out as the user types.
+            _finalDriveRatio.TextAlign = ContentAlignment.MiddleRight;
+            _finalDriveRatio.ForeColor = TextPrimary;
+            AddCarRow(fields, 5, "FDR", _finalDriveRatio);
+            foreach (var box in new[] { _pinionTeeth, _spurTeeth, _transmissionRatio })
+                box.TextChanged += (_, _) => UpdateFinalDriveRatio();
 
             section.Controls.Add(fields);
             section.Controls.Add(MakeSectionLabel("Car"));
@@ -164,12 +170,24 @@ namespace CastleOverlayV2
             panel.Controls.Add(input, 1, row);
         }
 
-        private static void ConfigureNumericInput(NumericUpDown input)
+        private void UpdateFinalDriveRatio()
         {
-            input.BackColor = SurfaceInput;
-            input.ForeColor = TextPrimary;
-            input.BorderStyle = BorderStyle.FixedSingle;
-            input.TextAlign = HorizontalAlignment.Right;
+            double? fdr = FinalDriveRatio(_pinionTeeth.Text, _spurTeeth.Text, _transmissionRatio.Text);
+            _finalDriveRatio.Text = fdr?.ToString("0.00", CultureInfo.InvariantCulture) ?? "—";
+        }
+
+        /// <summary>(spur / pinion) x transmission ratio; a blank ratio counts as 1.0. Null until pinion and spur are set.</summary>
+        public static double? FinalDriveRatio(string pinionText, string spurText, string ratioText)
+        {
+            if (!int.TryParse(pinionText.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int pinion) || pinion <= 0 ||
+                !int.TryParse(spurText.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int spur) || spur <= 0)
+                return null;
+            double ratio = 1.0;
+            if (!string.IsNullOrWhiteSpace(ratioText) &&
+                (!double.TryParse(ratioText.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out ratio) ||
+                 !double.IsFinite(ratio) || ratio <= 0))
+                return null;
+            return (double)spur / pinion * ratio;
         }
 
         private static void ConfigureCarTextBox(TextBox input)
@@ -306,30 +324,36 @@ namespace CastleOverlayV2
             double tyreDiameter = double.IsFinite(c.FrontTyreDiameterMm) && c.FrontTyreDiameterMm > 0
                 ? c.FrontTyreDiameterMm
                 : MiniLoggerLoader.DefaultTyreDiameterMm;
-            _frontTyreDiameter.Value = Math.Clamp((decimal)tyreDiameter,
-                _frontTyreDiameter.Minimum, _frontTyreDiameter.Maximum);
+            _frontTyreDiameter.Text = FormatNullable(tyreDiameter);
             _rearWheelDiameter.Text = FormatNullable(c.RearWheelDiameterMm);
             _pinionTeeth.Text = c.PinionTeeth?.ToString(CultureInfo.InvariantCulture) ?? "";
             _spurTeeth.Text = c.SpurTeeth?.ToString(CultureInfo.InvariantCulture) ?? "";
             _transmissionRatio.Text = FormatNullable(c.TransmissionRatio);
+            UpdateFinalDriveRatio();
             _smoothingEnabled.Checked = c.VoltageSmoothingEnabled;
             _smoothingWindow.Value = Math.Max(3, Math.Min(15, c.VoltageSmoothingWindow | 1));
         }
 
         private bool SaveToConfig()
         {
-            if (!TryParsePositiveDouble(_rearWheelDiameter.Text, "Rear wheel diameter", out double? rearDiameter) ||
+            if (!TryParsePositiveDouble(_frontTyreDiameter.Text, "Front wheel diameter", out double? frontDiameter) ||
+                !TryParsePositiveDouble(_rearWheelDiameter.Text, "Rear wheel diameter", out double? rearDiameter) ||
                 !TryParsePositiveInt(_pinionTeeth.Text, "Pinion teeth", out int? pinion) ||
                 !TryParsePositiveInt(_spurTeeth.Text, "Spur teeth", out int? spur) ||
                 !TryParsePositiveDouble(_transmissionRatio.Text, "Transmission ratio", out double? ratio))
                 return false;
+            if (frontDiameter is null)
+            {
+                ShowValidationError("Front wheel diameter must be a positive number.");
+                return false;
+            }
 
             var c = _configService.Config;
             c.CastleLogDirectory = _castleDir.Text.Trim();
             c.RaceBoxLogDirectory = _raceboxDir.Text.Trim();
             c.TuneDirectory = _tuneDir.Text.Trim();
             c.DataLogDirectory = _dataLogDir.Text.Trim();
-            c.FrontTyreDiameterMm = (double)_frontTyreDiameter.Value;
+            c.FrontTyreDiameterMm = frontDiameter.Value;
             c.RearWheelDiameterMm = rearDiameter;
             c.PinionTeeth = pinion;
             c.SpurTeeth = spur;
