@@ -26,7 +26,7 @@ public sealed class PlotManagerPaneTests
     }
 
     [Fact]
-    public void Every_populated_pane_renders_one_focused_y_scale()
+    public void No_pane_shows_a_side_scale()
     {
         using var firstPlot = new FormsPlot();
         var manager = new PlotManager(firstPlot);
@@ -36,17 +36,17 @@ public sealed class PlotManagerPaneTests
 
         FormsPlot[] plots = Descendants(manager.ChartHost).OfType<FormsPlot>().ToArray();
         Assert.Equal(3, plots.Length);
-        Assert.All(plots, plot =>
+        foreach (string channel in new[] { "RPM", "Voltage", "RaceBox Speed", MiniLoggerLoader.SlipChannel })
         {
-            int visibleScales = plot.Plot.Axes.GetAxes(ScottPlot.Edge.Left)
-                .Concat(plot.Plot.Axes.GetAxes(ScottPlot.Edge.Right))
-                .Count(axis => axis.Label.IsVisible && axis.TickLabelStyle.IsVisible);
-            Assert.Equal(1, visibleScales);
-        });
+            manager.SetFocusedChannel(channel);
+            Assert.All(plots, plot => Assert.DoesNotContain(
+                plot.Plot.Axes.GetAxes(ScottPlot.Edge.Left).Concat(plot.Plot.Axes.GetAxes(ScottPlot.Edge.Right)),
+                axis => axis.IsVisible || axis.Label.IsVisible || axis.TickLabelStyle.IsVisible));
+        }
     }
 
     [Fact]
-    public void Every_focused_channel_axis_is_inside_the_figure_without_moving_other_traces()
+    public void Focusing_a_channel_does_not_move_other_traces()
     {
         using var firstPlot = new FormsPlot();
         var manager = new PlotManager(firstPlot);
@@ -54,43 +54,6 @@ public sealed class PlotManagerPaneTests
         manager.PlotRuns(new Dictionary<int, RunData>(manager.Runs));
 
         FormsPlot plotControl = Assert.Single(Descendants(manager.ChartHost).OfType<FormsPlot>());
-        string[] channels =
-        {
-            "RPM", "Throttle %", "Voltage", "Current", "Ripple", "PowerOut",
-            "ESC Temp", "MotorTemp", "MotorTiming", "Acceleration",
-            "RaceBox Speed", "RaceBox Distance", "RaceBox G-Force X",
-            MiniLoggerLoader.ThrottleChannel, MiniLoggerLoader.RpmChannel,
-            MiniLoggerLoader.WheelSpeedChannel, MiniLoggerLoader.RearSpeedChannel,
-            MiniLoggerLoader.SlipChannel
-        };
-
-        foreach (string channel in channels)
-        {
-            manager.SetFocusedChannel(channel);
-            plotControl.Plot.RenderInMemory(1400, 400);
-
-            ScottPlot.IAxis[] sideAxes = plotControl.Plot.Axes.GetAxes(ScottPlot.Edge.Left)
-                .Concat(plotControl.Plot.Axes.GetAxes(ScottPlot.Edge.Right))
-                .ToArray();
-            ScottPlot.IAxis focusedAxis = Assert.Single(sideAxes,
-                axis => axis.IsVisible && axis.Label.IsVisible && axis.TickLabelStyle.IsVisible);
-
-            ScottPlot.Layout layout = plotControl.Plot.LastRender.Layout;
-            ScottPlot.PixelRect panelRect = focusedAxis.GetPanelRect(
-                layout.DataRect,
-                layout.PanelSizes[focusedAxis],
-                layout.PanelOffsets[focusedAxis]);
-
-            Assert.InRange(panelRect.Left, layout.FigureRect.Left, layout.FigureRect.Right);
-            Assert.InRange(panelRect.Right, layout.FigureRect.Left, layout.FigureRect.Right);
-            Assert.InRange(panelRect.Top, layout.FigureRect.Top, layout.FigureRect.Bottom);
-            Assert.InRange(panelRect.Bottom, layout.FigureRect.Top, layout.FigureRect.Bottom);
-            if (focusedAxis.Edge == ScottPlot.Edge.Left)
-                Assert.Equal(layout.DataRect.Left, panelRect.Right, 3);
-            else
-                Assert.Equal(layout.DataRect.Right, panelRect.Left, 3);
-        }
-
         Scatter voltage = Assert.Single(plotControl.Plot.GetPlottables<Scatter>(),
             scatter => scatter.LegendText == "Voltage");
         manager.SetFocusedChannel("Voltage");
