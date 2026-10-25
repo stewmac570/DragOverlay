@@ -80,6 +80,8 @@ namespace CastleOverlayV2.Plot
             PlotControl.Plot.Grid.MinorLineWidth = 1;
         }
 
+        private const float SidePadding = 24;
+
         public FormsPlot PlotControl { get; }
         public bool HasScatters => _scatters.Count > 0;
         public bool HasCursor => _cursor is not null;
@@ -375,21 +377,12 @@ namespace CastleOverlayV2.Plot
             _ => _throttleAxis!,
         };
 
+        // Side scales are never shown (Stewart: "i dont want any scale"); values come from the
+        // cursor box and the channel list. The axes still exist for their locks and line sizes.
         public void ApplyFocusToAxes(string focusedChannel, Func<string, ScottPlot.Color> getTraceColor)
         {
             foreach (IAxis? axis in KnownAxes())
                 if (axis is not null) HideAxis(axis);
-
-            IAxis? focusAxis = AxisFor(focusedChannel);
-            if (focusAxis is null || !DrawsChannel(focusedChannel)) return;
-
-            focusAxis.Label.IsVisible = true;
-            focusAxis.TickLabelStyle.IsVisible = true;
-            focusAxis.MajorTickStyle.Length = 5;
-            focusAxis.MinorTickStyle.Length = 3;
-            focusAxis.FrameLineStyle.Width = 1;
-            focusAxis.IsVisible = true;
-            ApplyDarkAxisStyle(focusAxis, getTraceColor(focusedChannel));
         }
 
         public void UpdateTraceColor(string channelName, ScottPlot.Color color)
@@ -567,8 +560,8 @@ namespace CastleOverlayV2.Plot
         {
             ApplyManualTimeTicks(runsBySlot, castleTimeShift);
             // Every pane uses identical margins so linked time coordinates line up vertically.
-            // The wider sides also leave room for six-digit RPM ticks and the focused-axis label.
-            PixelPadding padding = new(left: 80, right: 80, top: 0, bottom: 50);
+            // No side scales are drawn, so the sides only leave room for the end time labels.
+            PixelPadding padding = new(left: SidePadding, right: SidePadding, top: 0, bottom: 50);
             PlotControl.Plot.Layout.Fixed(padding);
             PlotControl.Plot.Legend.IsVisible = false;
 
@@ -750,7 +743,7 @@ namespace CastleOverlayV2.Plot
             message.LabelFontSize = 18;
             message.LabelFontColor = ThemeTextDim;
 
-            PixelPadding padding = new(left: 80, right: 80, top: 10, bottom: 50);
+            PixelPadding padding = new(left: SidePadding, right: SidePadding, top: 10, bottom: 50);
             PlotControl.Plot.Layout.Fixed(padding);
             PlotControl.Plot.Legend.IsVisible = false;
             ReapplyAxisLocks(scales, isFourPoleMode, channelBands);
