@@ -1082,9 +1082,11 @@ namespace CastleOverlayV2
 
             _tunePanel.SetRuns(columns);
             _tcPanel?.SetRuns(_runs
-                .Where(kvp => RunSlots.IsDataLog(kvp.Key) && kvp.Value.IsMiniLogger)
+                .Where(kvp =>
+                    (RunSlots.IsCastle(kvp.Key) && !kvp.Value.HasChannelData) ||
+                    (RunSlots.IsDataLog(kvp.Key) && kvp.Value.IsMiniLogger))
                 .OrderBy(kvp => kvp.Key)
-                .Select(kvp => new TcSourceRun(RunSlots.ButtonNumber(kvp.Key), kvp.Value)));
+                .Select(kvp => new TcSourceRun(kvp.Key, kvp.Value)));
             RefreshProjectButtonsState();
         }
 

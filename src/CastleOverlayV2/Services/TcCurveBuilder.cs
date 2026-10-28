@@ -13,7 +13,8 @@ public enum TcLaunchSource
 {
     TcState,
     LoggerStatus,
-    FirmwareDefaults
+    FirmwareDefaults,
+    CastleRunDefaults
 }
 
 public sealed record TcLaunchResult(
@@ -31,6 +32,9 @@ public sealed record TcLaunchResult(
         TcLaunchSource.LoggerStatus => string.Create(CultureInfo.InvariantCulture,
             $"Time zero: {LaunchUs:0} µs from this session's logger status " +
             $"(neutral {NeutralUs:0}, full {FullUs:0}, launch {LaunchPercent:0.##}%)."),
+        TcLaunchSource.CastleRunDefaults => string.Create(CultureInfo.InvariantCulture,
+            $"Time zero: {LaunchUs:0} µs using Castle run defaults " +
+            $"(median rest {NeutralUs:0}, full rest + 400, launch 20%)."),
         _ => string.Create(CultureInfo.InvariantCulture,
             $"Time zero: {LaunchUs:0} µs using firmware defaults " +
             $"(run rest {NeutralUs:0}, full rest + 400, launch 20%).")
@@ -54,6 +58,9 @@ public static class TcCurveBuilder
     public static TcLaunchResult FindLaunch(RunData run, TcLoggerStatus? loggerStatus = null)
     {
         ArgumentNullException.ThrowIfNull(run);
+        if (!run.IsMiniLogger && !run.HasChannelData && run.DataPoints.Count > 0)
+            return FindCastleLaunch(run.DataPoints, loggerStatus);
+
         IReadOnlyList<MiniLoggerSample> samples = run.MiniLoggerSamples;
         if (!run.IsMiniLogger || samples.Count == 0)
             throw new ArgumentException("The selected run is not a loaded Mini Logger run.", nameof(run));
@@ -124,12 +131,16 @@ public static class TcCurveBuilder
         double margin,
         TcMarginUnit marginUnit,
         double curveEndSeconds,
-        TcLoggerStatus? loggerStatus = null)
+        TcLoggerStatus? loggerStatus = null,
+        bool isFourPoleMode = false)
     {
         if (!double.IsFinite(margin) || margin < 0)
             throw new ArgumentOutOfRangeException(nameof(margin), "Margin must be zero or greater.");
         if (!double.IsFinite(curveEndSeconds) || curveEndSeconds <= 0)
             throw new ArgumentOutOfRangeException(nameof(curveEndSeconds), "Curve end must be greater than zero.");
+
+        if (!run.IsMiniLogger && !run.HasChannelData && run.DataPoints.Count > 0)
+            return BuildCastle(run, margin, marginUnit, curveEndSeconds, loggerStatus, isFourPoleMode);
 
         TcLaunchResult launch = FindLaunch(run, loggerStatus);
         int endMs = checked((int)Math.Round(curveEndSeconds * 1000.0, MidpointRounding.AwayFromZero));
@@ -180,6 +191,167 @@ public static class TcCurveBuilder
 
         Validate(points);
         return new TcCurveBuildResult(launch, trace, points);
+    }
+
+    private static TcLaunchResult FindCastleLaunch(
+        IReadOnlyList<DataPoint> samples,
+        TcLoggerStatus? loggerStatus)
+    {
+        double neutralUs;
+        double fullUs;
+        double launchPercent;
+        TcLaunchSource source;
+        if (loggerStatus is { IsTcLogger: true, NeutralUs: > 0, FullUs: > 0 } &&
+            loggerStatus.Settings.TryGetValue("launchPct", out double statusLaunchPercent))
+        {
+            neutralUs = loggerStatus.NeutralUs;
+            fullUs = loggerStatus.FullUs;
+            launchPercent = statusLaunchPercent;
+            source = TcLaunchSource.LoggerStatus;
+        }
+        else
+        {
+            // Loaded Castle drag runs are re-zeroed at their detected launch, so negative-time
+            // samples are the cleanest available rest-throttle window. Untrimmed runs can use
+            // the loader's calibrated neutral percentage, with the initial stable signal as a
+            // final fallback for older or hand-built RunData.
+            List<double> rest = samples
+                .Where(sample => sample.Time < 0 && sample.Throttle > 0)
+                .Select(sample => sample.Throttle * 1000.0)
+                .OrderBy(value => value)
+                .ToList();
+            if (rest.Count == 0)
+            {
+                bool hasCalibratedPercent = samples.Any(sample => Math.Abs(sample.ThrottlePercent) > 0.001);
+                if (hasCalibratedPercent)
+                {
+                    rest = samples
+                        .Where(sample => sample.Throttle > 0 && Math.Abs(sample.ThrottlePercent) <= 5.0)
+                        .Select(sample => sample.Throttle * 1000.0)
+                        .OrderBy(value => value)
+                        .ToList();
+                }
+            }
+            if (rest.Count == 0)
+            {
+                DataPoint? firstSignal = samples.FirstOrDefault(sample => sample.Throttle > 0);
+                if (firstSignal is not null)
+                {
+                    const double RestToleranceMs = 0.04;
+                    rest = samples.SkipWhile(sample => sample.Throttle <= 0)
+                        .TakeWhile(sample => Math.Abs(sample.Throttle - firstSignal.Throttle) <= RestToleranceMs)
+                        .Select(sample => sample.Throttle * 1000.0)
+                        .OrderBy(value => value)
+                        .ToList();
+                }
+            }
+            if (rest.Count == 0)
+                throw new InvalidOperationException("The selected Castle run has no throttle signal.");
+
+            neutralUs = Median(rest);
+            fullUs = neutralUs + DefaultTravelUs;
+            launchPercent = DefaultLaunchPercent;
+            source = TcLaunchSource.CastleRunDefaults;
+        }
+
+        double launchUs = neutralUs + (fullUs - neutralUs) * launchPercent / 100.0;
+        DataPoint? launch = samples.FirstOrDefault(sample =>
+            sample.Throttle > 0 && sample.Throttle * 1000.0 >= launchUs);
+        if (launch is null)
+            throw new InvalidOperationException(string.Create(CultureInfo.InvariantCulture,
+                $"The selected Castle run never crossed the logger launch threshold ({launchUs:0} µs)."));
+
+        return new TcLaunchResult(launch.Time, source, neutralUs, fullUs, launchPercent);
+    }
+
+    private static TcCurveBuildResult BuildCastle(
+        RunData run,
+        double margin,
+        TcMarginUnit marginUnit,
+        double curveEndSeconds,
+        TcLoggerStatus? loggerStatus,
+        bool isFourPoleMode)
+    {
+        IReadOnlyList<DataPoint> samples = run.DataPoints;
+        TcLaunchResult launch = FindCastleLaunch(samples, loggerStatus);
+        int endMs = checked((int)Math.Round(curveEndSeconds * 1000.0, MidpointRounding.AwayFromZero));
+        if (endMs < 1)
+            throw new ArgumentOutOfRangeException(nameof(curveEndSeconds), "Curve end must be at least 1 ms.");
+
+        double endTime = launch.TimeSeconds + endMs / 1000.0;
+        if (endTime > samples[^1].Time)
+            throw new InvalidOperationException("The curve end is beyond the selected run.");
+
+        double Rpm(DataPoint sample) => isFourPoleMode ? sample.Speed * 0.5 : sample.Speed;
+        double Interpolate(double time) => InterpolateCastleRpm(samples, time, isFourPoleMode);
+        var trace = new List<TcRpmSample> { new(0, Interpolate(launch.TimeSeconds)) };
+        trace.AddRange(samples
+            .Where(sample => sample.Time > launch.TimeSeconds && sample.Time < endTime)
+            .Select(sample => new TcRpmSample(sample.Time - launch.TimeSeconds, Rpm(sample))));
+        trace.Add(new TcRpmSample(endMs / 1000.0, Interpolate(endTime)));
+
+        List<TcCurvePoint> points = BuildFirmwarePoints(trace, margin, marginUnit, endMs);
+        return new TcCurveBuildResult(launch, trace, points);
+    }
+
+    private static List<TcCurvePoint> BuildFirmwarePoints(
+        IReadOnlyList<TcRpmSample> trace,
+        double margin,
+        TcMarginUnit marginUnit,
+        int endMs)
+    {
+        int ApplyMargin(double rpm)
+        {
+            double withMargin = marginUnit == TcMarginUnit.Percent
+                ? rpm * (1.0 + margin / 100.0)
+                : rpm + margin;
+            if (!double.IsFinite(withMargin) || withMargin > int.MaxValue)
+                throw new InvalidOperationException("The requested margin produces an RPM outside the supported range.");
+            return Math.Max(1, (int)Math.Round(withMargin, MidpointRounding.AwayFromZero));
+        }
+
+        var byMillisecond = new SortedDictionary<int, int>();
+        foreach (TcRpmSample sample in trace)
+        {
+            int timeMs = Math.Clamp(
+                (int)Math.Round(sample.TimeSeconds * 1000.0, MidpointRounding.AwayFromZero), 0, endMs);
+            int rpm = ApplyMargin(sample.Rpm);
+            if (!byMillisecond.TryGetValue(timeMs, out int existing) || rpm > existing)
+                byMillisecond[timeMs] = rpm;
+        }
+
+        var points = byMillisecond.Select(pair => new TcCurvePoint(pair.Key, pair.Value)).ToList();
+        if (points.Count > MaximumPoints)
+            points = LargestTriangleThreeBuckets(points, MaximumPoints);
+        Validate(points);
+        return points;
+    }
+
+    private static double InterpolateCastleRpm(
+        IReadOnlyList<DataPoint> samples,
+        double time,
+        bool isFourPoleMode)
+    {
+        double Rpm(DataPoint sample) => isFourPoleMode ? sample.Speed * 0.5 : sample.Speed;
+        if (time <= samples[0].Time) return Rpm(samples[0]);
+        if (time >= samples[^1].Time) return Rpm(samples[^1]);
+
+        int high = 1;
+        while (high < samples.Count && samples[high].Time < time) high++;
+        DataPoint before = samples[high - 1];
+        DataPoint after = samples[high];
+        double span = after.Time - before.Time;
+        if (span <= 0) return Rpm(after);
+        double fraction = (time - before.Time) / span;
+        return Rpm(before) + (Rpm(after) - Rpm(before)) * fraction;
+    }
+
+    private static double Median(IReadOnlyList<double> sortedValues)
+    {
+        int middle = sortedValues.Count / 2;
+        return sortedValues.Count % 2 == 0
+            ? (sortedValues[middle - 1] + sortedValues[middle]) / 2.0
+            : sortedValues[middle];
     }
 
     public static void Validate(IReadOnlyList<TcCurvePoint> points)
