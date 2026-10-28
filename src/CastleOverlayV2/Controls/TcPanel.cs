@@ -9,6 +9,8 @@ public sealed record TcSourceRun(int Slot, RunData Run)
 {
     public override string ToString()
     {
+        // Negative slots are files opened from the TC tab's own Load log button.
+        if (Slot < 0) return $"File — {Run.FileName}";
         string kind = RunSlots.IsCastle(Slot) ? "Castle" : "Data Log";
         return $"{kind} {RunSlots.ButtonNumber(Slot)} — {Run.FileName}";
     }
@@ -28,6 +30,10 @@ public sealed class TcPanel : UserControl
     private readonly ConfigService _config;
     private readonly Func<IMiniLoggerUsbClient> _usbFactory;
     private readonly ComboBox _source = new();
+    private readonly Button _loadLog;
+    private readonly List<TcSourceRun> _logRuns = new();
+    private readonly List<TcSourceRun> _fileRuns = new();
+    private int _nextFileSlot = -1;
     private readonly TextBox _margin = new();
     private readonly ComboBox _marginUnit = new();
     private readonly TextBox _curveEnd = new();
@@ -69,6 +75,10 @@ public sealed class TcPanel : UserControl
             Padding = new Padding(12, 10, 12, 8)
         };
         top.Controls.Add(Field("Source run", _source, 250));
+        _loadLog = MakeButton("Load log…", accent: false, 90);
+        _loadLog.Margin = new Padding(4, 20, 12, 0);
+        _loadLog.Click += (_, _) => LoadLogFromFile();
+        top.Controls.Add(_loadLog);
         top.Controls.Add(Field("Margin", _margin, 90));
         top.Controls.Add(Field("Unit", _marginUnit, 74));
         top.Controls.Add(Field("Curve end (s)", _curveEnd, 95));
@@ -92,7 +102,7 @@ public sealed class TcPanel : UserControl
         _launchInfo.Height = 48;
         _launchInfo.Padding = new Padding(4, 8, 4, 0);
         _launchInfo.ForeColor = TextSecond;
-        _launchInfo.Text = "Load a Castle or data log on the Logs page, then choose it here.";
+        _launchInfo.Text = "Click Load log… to open a Castle or data log, or load one on the Logs page.";
 
         ConfigureChart();
         ConfigureGrid();
@@ -178,11 +188,19 @@ public sealed class TcPanel : UserControl
         UpdateEnabledState();
     }
 
+    /// <summary>Runs loaded on the Logs page. Files opened with Load log stay in the list too.</summary>
     public void SetRuns(IEnumerable<TcSourceRun> runs)
     {
+        _logRuns.Clear();
+        _logRuns.AddRange(runs);
+        RefreshSources(selectSlot: null);
+    }
+
+    private void RefreshSources(int? selectSlot)
+    {
         TcSourceRun? previous = _source.SelectedItem as TcSourceRun;
-        int selectedSlot = previous?.Slot ?? -1;
-        var items = runs.OrderBy(item => item.Slot).ToList();
+        int selectedSlot = selectSlot ?? previous?.Slot ?? int.MinValue;
+        var items = _fileRuns.Concat(_logRuns.OrderBy(item => item.Slot)).ToList();
         _updatingSources = true;
         _source.BeginUpdate();
         _source.Items.Clear();
@@ -199,10 +217,56 @@ public sealed class TcPanel : UserControl
             _rpmTrace = Array.Empty<TcRpmSample>();
             SetCurvePoints(Array.Empty<TcCurvePoint>());
             _launchInfo.Text = current is null
-                ? "Load a Castle or data log on the Logs page, then choose it here."
+                ? "Click Load log… to open a Castle or data log, or load one on the Logs page."
                 : "Enter a margin and curve end, then make the curve.";
         }
         UpdateEnabledState();
+    }
+
+    /// <summary>Opens a Castle or Mini Logger CSV straight into the source list (not into a Logs slot).</summary>
+    private void LoadLogFromFile()
+    {
+        string folder = _config.Config.CastleLogDirectory ?? "";
+        using var ofd = new OpenFileDialog
+        {
+            Title = "Open a Castle or data log to build the curve from",
+            Filter = "CSV files (*.csv)|*.csv|All files (*.*)|*.*",
+            InitialDirectory = Directory.Exists(folder) ? folder : ""
+        };
+        if (ofd.ShowDialog(this) == DialogResult.OK)
+            AddLogFile(ofd.FileName);
+    }
+
+    private void AddLogFile(string path)
+    {
+        LoadResult<RunData> result;
+        try
+        {
+            Cursor = Cursors.WaitCursor;
+            result = MiniLoggerLoader.IsMiniLoggerCsv(path)
+                ? MiniLoggerLoader.Load(path, keepFullLog: true)
+                : new CsvLoader(_config).Load(path, trimForDrag: true, keepFullLog: true);
+        }
+        catch (Exception ex)
+        {
+            result = LoadResult<RunData>.Error("Load log", ex.Message);
+        }
+        finally
+        {
+            Cursor = Cursors.Default;
+        }
+
+        if (!result.Ok || result.Value is null)
+        {
+            MessageBox.Show(this, result.Message ?? "The log could not be loaded.", result.Title ?? "Load log",
+                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        var item = new TcSourceRun(_nextFileSlot--, result.Value);
+        _fileRuns.Insert(0, item);
+        RefreshSources(item.Slot);
+        _status.Text = $"Loaded {result.Value.FileName}. Enter a margin and curve end, then Make curve.";
     }
 
     private void SourceChanged()
@@ -212,7 +276,7 @@ public sealed class TcPanel : UserControl
         SetCurvePoints(Array.Empty<TcCurvePoint>());
         _launchInfo.Text = _source.SelectedItem is TcSourceRun
             ? "Enter a margin and curve end, then make the curve."
-            : "Load a Castle or data log on the Logs page, then choose it here.";
+            : "Click Load log… to open a Castle or data log, or load one on the Logs page.";
         UpdateEnabledState();
     }
 
@@ -693,6 +757,7 @@ public sealed class TcPanel : UserControl
         _addPoint.Enabled = !_busy && _points.Rows.Count < TcCurveBuilder.MaximumPoints;
         _deletePoint.Enabled = !_busy && _points.SelectedRows.Count > 0;
         _source.Enabled = !_busy;
+        _loadLog.Enabled = !_busy;
         _margin.Enabled = !_busy;
         _marginUnit.Enabled = !_busy;
         _curveEnd.Enabled = !_busy;
