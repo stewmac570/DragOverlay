@@ -26,6 +26,7 @@ namespace CastleOverlayV2.Plot
 
         private readonly Dictionary<int, List<VerticalLine>> _splitLinesBySlot = new();
         private readonly Dictionary<int, List<Text>> _splitLabelsBySlot = new();
+        private readonly Dictionary<int, List<VerticalSpan>> _tcSpansBySlot = new();
         private IYAxis? _splitLabelAxis;
 
         private IYAxis? _throttleAxis;
@@ -43,6 +44,7 @@ namespace CastleOverlayV2.Plot
         private IYAxis? _raceBoxDistanceAxis;
         private IYAxis? _wheelRevsAxis;
         private IYAxis? _slipAxis;
+        private IYAxis? _tcStateAxis;
         private double _miniLoggerMphPerRevPerSec =
             MiniLoggerLoader.MphPerRevPerSec(MiniLoggerLoader.DefaultTyreDiameterMm);
 
@@ -108,6 +110,7 @@ namespace CastleOverlayV2.Plot
             _channelToScattersCache = null;
             PlotControl.Plot.Axes.Rules.Clear();
             _splitLabelAxis = null;
+            _tcSpansBySlot.Clear();
 
             _cursor = PlotControl.Plot.Add.VerticalLine(0);
             _cursor.LinePattern = LinePattern.Dashed;
@@ -229,6 +232,13 @@ namespace CastleOverlayV2.Plot
                 HideAxis(_slipAxis);
             }
 
+            if (_tcStateAxis is null)
+            {
+                _tcStateAxis = PlotControl.Plot.Axes.AddRightAxis();
+                _tcStateAxis.Label.Text = "TC State";
+                HideAxis(_tcStateAxis);
+            }
+
             ApplyFocusToAxes(focusedChannel, getTraceColor);
         }
 
@@ -312,6 +322,7 @@ namespace CastleOverlayV2.Plot
             if (!run.IsMiniLogger) return;
 
             double shiftSec = run.TimeShiftMs / 1000.0;
+            bool drawsLoggerData = run.Data.Keys.Any(DrawsChannel);
             foreach (string channel in run.Data.Keys)
             {
                 if (!DrawsChannel(channel)) continue;
@@ -321,6 +332,56 @@ namespace CastleOverlayV2.Plot
                 double[] ys = points.Select(p => p.Y).ToArray();
                 AddScatter(slot, channel, xs, ys, getTraceColor, widthFor,
                     channelVisibility, runVisibility);
+            }
+
+            if (drawsLoggerData)
+                AddTcSpans(slot, run, shiftSec, runVisibility);
+        }
+
+        private void AddTcSpans(
+            int slot,
+            RunData run,
+            double shiftSec,
+            IReadOnlyDictionary<int, bool> runVisibility)
+        {
+            if (!run.MiniLoggerSamples.Any(sample => sample.TcState.HasValue)) return;
+
+            bool visible = !runVisibility.TryGetValue(slot, out bool runOn) || runOn;
+            var spans = new List<VerticalSpan>();
+            AddRanges(sample => sample.TcState == 2, new ScottPlot.Color(0x55, 0xB8, 0x73, 30));
+            AddRanges(sample => sample.TcState == 2 && sample.ThrottleOutMs.HasValue &&
+                                sample.ThrottleOutMs.Value < sample.ThrottleMs,
+                new ScottPlot.Color(0xFF, 0x65, 0x57, 75));
+            _tcSpansBySlot[slot] = spans;
+
+            void AddRanges(Func<MiniLoggerSample, bool> predicate, ScottPlot.Color color)
+            {
+                int start = -1;
+                for (int i = 0; i <= run.MiniLoggerSamples.Count; i++)
+                {
+                    bool inRange = i < run.MiniLoggerSamples.Count && predicate(run.MiniLoggerSamples[i]);
+                    if (inRange && start < 0)
+                    {
+                        start = i;
+                        continue;
+                    }
+                    if (inRange || start < 0) continue;
+
+                    int end = i - 1;
+                    double left = run.MiniLoggerSamples[start].LogsPageTimeSeconds + shiftSec;
+                    double right = i < run.MiniLoggerSamples.Count
+                        ? run.MiniLoggerSamples[i].LogsPageTimeSeconds + shiftSec
+                        : run.MiniLoggerSamples[end].LogsPageTimeSeconds + shiftSec;
+                    if (right > left)
+                    {
+                        var span = PlotControl.Plot.Add.VerticalSpan(left, right, color);
+                        span.LineWidth = 0;
+                        span.EnableAutoscale = false;
+                        span.IsVisible = visible;
+                        spans.Add(span);
+                    }
+                    start = -1;
+                }
             }
         }
 
@@ -369,6 +430,8 @@ namespace CastleOverlayV2.Plot
             "RaceBox Distance" => _raceBoxDistanceAxis!,
             "RaceBox G-Force X" => _raceBoxGxAxis!,
             MiniLoggerLoader.ThrottleChannel => _throttleAxis!,
+            MiniLoggerLoader.ThrottleOutChannel => _throttleAxis!,
+            MiniLoggerLoader.TcStateChannel => _tcStateAxis!,
             MiniLoggerLoader.RpmChannel => _rpmAxis!,
             MiniLoggerLoader.WheelSpeedChannel => _raceBoxSpeedAxis!,
             MiniLoggerLoader.RearSpeedChannel => _raceBoxSpeedAxis!,
@@ -420,6 +483,7 @@ namespace CastleOverlayV2.Plot
             }
 
             SetSplitVisibility(slot, isVisible);
+            SetTcSpanVisibility(slot, isVisible);
         }
 
         public void SetChannelVisibility(string channelName, bool isVisible, IReadOnlyDictionary<int, bool> runVisibility)
@@ -454,6 +518,20 @@ namespace CastleOverlayV2.Plot
 
             RemovePreviousSplitLines(slot);
             RemovePreviousSplitLabels(slot);
+            RemoveTcSpans(slot);
+        }
+
+        private void SetTcSpanVisibility(int slot, bool visible)
+        {
+            if (_tcSpansBySlot.TryGetValue(slot, out var spans))
+                foreach (var span in spans) span.IsVisible = visible;
+        }
+
+        private void RemoveTcSpans(int slot)
+        {
+            if (!_tcSpansBySlot.TryGetValue(slot, out var spans)) return;
+            foreach (var span in spans) PlotControl.Plot.Remove(span);
+            _tcSpansBySlot.Remove(slot);
         }
 
         public void AddRaceBoxSplitLines(int slot, List<double>? splitTimes, List<string>? splitLabels, bool includeZero)
@@ -643,6 +721,7 @@ namespace CastleOverlayV2.Plot
             AddLock(_raceBoxDistanceAxis, 0, 1000, channelBands);
             AddLock(_wheelRevsAxis, 0, 110 / _miniLoggerMphPerRevPerSec, channelBands);
             AddLock(_slipAxis, -20, 100, channelBands);
+            AddLock(_tcStateAxis, -0.5, 4.5, channelBands);
             if (_splitLabelAxis is not null)
                 PlotControl.Plot.Axes.Rules.Add(new LockedVertical(_splitLabelAxis, 0.0, 1.0));
 
@@ -766,6 +845,8 @@ namespace CastleOverlayV2.Plot
             "RaceBox Distance" => _raceBoxDistanceAxis,
             "RaceBox G-Force X" => _raceBoxGxAxis,
             MiniLoggerLoader.ThrottleChannel => _throttleAxis,
+            MiniLoggerLoader.ThrottleOutChannel => _throttleAxis,
+            MiniLoggerLoader.TcStateChannel => _tcStateAxis,
             MiniLoggerLoader.RpmChannel => _rpmAxis,
             MiniLoggerLoader.WheelSpeedChannel => _raceBoxSpeedAxis,
             MiniLoggerLoader.RearSpeedChannel => _raceBoxSpeedAxis,
@@ -791,6 +872,7 @@ namespace CastleOverlayV2.Plot
             yield return _raceBoxDistanceAxis;
             yield return _wheelRevsAxis;
             yield return _slipAxis;
+            yield return _tcStateAxis;
         }
 
         private static IEnumerable<(string Label, double[] Values)> GetCastleChannels(RunData run)

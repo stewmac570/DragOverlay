@@ -93,6 +93,22 @@ public sealed class MiniLoggerUsbTests : IDisposable
     }
 
     [Fact]
+    public void Dump_preserves_tc_header_and_extra_columns()
+    {
+        string header = MiniLoggerLoader.HeaderLine + ",Throttle Out (ms),TC State";
+        const string row = "0.001,1.900,15528,2.00,1.700,2";
+        var transport = ConnectedTransport("BEGIN run_0008.csv", header, row, "END");
+        using var client = Client(transport);
+        client.Connect();
+        string path = Path.Combine(_workDir, "run_0008.csv");
+
+        MiniLoggerDumpResult result = client.DumpRun(new MiniLoggerRunInfo(8, 1), path);
+
+        Assert.True(result.Found);
+        Assert.Equal(string.Join(Environment.NewLine, header, row, ""), File.ReadAllText(path));
+    }
+
+    [Fact]
     public void Dump_progress_is_throttled_for_long_runs()
     {
         // ~100,000 lines (~2.3 MB): reporting per line would post 100,000 UI updates.

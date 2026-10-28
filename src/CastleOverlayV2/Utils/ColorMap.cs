@@ -35,6 +35,8 @@ namespace CastleOverlayV2.Utils
             // Mini Logger channels — throttle and RPM share the Castle axes, so they need
             // hues that read apart from the Castle white throttle and rust RPM.
             { "Logger Throttle %", new ScottPlot.Color(0xFF, 0xE0, 0x66) },  // #FFE066  yellow
+            { "Logger Throttle Out %", new ScottPlot.Color(0x66, 0xE0, 0xFF) }, // #66E0FF cyan
+            { "Logger TC State", new ScottPlot.Color(0xD5, 0x8C, 0xFF) },       // #D58CFF violet
             { "Logger RPM", new ScottPlot.Color(0xF2, 0x9E, 0x86) },         // #F29E86  light rust
             { "Logger Wheel Speed", new ScottPlot.Color(0xFF, 0x8F, 0xB1) }, // #FF8FB1  pink
             { "Logger Rear Speed", new ScottPlot.Color(0x66, 0xCC, 0xFF) },  // #66CCFF  sky blue

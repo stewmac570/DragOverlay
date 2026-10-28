@@ -47,6 +47,11 @@ namespace CastleOverlayV2.Models
         /// <summary>Additional gearbox reduction. 1.0 means no gearbox.</summary>
         public double? TransmissionRatio { get; set; } = 1.0;
 
+        // ---- TC curve builder (blank/null until the user enters a value) ----
+        public double? TcCurveMargin { get; set; }
+        public bool? TcCurveMarginIsPercent { get; set; }
+        public double? TcCurveEndSeconds { get; set; }
+
         // Auto trim on: logs are cut to -0.5 s .. +2.5 s around the launch. Off: full logs.
         public bool AutoTrim { get; set; } = true;
 
