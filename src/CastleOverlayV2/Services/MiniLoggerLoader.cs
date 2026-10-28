@@ -21,6 +21,8 @@ namespace CastleOverlayV2.Services
 
         // Channel keys (also used by PlotManager, ChannelDrawer, ColorMap and the presenter).
         public const string ThrottleChannel = "Logger Throttle %";
+        public const string ThrottleOutChannel = "Logger Throttle Out %";
+        public const string TcStateChannel = "Logger TC State";
         public const string RpmChannel = "Logger RPM";
         public const string WheelSpeedChannel = "Logger Wheel Speed";
         public const string RearSpeedChannel = "Logger Rear Speed";
@@ -29,8 +31,8 @@ namespace CastleOverlayV2.Services
 
         public static readonly string[] Channels =
         {
-            ThrottleChannel, RpmChannel, WheelSpeedChannel, RearSpeedChannel, SlipChannel,
-            WheelRevsChannel
+            ThrottleChannel, ThrottleOutChannel, TcStateChannel, RpmChannel, WheelSpeedChannel,
+            RearSpeedChannel, SlipChannel, WheelRevsChannel
         };
 
         public const double DefaultTyreDiameterMm = 70.0;
@@ -84,8 +86,7 @@ namespace CastleOverlayV2.Services
                 string? first = reader.ReadLine()?.Trim().TrimStart('﻿');
                 if (first != null && first.StartsWith("BEGIN ", StringComparison.Ordinal))
                     first = reader.ReadLine()?.Trim();
-                return first != null &&
-                       first.Equals(HeaderLine, StringComparison.OrdinalIgnoreCase);
+                return first != null && IsHeaderLine(first);
             }
             catch (IOException)
             {
@@ -96,6 +97,10 @@ namespace CastleOverlayV2.Services
                 return false;
             }
         }
+
+        public static bool IsHeaderLine(string line) =>
+            line.Equals(HeaderLine, StringComparison.OrdinalIgnoreCase) ||
+            line.StartsWith(HeaderLine + ",", StringComparison.OrdinalIgnoreCase);
 
         public static LoadResult<RunData> Load(
             string filePath,
@@ -116,8 +121,26 @@ namespace CastleOverlayV2.Services
             var throttleMs = new List<double>();
             var rpm = new List<double>();
             var wheelRps = new List<double>();
+            var throttleOutMs = new List<double>();
+            var tcStates = new List<int>();
 
-            foreach (string line in File.ReadLines(filePath).Skip(1))
+            using var reader = new StreamReader(filePath);
+            string? headerLine = reader.ReadLine()?.Trim().TrimStart('﻿');
+            if (headerLine != null && headerLine.StartsWith("BEGIN ", StringComparison.Ordinal))
+                headerLine = reader.ReadLine()?.Trim().TrimStart('﻿');
+            if (headerLine is null || !IsHeaderLine(headerLine))
+                return LoadResult<RunData>.Error("Invalid File",
+                    "This file is not a Mini Logger run.\n\nExpected the header:\n" + HeaderLine);
+
+            string[] header = headerLine.Split(',');
+            int throttleOutIndex = Array.FindIndex(header,
+                name => name.Trim().Equals("Throttle Out (ms)", StringComparison.OrdinalIgnoreCase));
+            int tcStateIndex = Array.FindIndex(header,
+                name => name.Trim().Equals("TC State", StringComparison.OrdinalIgnoreCase));
+            bool hasTcColumns = throttleOutIndex >= 0 && tcStateIndex >= 0;
+
+            string? line;
+            while ((line = reader.ReadLine()) != null)
             {
                 string[] f = line.Split(',');
                 if (f.Length < 4) continue;
@@ -127,10 +150,25 @@ namespace CastleOverlayV2.Services
                     !double.TryParse(f[3], NumberStyles.Float, CultureInfo.InvariantCulture, out double w))
                     continue;
 
+                double outMs = 0;
+                int state = 0;
+                if (hasTcColumns &&
+                    (f.Length <= Math.Max(throttleOutIndex, tcStateIndex) ||
+                     !double.TryParse(f[throttleOutIndex], NumberStyles.Float,
+                         CultureInfo.InvariantCulture, out outMs) ||
+                     !int.TryParse(f[tcStateIndex], NumberStyles.Integer,
+                         CultureInfo.InvariantCulture, out state)))
+                    continue;
+
                 times.Add(t);
                 throttleMs.Add(thr);
                 rpm.Add(r);
                 wheelRps.Add(w);
+                if (hasTcColumns)
+                {
+                    throttleOutMs.Add(outMs);
+                    tcStates.Add(state);
+                }
             }
 
             Logger.Log($"[MiniLoggerLoader] Parsed {times.Count} rows");
@@ -154,6 +192,11 @@ namespace CastleOverlayV2.Services
             var throttlePct = throttleMs
                 .Select(v => v <= 0 ? 0.0 : Math.Clamp(100.0 * (v - restMs) / (peakMs - restMs), -100.0, 100.0))
                 .ToList();
+            var throttleOutPct = hasTcColumns
+                ? throttleOutMs.Select(v => v <= 0
+                    ? 0.0
+                    : Math.Clamp(100.0 * (v - restMs) / (peakMs - restMs), -100.0, 100.0)).ToList()
+                : new List<double>();
 
             double? launch = FindLaunchTime(times, throttlePct);
             if (launch == null)
@@ -176,6 +219,8 @@ namespace CastleOverlayV2.Services
             var rearMphPts = new List<DataPoint>();
             var slipPts = new List<DataPoint>();
             var rpsPts = new List<DataPoint>();
+            var throttleOutPts = new List<DataPoint>();
+            var tcStatePts = new List<DataPoint>();
             double effectiveTransmissionRatio = transmissionRatio ?? 1.0;
             bool produceRearChannels = rearWheelDiameterMm is > 0 &&
                 pinionTeeth is > 0 && spurTeeth is > 0 &&
@@ -184,9 +229,18 @@ namespace CastleOverlayV2.Services
             for (int i = 0; i < times.Count; i++)
             {
                 double t = times[i] - t0;
+                run.MiniLoggerSamples.Add(new MiniLoggerSample(
+                    times[i], t, throttleMs[i], rpm[i], wheelRps[i],
+                    hasTcColumns ? throttleOutMs[i] : null,
+                    hasTcColumns ? tcStates[i] : null));
                 if (!keepFullLog && (t < -PreLaunchSeconds || t > PostLaunchSeconds)) continue;
 
                 thrPts.Add(new DataPoint { Time = t, Y = throttlePct[i] });
+                if (hasTcColumns)
+                {
+                    throttleOutPts.Add(new DataPoint { Time = t, Y = throttleOutPct[i] });
+                    tcStatePts.Add(new DataPoint { Time = t, Y = tcStates[i] });
+                }
                 rpmPts.Add(new DataPoint { Time = t, Y = rpm[i] });
                 double frontSpeedMph = wheelRps[i] * MphPerRevPerSec(tyreDiameterMm);
                 mphPts.Add(new DataPoint { Time = t, Y = frontSpeedMph });
@@ -201,6 +255,11 @@ namespace CastleOverlayV2.Services
             }
 
             run.Data[ThrottleChannel] = thrPts;
+            if (hasTcColumns)
+            {
+                run.Data[ThrottleOutChannel] = throttleOutPts;
+                run.Data[TcStateChannel] = tcStatePts;
+            }
             run.Data[RpmChannel] = rpmPts;
             run.Data[WheelSpeedChannel] = mphPts;
             if (produceRearChannels)

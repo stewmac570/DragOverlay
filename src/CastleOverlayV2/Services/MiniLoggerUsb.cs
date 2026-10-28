@@ -4,6 +4,7 @@ using System.IO.Ports;
 using System.Management;
 using System.Text;
 using System.Text.RegularExpressions;
+using CastleOverlayV2.Models;
 
 namespace CastleOverlayV2.Services;
 
@@ -70,6 +71,11 @@ public interface IMiniLoggerUsbClient : IDisposable
         int runIndex = 1,
         int runCount = 1,
         CancellationToken cancellationToken = default);
+    TcLoggerStatus ReadTcStatus(CancellationToken cancellationToken = default);
+    TcCurveTransferResult SendTcCurve(
+        IReadOnlyList<TcCurvePoint> points,
+        CancellationToken cancellationToken = default);
+    TcCurveTransferResult ClearTcCurve(CancellationToken cancellationToken = default);
 }
 
 /// <summary>UI-free Mini Logger USB protocol client.</summary>
@@ -223,7 +229,7 @@ public sealed class MiniLoggerUsb : IMiniLoggerUsbClient
 
                     if (!headerWritten)
                     {
-                        if (!line.Equals(MiniLoggerLoader.HeaderLine, StringComparison.OrdinalIgnoreCase))
+                        if (!MiniLoggerLoader.IsHeaderLine(line))
                             continue;
                         headerWritten = true;
                     }
@@ -259,6 +265,89 @@ public sealed class MiniLoggerUsb : IMiniLoggerUsbClient
         }
     }
 
+    public TcLoggerStatus ReadTcStatus(CancellationToken cancellationToken = default)
+    {
+        IMiniLoggerLineTransport transport = ConnectedTransport();
+        transport.WriteLine("tc status");
+        var lines = new List<string>();
+        bool sawTcHeader = false;
+        while (true)
+        {
+            string line = ReadRequiredLine(transport, cancellationToken);
+            if (line.StartsWith("Commands:", StringComparison.Ordinal))
+                return TcStatusParser.Parse(new[] { line });
+            if (TcStatusParser.IsStatusHeader(line))
+                sawTcHeader = true;
+            if (sawTcHeader)
+                lines.Add(line);
+            if (sawTcHeader && line == "END")
+                return TcStatusParser.Parse(lines);
+        }
+    }
+
+    public TcCurveTransferResult SendTcCurve(
+        IReadOnlyList<TcCurvePoint> points,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            TcCurveBuilder.Validate(points);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
+        {
+            return new TcCurveTransferResult(false, ex.Message);
+        }
+
+        TcLoggerStatus before = ReadTcStatus(cancellationToken);
+        TcCurveTransferResult? refusal = RefuseTcWrite(before);
+        if (refusal is not null) return refusal;
+
+        IMiniLoggerLineTransport transport = ConnectedTransport();
+        string reply = WriteTcCommand(transport, "tc curve begin", cancellationToken);
+        if (reply.StartsWith("ERROR", StringComparison.Ordinal))
+            return new TcCurveTransferResult(false, reply, before);
+
+        foreach (TcCurvePoint point in points)
+        {
+            string command = string.Create(CultureInfo.InvariantCulture,
+                $"tc curve pt {point.TimeMs} {point.Rpm}");
+            reply = WriteTcCommand(transport, command, cancellationToken);
+            if (reply.StartsWith("ERROR", StringComparison.Ordinal))
+                return new TcCurveTransferResult(false, reply, before);
+        }
+
+        reply = WriteTcCommand(transport, "tc curve end", cancellationToken);
+        if (reply.StartsWith("ERROR", StringComparison.Ordinal))
+            return new TcCurveTransferResult(false, reply, before);
+
+        TcLoggerStatus after = ReadTcStatus(cancellationToken);
+        if (!after.IsTcLogger)
+            return new TcCurveTransferResult(false, "The device stopped identifying as a TC logger.", after);
+        if (after.CurvePointCount != points.Count)
+            return new TcCurveTransferResult(false,
+                $"The logger reports {after.CurvePointCount} curve points after sending {points.Count}.", after);
+
+        return new TcCurveTransferResult(true,
+            $"Curve sent successfully ({points.Count} points).", after);
+    }
+
+    public TcCurveTransferResult ClearTcCurve(CancellationToken cancellationToken = default)
+    {
+        TcLoggerStatus before = ReadTcStatus(cancellationToken);
+        TcCurveTransferResult? refusal = RefuseTcWrite(before);
+        if (refusal is not null) return refusal;
+
+        string reply = WriteTcCommand(ConnectedTransport(), "tc curve clear", cancellationToken);
+        if (reply.StartsWith("ERROR", StringComparison.Ordinal))
+            return new TcCurveTransferResult(false, reply, before);
+
+        TcLoggerStatus after = ReadTcStatus(cancellationToken);
+        if (!after.IsTcLogger || after.CurvePointCount != 0)
+            return new TcCurveTransferResult(false,
+                "The logger did not confirm an empty curve after clearing.", after);
+        return new TcCurveTransferResult(true, "Logger curve cleared.", after);
+    }
+
     public void Dispose() => CloseTransport();
 
     private static bool IsCsvDataLine(string line)
@@ -269,6 +358,32 @@ public sealed class MiniLoggerUsb : IMiniLoggerUsbClient
                double.TryParse(fields[1], NumberStyles.Float, CultureInfo.InvariantCulture, out _) &&
                double.TryParse(fields[2], NumberStyles.Float, CultureInfo.InvariantCulture, out _) &&
                double.TryParse(fields[3], NumberStyles.Float, CultureInfo.InvariantCulture, out _);
+    }
+
+    private static TcCurveTransferResult? RefuseTcWrite(TcLoggerStatus status)
+    {
+        if (!status.IsTcLogger)
+            return new TcCurveTransferResult(false,
+                "This is a plain Mini Logger, not a TC logger (tc status returned Commands:).", status);
+        if (status.State == TcLoggerState.Active)
+            return new TcCurveTransferResult(false,
+                "The TC logger is ACTIVE. Curve changes are refused while a pass is running.", status);
+        return null;
+    }
+
+    private static string WriteTcCommand(
+        IMiniLoggerLineTransport transport,
+        string command,
+        CancellationToken cancellationToken)
+    {
+        transport.WriteLine(command);
+        while (true)
+        {
+            string line = ReadRequiredLine(transport, cancellationToken);
+            if (line.StartsWith("OK", StringComparison.Ordinal) ||
+                line.StartsWith("ERROR", StringComparison.Ordinal))
+                return line;
+        }
     }
 
     private static string ReadRequiredLine(

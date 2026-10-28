@@ -8,7 +8,8 @@ namespace CastleOverlayV2.Controls
     public enum AppPage
     {
         Logs,
-        Tune
+        Tune,
+        Tc
     }
 
     /// <summary>
@@ -28,6 +29,7 @@ namespace CastleOverlayV2.Controls
 
         private readonly TabButton _logsTab;
         private readonly TabButton _tuneTab;
+        private readonly TabButton _tcTab;
         private readonly TabButton _viewTab;
         private readonly FlowLayoutPanel _actions;
         private readonly Button _saveProjectButton;
@@ -135,6 +137,10 @@ namespace CastleOverlayV2.Controls
             _tuneTab.Click += (_, _) => SelectPage(AppPage.Tune);
             left.Controls.Add(_tuneTab);
 
+            _tcTab = new TabButton("TC");
+            _tcTab.Click += (_, _) => SelectPage(AppPage.Tc);
+            left.Controls.Add(_tcTab);
+
             _viewTab = new TabButton("View ▾");
             _viewTab.Click += (_, _) => ShowViewMenu();
             _toolTip.SetToolTip(_viewTab, "Chart panes and RPM motor poles");
@@ -200,6 +206,7 @@ namespace CastleOverlayV2.Controls
         {
             _logsTab.Selected = SelectedPage == AppPage.Logs;
             _tuneTab.Selected = SelectedPage == AppPage.Tune;
+            _tcTab.Selected = SelectedPage == AppPage.Tc;
         }
 
         private Button MakeActionButton(string text, int width, Color foreColor, string tooltip)

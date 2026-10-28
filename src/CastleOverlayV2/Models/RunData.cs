@@ -26,6 +26,10 @@ namespace CastleOverlayV2.Models
         // Mini Logger runs (rc-logger, 1000 Hz) also use .Data and live in the RaceBox slots.
         public bool IsMiniLogger { get; set; }
 
+        // Raw Mini Logger values retained for the TC tab. These deliberately do not use the
+        // app's 2P/4P display mode: MotorRpm is the firmware's real motor RPM.
+        public List<MiniLoggerSample> MiniLoggerSamples { get; set; } = new();
+
         // True for any run whose real values live in .Data rather than .DataPoints.
         public bool HasChannelData => IsRaceBox || IsMiniLogger;
 

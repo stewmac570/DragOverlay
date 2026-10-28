@@ -88,6 +88,12 @@ Before connecting: "Switch the car off and unplug the logger's receiver lead." I
 3. **Send to logger.** Connect with the existing `MiniLoggerUsb` connect, confirm it's a TC logger with `tc status`, refuse while ACTIVE, send `begin`, the points and `end` with each reply checked, then confirm the count with `tc status`. Show the result.
 4. **Save the curve with the project,** so it can be resent. Optional.
 
+## Decided in DragOverlay (29 Oct 2026)
+
+- **The curve work gets its own tab: TC**, next to Logs and Tune (Stew: "yes a new tab"). Logs stays for viewing runs; TC runs load there like any data log, with Throttle Out, TC State and the cut marks.
+- The TC tab holds: a picker for the source run (a loaded data log), the margin and curve-end inputs, "Make curve", a chart of the run's RPM from the logger's launch with the curve over it, an editable points list, "Read logger" (shows `tc status`), and "Send to logger".
+- Margin and curve end have **no default**. They start blank, the user types them, and the app remembers what was typed. "Make curve" stays disabled until both are filled in.
+
 ## Open items (not decided, don't invent)
 - Margin default and curve length: Stew's call, so make them settings.
 - All logger settings are placeholders until Stew tunes them on the bench. Read them from `tc status`, and never hard-code them.

@@ -21,9 +21,11 @@ namespace CastleOverlayV2
         private RunStrip _runStrip;
         private AlignmentBar _alignmentBar;
         private TunePanel _tunePanel;
+        private TcPanel _tcPanel;
         private TopBar _topBar;
         private Panel _logsPage;
         private Panel _tunePage;
+        private Panel _tcPage;
         private MainFormPresenter _presenter;
         private MiniLoggerLookingForm? _miniLoggerLooking;
 
@@ -78,6 +80,7 @@ namespace CastleOverlayV2
 
             _channelDrawer = new ChannelDrawer(channelNames, initialStates);
             _tunePanel = new TunePanel();
+            _tcPanel = new TcPanel(_configService);
 
             // Inject any extra known channels found in config but missing from the default list.
             var allowed = new HashSet<string>(channelNames, StringComparer.OrdinalIgnoreCase);
@@ -145,13 +148,19 @@ namespace CastleOverlayV2
             _tunePage = new Panel { Dock = DockStyle.Fill, BackColor = surfaceWindow, Visible = false };
             _tunePage.Controls.Add(_tunePanel);
 
+            // TC page: curve builder/editor and logger USB controls.
+            _tcPage = new Panel { Dock = DockStyle.Fill, BackColor = surfaceWindow, Visible = false };
+            _tcPage.Controls.Add(_tcPanel);
+
             Controls.Add(_logsPage);
             Controls.Add(_tunePage);
+            Controls.Add(_tcPage);
             Controls.Add(_runStrip);
             Controls.Add(_topBar);
 
             // Presenter owns all run state + business logic. It subscribes to plot/toggle events.
-            _presenter = new MainFormPresenter(this, _configService, _plotManager, _channelDrawer, _tunePanel);
+            _presenter = new MainFormPresenter(this, _configService, _plotManager, _channelDrawer, _tunePanel,
+                tcPanel: _tcPanel);
 
             // RunType pill: initial appearance (Drag mode, no runs loaded → not locked).
             ApplyRunTypeUI(_presenter.IsSpeedRunMode);
@@ -300,6 +309,7 @@ namespace CastleOverlayV2
 
             _logsPage.Visible = page == AppPage.Logs;
             _tunePage.Visible = page == AppPage.Tune;
+            _tcPage.Visible = page == AppPage.Tc;
         }
 
         public void ShowError(string title, string message) =>

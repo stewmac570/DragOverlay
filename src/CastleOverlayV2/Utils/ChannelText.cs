@@ -11,7 +11,8 @@ namespace CastleOverlayV2.Utils
             "RPM", "Throttle %", "Voltage", "Current", "Ripple", "PowerOut",
             "MotorTemp", "ESC Temp", "MotorTiming", "Acceleration",
             "RaceBox Speed", "RaceBox Distance", "RaceBox G-Force X",
-            "Logger RPM", "Logger Throttle %", "Logger Wheel Speed", "Logger Rear Speed",
+            "Logger RPM", "Logger Throttle %", "Logger Throttle Out %", "Logger TC State",
+            "Logger Wheel Speed", "Logger Rear Speed",
             "Logger Slip %", "Logger Wheel rev/s",
         };
 
@@ -24,6 +25,8 @@ namespace CastleOverlayV2.Utils
             "RaceBox Distance" => "Distance",
             "RaceBox G-Force X" => "G-Force X",
             "Logger Throttle %" => "Throttle %",
+            "Logger Throttle Out %" => "Throttle Out %",
+            "Logger TC State" => "TC State",
             "Logger RPM" => "RPM",
             "Logger Wheel Speed" => "Wheel Speed",
             "Logger Rear Speed" => "Rear Speed",
@@ -48,6 +51,8 @@ namespace CastleOverlayV2.Utils
             "RaceBox Distance" => v.ToString("F0"),
             "RaceBox G-Force X" => v.ToString("F2"),
             "Logger Throttle %" => v.ToString("F0"),
+            "Logger Throttle Out %" => v.ToString("F0"),
+            "Logger TC State" => v.ToString("F0"),
             "Logger RPM" => v.ToString("N0"),
             "Logger Wheel Speed" => v.ToString("F1"),
             "Logger Rear Speed" => v.ToString("F1"),

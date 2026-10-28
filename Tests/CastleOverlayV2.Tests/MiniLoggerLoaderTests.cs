@@ -63,5 +63,90 @@ namespace CastleOverlayV2.Tests
                 File.Delete(path);
             }
         }
+
+        [Fact]
+        public void Six_column_tc_csv_loads_throttle_out_and_state()
+        {
+            string path = WriteTcRun(includeBegin: false);
+            try
+            {
+                Assert.True(MiniLoggerLoader.IsMiniLoggerCsv(path));
+                var result = MiniLoggerLoader.Load(path, keepFullLog: true);
+
+                Assert.True(result.Ok, result.Message);
+                var run = result.Value!;
+                Assert.True(run.Data.ContainsKey(MiniLoggerLoader.ThrottleOutChannel));
+                Assert.True(run.Data.ContainsKey(MiniLoggerLoader.TcStateChannel));
+                Assert.Equal(3000, run.Data[MiniLoggerLoader.ThrottleOutChannel].Count);
+                Assert.Contains(run.Data[MiniLoggerLoader.TcStateChannel], point => point.Y == 2);
+                Assert.Contains(run.MiniLoggerSamples,
+                    sample => sample.TcState == 2 && sample.ThrottleOutMs < sample.ThrottleMs);
+            }
+            finally
+            {
+                File.Delete(path);
+            }
+        }
+
+        [Fact]
+        public void Six_column_tc_csv_with_begin_line_is_accepted()
+        {
+            string path = WriteTcRun(includeBegin: true);
+            try
+            {
+                Assert.True(MiniLoggerLoader.IsMiniLoggerCsv(path));
+                var result = MiniLoggerLoader.Load(path, keepFullLog: true);
+                Assert.True(result.Ok, result.Message);
+                Assert.Equal(3000, result.Value!.MiniLoggerSamples.Count);
+            }
+            finally
+            {
+                File.Delete(path);
+            }
+        }
+
+        [Fact]
+        public void Four_column_csv_does_not_add_tc_channels()
+        {
+            string path = WriteRun();
+            try
+            {
+                var result = MiniLoggerLoader.Load(path, keepFullLog: true);
+                Assert.True(result.Ok, result.Message);
+                Assert.DoesNotContain(MiniLoggerLoader.ThrottleOutChannel, result.Value!.Data.Keys);
+                Assert.DoesNotContain(MiniLoggerLoader.TcStateChannel, result.Value.Data.Keys);
+                Assert.All(result.Value.MiniLoggerSamples, sample =>
+                {
+                    Assert.Null(sample.ThrottleOutMs);
+                    Assert.Null(sample.TcState);
+                });
+            }
+            finally
+            {
+                File.Delete(path);
+            }
+        }
+
+        private static string WriteTcRun(bool includeBegin)
+        {
+            var sb = new StringBuilder();
+            if (includeBegin) sb.AppendLine("BEGIN run_0042.csv");
+            sb.AppendLine(MiniLoggerLoader.HeaderLine + ",Throttle Out (ms),TC State");
+            for (int i = 0; i < 3000; i++)
+            {
+                double t = i / 1000.0;
+                double throttle = t < 1.0 ? 1.50 : 1.90;
+                double output = t is >= 1.2 and < 1.5 ? 1.70 : throttle;
+                int state = t is >= 1.0 and < 2.5 ? 2 : 0;
+                double rpm = t < 1.0 ? 0 : (t - 1.0) * 20000;
+                double wheel = t < 1.0 ? 0 : (t - 1.0) * 30;
+                sb.AppendLine(string.Create(CultureInfo.InvariantCulture,
+                    $"{t:0.000},{throttle:0.000},{rpm:0},{wheel:0.00},{output:0.000},{state}"));
+            }
+            if (includeBegin) sb.AppendLine("END");
+            string path = Path.Combine(Path.GetTempPath(), $"tc-logger-{Guid.NewGuid():N}.csv");
+            File.WriteAllText(path, sb.ToString());
+            return path;
+        }
     }
 }
