@@ -7,7 +7,11 @@ namespace CastleOverlayV2.Controls;
 
 public sealed record TcSourceRun(int Slot, RunData Run)
 {
-    public override string ToString() => $"Data Log {Slot} — {Run.FileName}";
+    public override string ToString()
+    {
+        string kind = RunSlots.IsCastle(Slot) ? "Castle" : "Data Log";
+        return $"{kind} {RunSlots.ButtonNumber(Slot)} — {Run.FileName}";
+    }
 }
 
 /// <summary>TC curve creation, editing, and Mini Logger USB operations.</summary>
@@ -33,6 +37,7 @@ public sealed class TcPanel : UserControl
     private readonly Button _clearLogger;
     private readonly Button _addPoint;
     private readonly Button _deletePoint;
+    private readonly Button _fitChart;
     private readonly Label _launchInfo = new();
     private readonly TextBox _status = new();
     private readonly FormsPlot _chart = new();
@@ -42,6 +47,8 @@ public sealed class TcPanel : UserControl
     private bool _updatingGrid;
     private bool _updatingSources;
     private bool _busy;
+    private int _dragPointIndex = -1;
+    private const double PointHitRadiusPixels = 8.0;
 
     public TcPanel(ConfigService config, Func<IMiniLoggerUsbClient>? usbFactory = null)
     {
@@ -82,10 +89,10 @@ public sealed class TcPanel : UserControl
         _curveEnd.TextChanged += (_, _) => InputsChanged();
 
         _launchInfo.Dock = DockStyle.Top;
-        _launchInfo.Height = 34;
+        _launchInfo.Height = 48;
         _launchInfo.Padding = new Padding(4, 8, 4, 0);
         _launchInfo.ForeColor = TextSecond;
-        _launchInfo.Text = "Load a data log on the Logs page, then choose it here.";
+        _launchInfo.Text = "Load a Castle or data log on the Logs page, then choose it here.";
 
         ConfigureChart();
         ConfigureGrid();
@@ -100,7 +107,24 @@ public sealed class TcPanel : UserControl
             Panel1MinSize = 360,
             Panel2MinSize = 280
         };
+        var chartFooter = new Panel { Dock = DockStyle.Bottom, Height = 32, BackColor = Card };
+        var chartHint = new Label
+        {
+            Dock = DockStyle.Fill,
+            Text = "Click to add a dot · drag a dot to move it · right-click a dot to delete it",
+            ForeColor = TextSecond,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Padding = new Padding(8, 0, 0, 0)
+        };
+        _fitChart = MakeButton("Fit", false, 54);
+        _fitChart.Dock = DockStyle.Right;
+        _fitChart.Height = 28;
+        _fitChart.Margin = new Padding(2);
+        _fitChart.Click += (_, _) => FitChart();
+        chartFooter.Controls.Add(chartHint);
+        chartFooter.Controls.Add(_fitChart);
         split.Panel1.Controls.Add(_chart);
+        split.Panel1.Controls.Add(chartFooter);
 
         var pointButtons = new FlowLayoutPanel
         {
@@ -175,7 +199,7 @@ public sealed class TcPanel : UserControl
             _rpmTrace = Array.Empty<TcRpmSample>();
             SetCurvePoints(Array.Empty<TcCurvePoint>());
             _launchInfo.Text = current is null
-                ? "Load a data log on the Logs page, then choose it here."
+                ? "Load a Castle or data log on the Logs page, then choose it here."
                 : "Enter a margin and curve end, then make the curve.";
         }
         UpdateEnabledState();
@@ -188,7 +212,7 @@ public sealed class TcPanel : UserControl
         SetCurvePoints(Array.Empty<TcCurvePoint>());
         _launchInfo.Text = _source.SelectedItem is TcSourceRun
             ? "Enter a margin and curve end, then make the curve."
-            : "Load a data log on the Logs page, then choose it here.";
+            : "Load a Castle or data log on the Logs page, then choose it here.";
         UpdateEnabledState();
     }
 
@@ -222,10 +246,14 @@ public sealed class TcPanel : UserControl
                 margin,
                 _marginUnit.SelectedIndex == 1 ? TcMarginUnit.Percent : TcMarginUnit.Rpm,
                 end,
-                _sessionStatus);
+                _sessionStatus,
+                _config.Config.IsFourPoleMode);
             _rpmTrace = result.RpmTrace;
-            SetCurvePoints(result.Points);
-            _launchInfo.Text = result.Launch.Description;
+            SetCurvePoints(result.Points, fitView: true);
+            string rpmMode = source.Run.IsMiniLogger
+                ? "RPM: logger motor RPM (pole setting does not apply)."
+                : $"Castle RPM: {(_config.Config.IsFourPoleMode ? "4-pole (halved once)" : "2-pole (as logged)")}.";
+            _launchInfo.Text = result.Launch.Description + " " + rpmMode;
             _status.Text = $"Curve made: {result.Points.Count} points. Edit the list before sending if needed.";
         }
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or OverflowException)
@@ -402,6 +430,15 @@ public sealed class TcPanel : UserControl
         ApplyAxisStyle(_chart.Plot.Axes.Bottom);
         ApplyAxisStyle(_chart.Plot.Axes.Left);
         _chart.Plot.Grid.MajorLineColor = new ScottPlot.Color(0xFF, 0xFF, 0xFF, 18);
+        _chart.UserInputProcessor.LeftClickDragPan(enable: false, horizontal: true, vertical: true);
+        _chart.Menu?.Clear();
+        _chart.MouseDown += ChartMouseDown;
+        _chart.MouseMove += ChartMouseMove;
+        _chart.MouseUp += ChartMouseUp;
+        _chart.MouseLeave += (_, _) =>
+        {
+            if (_dragPointIndex < 0) _chart.Cursor = Cursors.Default;
+        };
     }
 
     private static void ApplyAxisStyle(ScottPlot.IAxis axis)
@@ -414,7 +451,7 @@ public sealed class TcPanel : UserControl
         axis.FrameLineStyle.Color = color;
     }
 
-    private void SetCurvePoints(IEnumerable<TcCurvePoint> points)
+    private void SetCurvePoints(IEnumerable<TcCurvePoint> points, bool fitView = false)
     {
         _updatingGrid = true;
         _points.Rows.Clear();
@@ -423,7 +460,7 @@ public sealed class TcPanel : UserControl
                 point.TimeMs.ToString(CultureInfo.InvariantCulture),
                 point.Rpm.ToString(CultureInfo.InvariantCulture));
         _updatingGrid = false;
-        RedrawChart();
+        RedrawChart(fitView);
         UpdateEnabledState();
     }
 
@@ -434,7 +471,10 @@ public sealed class TcPanel : UserControl
         UpdateEnabledState();
     }
 
-    private bool TryReadCurve(out List<TcCurvePoint> curve, out string error)
+    private bool TryReadCurve(
+        out List<TcCurvePoint> curve,
+        out string error,
+        bool allowEmpty = false)
     {
         _points.EndEdit();
         curve = new List<TcCurvePoint>();
@@ -451,6 +491,11 @@ public sealed class TcPanel : UserControl
             }
             curve.Add(new TcCurvePoint(timeMs, rpm));
         }
+        if (allowEmpty && curve.Count == 0)
+        {
+            error = "";
+            return true;
+        }
         try
         {
             TcCurveBuilder.Validate(curve);
@@ -464,7 +509,7 @@ public sealed class TcPanel : UserControl
         }
     }
 
-    private void RedrawChart()
+    private void RedrawChart(bool fitView = false)
     {
         _chart.Plot.Clear();
         if (_rpmTrace.Count > 1)
@@ -488,8 +533,118 @@ public sealed class TcPanel : UserControl
             line.MarkerSize = 6;
         }
         _chart.Plot.Legend.IsVisible = _rpmTrace.Count > 0;
+        if (fitView) _chart.Plot.Axes.AutoScale();
+        _chart.Refresh();
+    }
+
+    private void FitChart()
+    {
         _chart.Plot.Axes.AutoScale();
         _chart.Refresh();
+    }
+
+    private void ChartMouseDown(object? sender, MouseEventArgs e)
+    {
+        if (_busy || !TryReadCurve(out var curve, out _, allowEmpty: true)) return;
+        int hit = HitTestCurve(curve, e.Location);
+
+        if (e.Button == MouseButtons.Right && hit >= 0)
+        {
+            TcCurveEditor.Delete(curve, hit);
+            SetCurvePoints(curve);
+            _status.Text = "Point deleted.";
+            return;
+        }
+
+        if (e.Button != MouseButtons.Left) return;
+        if (hit >= 0)
+        {
+            _dragPointIndex = hit;
+            _chart.Capture = true;
+            _chart.Cursor = Cursors.SizeAll;
+            return;
+        }
+
+        ScottPlot.Coordinates coordinates = _chart.Plot.GetCoordinates(new ScottPlot.Pixel(e.X, e.Y));
+        if (coordinates.X < 0)
+        {
+            _status.Text = "A point cannot be added before 0 ms.";
+            return;
+        }
+
+        int timeMs;
+        int rpm;
+        try
+        {
+            timeMs = checked((int)Math.Round(coordinates.X * 1000.0, MidpointRounding.AwayFromZero));
+            rpm = checked((int)Math.Round(coordinates.Y, MidpointRounding.AwayFromZero));
+        }
+        catch (OverflowException)
+        {
+            _status.Text = "That chart position is outside the curve range.";
+            return;
+        }
+
+        if (!TcCurveEditor.TryInsert(curve, timeMs, rpm, out string error))
+        {
+            _status.Text = error;
+            return;
+        }
+        SetCurvePoints(curve);
+        _status.Text = string.Create(CultureInfo.InvariantCulture,
+            $"Point added at {timeMs} ms, {Math.Max(1, rpm)} RPM.");
+    }
+
+    private void ChartMouseMove(object? sender, MouseEventArgs e)
+    {
+        if (_dragPointIndex >= 0)
+        {
+            if (!TryReadCurve(out var curve, out _) || _dragPointIndex >= curve.Count) return;
+            ScottPlot.Coordinates coordinates = _chart.Plot.GetCoordinates(new ScottPlot.Pixel(e.X, e.Y));
+            int timeMs = ToEditorInt(coordinates.X * 1000.0);
+            int rpm = ToEditorInt(coordinates.Y);
+            TcCurvePoint moved = TcCurveEditor.Move(curve, _dragPointIndex, timeMs, rpm);
+            SetCurvePoints(curve);
+            _status.Text = string.Create(CultureInfo.InvariantCulture,
+                $"Point moved to {moved.TimeMs} ms, {moved.Rpm} RPM.");
+            return;
+        }
+
+        if (_busy || !TryReadCurve(out var current, out _, allowEmpty: true))
+        {
+            _chart.Cursor = Cursors.Default;
+            return;
+        }
+        _chart.Cursor = HitTestCurve(current, e.Location) >= 0 ? Cursors.Hand : Cursors.Default;
+    }
+
+    private void ChartMouseUp(object? sender, MouseEventArgs e)
+    {
+        if (e.Button != MouseButtons.Left || _dragPointIndex < 0) return;
+        _dragPointIndex = -1;
+        _chart.Capture = false;
+        _chart.Cursor = Cursors.Default;
+    }
+
+    private int HitTestCurve(IReadOnlyList<TcCurvePoint> curve, Point mouse)
+    {
+        var pixels = new TcEditorPixel[curve.Count];
+        for (int i = 0; i < curve.Count; i++)
+        {
+            ScottPlot.Pixel pixel = _chart.Plot.GetPixel(
+                new ScottPlot.Coordinates(curve[i].TimeMs / 1000.0, curve[i].Rpm));
+            pixels[i] = new TcEditorPixel(pixel.X, pixel.Y);
+        }
+        return TcCurveEditor.HitTest(pixels, new TcEditorPixel(mouse.X, mouse.Y), PointHitRadiusPixels);
+    }
+
+    private static int ToEditorInt(double value)
+    {
+        if (!double.IsFinite(value)) return 0;
+        double rounded = Math.Round(value, MidpointRounding.AwayFromZero);
+        return rounded <= int.MinValue ? int.MinValue
+            : rounded >= int.MaxValue ? int.MaxValue
+            : (int)rounded;
     }
 
     private void AddPoint()
@@ -534,6 +689,7 @@ public sealed class TcPanel : UserControl
         _readLogger.Enabled = !_busy;
         _sendLogger.Enabled = !_busy && TryReadCurve(out _, out _);
         _clearLogger.Enabled = !_busy;
+        _fitChart.Enabled = !_busy;
         _addPoint.Enabled = !_busy && _points.Rows.Count < TcCurveBuilder.MaximumPoints;
         _deletePoint.Enabled = !_busy && _points.SelectedRows.Count > 0;
         _source.Enabled = !_busy;
