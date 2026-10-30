@@ -5,15 +5,10 @@ using System.Globalization;
 
 namespace CastleOverlayV2.Controls;
 
-public sealed record TcSourceRun(int Slot, RunData Run)
+/// <summary>A log opened with the TC tab's own Load log button. Id keeps repeat files apart.</summary>
+public sealed record TcSourceRun(int Id, RunData Run)
 {
-    public override string ToString()
-    {
-        // Negative slots are files opened from the TC tab's own Load log button.
-        if (Slot < 0) return $"File — {Run.FileName}";
-        string kind = RunSlots.IsCastle(Slot) ? "Castle" : "Data Log";
-        return $"{kind} {RunSlots.ButtonNumber(Slot)} — {Run.FileName}";
-    }
+    public override string ToString() => $"{(Run.IsMiniLogger ? "Data Log" : "Castle")} — {Run.FileName}";
 }
 
 /// <summary>TC curve creation, editing, and Mini Logger USB operations.</summary>
@@ -31,9 +26,8 @@ public sealed class TcPanel : UserControl
     private readonly Func<IMiniLoggerUsbClient> _usbFactory;
     private readonly ComboBox _source = new();
     private readonly Button _loadLog;
-    private readonly List<TcSourceRun> _logRuns = new();
     private readonly List<TcSourceRun> _fileRuns = new();
-    private int _nextFileSlot = -1;
+    private int _nextFileId = 1;
     private readonly TextBox _margin = new();
     private readonly ComboBox _marginUnit = new();
     private readonly TextBox _curveEnd = new();
@@ -102,7 +96,7 @@ public sealed class TcPanel : UserControl
         _launchInfo.Height = 48;
         _launchInfo.Padding = new Padding(4, 8, 4, 0);
         _launchInfo.ForeColor = TextSecond;
-        _launchInfo.Text = "Click Load log… to open a Castle or data log, or load one on the Logs page.";
+        _launchInfo.Text = "Click Load log… to open a Castle or data log.";
 
         ConfigureChart();
         ConfigureGrid();
@@ -188,42 +182,20 @@ public sealed class TcPanel : UserControl
         UpdateEnabledState();
     }
 
-    /// <summary>Runs loaded on the Logs page. Files opened with Load log stay in the list too.</summary>
-    public void SetRuns(IEnumerable<TcSourceRun> runs)
+    // The TC tab only works on logs opened here; it never uses the runs loaded on the Logs tab.
+    private void RefreshSources(int selectId)
     {
-        _logRuns.Clear();
-        _logRuns.AddRange(runs);
-        RefreshSources(selectSlot: null);
-    }
-
-    private void RefreshSources(int? selectSlot)
-    {
-        TcSourceRun? previous = _source.SelectedItem as TcSourceRun;
-        int selectedSlot = selectSlot ?? previous?.Slot ?? int.MinValue;
-        var items = _fileRuns.Concat(_logRuns.OrderBy(item => item.Slot)).ToList();
         _updatingSources = true;
         _source.BeginUpdate();
         _source.Items.Clear();
-        foreach (TcSourceRun item in items) _source.Items.Add(item);
+        foreach (TcSourceRun item in _fileRuns) _source.Items.Add(item);
         _source.EndUpdate();
-        int selectedIndex = items.FindIndex(item => item.Slot == selectedSlot);
-        _source.SelectedIndex = selectedIndex >= 0 ? selectedIndex : (items.Count > 0 ? 0 : -1);
+        _source.SelectedIndex = _fileRuns.FindIndex(item => item.Id == selectId);
         _updatingSources = false;
-
-        TcSourceRun? current = _source.SelectedItem as TcSourceRun;
-        if (current is null || previous is null || current.Slot != previous.Slot ||
-            !ReferenceEquals(current.Run, previous.Run))
-        {
-            _rpmTrace = Array.Empty<TcRpmSample>();
-            SetCurvePoints(Array.Empty<TcCurvePoint>());
-            _launchInfo.Text = current is null
-                ? "Click Load log… to open a Castle or data log, or load one on the Logs page."
-                : "Enter a margin and curve end, then make the curve.";
-        }
-        UpdateEnabledState();
+        ShowSelectedRun();
     }
 
-    /// <summary>Opens a Castle or Mini Logger CSV straight into the source list (not into a Logs slot).</summary>
+    /// <summary>Opens a Castle or Mini Logger CSV into the TC tab's own log list.</summary>
     private void LoadLogFromFile()
     {
         string folder = _config.Config.CastleLogDirectory ?? "";
@@ -263,21 +235,40 @@ public sealed class TcPanel : UserControl
             return;
         }
 
-        var item = new TcSourceRun(_nextFileSlot--, result.Value);
+        var item = new TcSourceRun(_nextFileId++, result.Value);
         _fileRuns.Insert(0, item);
-        RefreshSources(item.Slot);
+        RefreshSources(item.Id);
         _status.Text = $"Loaded {result.Value.FileName}. Enter a margin and curve end, then Make curve.";
     }
 
     private void SourceChanged()
     {
         if (_updatingSources) return;
+        ShowSelectedRun();
+    }
+
+    /// <summary>Clears any curve and draws the picked log's RPM from its launch, before Make curve.</summary>
+    private void ShowSelectedRun()
+    {
         _rpmTrace = Array.Empty<TcRpmSample>();
-        SetCurvePoints(Array.Empty<TcCurvePoint>());
-        _launchInfo.Text = _source.SelectedItem is TcSourceRun
-            ? "Enter a margin and curve end, then make the curve."
-            : "Click Load log… to open a Castle or data log, or load one on the Logs page.";
-        UpdateEnabledState();
+        if (_source.SelectedItem is not TcSourceRun source)
+        {
+            _launchInfo.Text = "Click Load log… to open a Castle or data log.";
+        }
+        else
+        {
+            try
+            {
+                TcLaunchResult launch = TcCurveBuilder.FindLaunch(source.Run, _sessionStatus);
+                _rpmTrace = TcCurveBuilder.RunTrace(source.Run, launch, _config.Config.IsFourPoleMode);
+                _launchInfo.Text = launch.Description + " Enter a margin and curve end, then make the curve.";
+            }
+            catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+            {
+                _launchInfo.Text = "Can't show this log's RPM: " + ex.Message;
+            }
+        }
+        SetCurvePoints(Array.Empty<TcCurvePoint>(), fitView: true);
     }
 
     private void InputsChanged()

@@ -159,8 +159,7 @@ namespace CastleOverlayV2
             Controls.Add(_topBar);
 
             // Presenter owns all run state + business logic. It subscribes to plot/toggle events.
-            _presenter = new MainFormPresenter(this, _configService, _plotManager, _channelDrawer, _tunePanel,
-                tcPanel: _tcPanel);
+            _presenter = new MainFormPresenter(this, _configService, _plotManager, _channelDrawer, _tunePanel);
 
             // RunType pill: initial appearance (Drag mode, no runs loaded → not locked).
             ApplyRunTypeUI(_presenter.IsSpeedRunMode);

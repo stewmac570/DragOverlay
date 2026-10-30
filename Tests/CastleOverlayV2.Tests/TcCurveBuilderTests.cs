@@ -111,6 +111,36 @@ public sealed class TcCurveBuilderTests
             Assert.Equal(pair.First.Rpm / 2, pair.Second.Rpm));
     }
 
+    [Fact]
+    public void Castle_run_trace_starts_at_launch_and_runs_to_end_of_log()
+    {
+        RunData run = CastleRun();
+        TcLaunchResult launch = TcCurveBuilder.FindLaunch(run);
+
+        IReadOnlyList<TcRpmSample> twoPole = TcCurveBuilder.RunTrace(run, launch);
+        IReadOnlyList<TcRpmSample> fourPole = TcCurveBuilder.RunTrace(run, launch, isFourPoleMode: true);
+
+        Assert.Equal(7, twoPole.Count);
+        Assert.Equal(0, twoPole[0].TimeSeconds, 6);
+        Assert.Equal(10_000, twoPole[0].Rpm);
+        Assert.Equal(0.30, twoPole[^1].TimeSeconds, 6);
+        Assert.Equal(22_000, twoPole[^1].Rpm);
+        Assert.All(twoPole.Zip(fourPole), pair => Assert.Equal(pair.First.Rpm * 0.5, pair.Second.Rpm, 6));
+    }
+
+    [Fact]
+    public void Mini_logger_run_trace_starts_at_tc_active_row()
+    {
+        RunData run = Run(tcActiveAt: 0.6);
+        TcLaunchResult launch = TcCurveBuilder.FindLaunch(run);
+
+        IReadOnlyList<TcRpmSample> trace = TcCurveBuilder.RunTrace(run, launch);
+
+        Assert.Equal(1400, trace.Count);
+        Assert.Equal(0, trace[0].TimeSeconds, 6);
+        Assert.Equal(1.399, trace[^1].TimeSeconds, 6);
+    }
+
     private static RunData Run(double? tcActiveAt, int sampleCount = 2000)
     {
         var run = new RunData { IsMiniLogger = true, FileName = "run.csv" };
