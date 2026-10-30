@@ -24,7 +24,6 @@ namespace CastleOverlayV2
         private readonly PlotManager _plot;
         private readonly ChannelDrawer _drawer;
         private readonly TunePanel _tunePanel;
-        private readonly TcPanel? _tcPanel;
         private readonly Func<IMiniLoggerUsbClient> _miniLoggerUsbFactory;
 
         // Active runs by slot. Castle = 1..3, GPS = 4..6, data logs = 7..9 (see RunSlots).
@@ -61,15 +60,13 @@ namespace CastleOverlayV2
             PlotManager plot,
             ChannelDrawer drawer,
             TunePanel tunePanel,
-            Func<IMiniLoggerUsbClient>? miniLoggerUsbFactory = null,
-            TcPanel? tcPanel = null)
+            Func<IMiniLoggerUsbClient>? miniLoggerUsbFactory = null)
         {
             _view = view;
             _config = config;
             _plot = plot;
             _drawer = drawer;
             _tunePanel = tunePanel;
-            _tcPanel = tcPanel;
             _miniLoggerUsbFactory = miniLoggerUsbFactory ?? (() => new MiniLoggerUsb());
 
             _isFourPoleMode = _config.Config.IsFourPoleMode;
@@ -1081,12 +1078,6 @@ namespace CastleOverlayV2
                 columns.Add(new TuneRunColumn(0, "", _previewTune));
 
             _tunePanel.SetRuns(columns);
-            _tcPanel?.SetRuns(_runs
-                .Where(kvp =>
-                    (RunSlots.IsCastle(kvp.Key) && !kvp.Value.HasChannelData) ||
-                    (RunSlots.IsDataLog(kvp.Key) && kvp.Value.IsMiniLogger))
-                .OrderBy(kvp => kvp.Key)
-                .Select(kvp => new TcSourceRun(kvp.Key, kvp.Value)));
             RefreshProjectButtonsState();
         }
 

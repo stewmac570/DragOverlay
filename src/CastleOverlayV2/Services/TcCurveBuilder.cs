@@ -126,6 +126,30 @@ public static class TcCurveBuilder
         return new TcLaunchResult(samples[bestStart].TimeSeconds, source, neutralUs, fullUs, launchPercent);
     }
 
+    /// <summary>
+    /// The run's motor RPM from the launch to the end of the log, with time measured from
+    /// the launch. Shown on the TC chart as soon as a log is picked, before a curve is made.
+    /// </summary>
+    public static IReadOnlyList<TcRpmSample> RunTrace(RunData run, TcLaunchResult launch, bool isFourPoleMode = false)
+    {
+        ArgumentNullException.ThrowIfNull(run);
+        ArgumentNullException.ThrowIfNull(launch);
+        if (!run.IsMiniLogger && !run.HasChannelData && run.DataPoints.Count > 0)
+        {
+            return run.DataPoints
+                .Where(sample => sample.Time >= launch.TimeSeconds)
+                .Select(sample => new TcRpmSample(
+                    sample.Time - launch.TimeSeconds,
+                    isFourPoleMode ? sample.Speed * 0.5 : sample.Speed))
+                .ToList();
+        }
+
+        return run.MiniLoggerSamples
+            .Where(sample => sample.TimeSeconds >= launch.TimeSeconds)
+            .Select(sample => new TcRpmSample(sample.TimeSeconds - launch.TimeSeconds, sample.MotorRpm))
+            .ToList();
+    }
+
     public static TcCurveBuildResult Build(
         RunData run,
         double margin,
