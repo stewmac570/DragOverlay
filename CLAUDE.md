@@ -29,7 +29,7 @@ Treat these versions as constraints, not suggestions:
 
 ## Architecture
 
-The window is a top bar (Logs / Tune tabs), the run strip, then one page. The Logs page is the channel list (left) and the chart, which can be split into 1-3 stacked panes sharing one time axis; the Tune page compares every run's tune. See `Docs/UI_Layout_Plan.md` and `Docs/Split_View_Plan.md`.
+The window is a top bar (Logs / Tune / TC tabs; Logs-only actions show only on Logs), the run strip (Logs page only), then one page. The Logs page is the channel list (left) and the chart, which can be split into 1-3 stacked panes sharing one time axis; the Tune page compares every run's tune. See `Docs/UI_Layout_Plan.md` and `Docs/Split_View_Plan.md`.
 
 Data flows in one direction: **CSV → Loader → `RunData` → `PlotManager` → ScottPlot `FormsPlot`**. `MainFormPresenter` owns the runs and all business logic; `MainForm` is the view (`IMainView`) and forwards control events to it. `ConfigService` reads/writes user prefs to `%AppData%\Roaming\DragOverlay\config.json`.
 

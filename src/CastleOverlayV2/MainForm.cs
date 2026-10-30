@@ -310,6 +310,8 @@ namespace CastleOverlayV2
             _logsPage.Visible = page == AppPage.Logs;
             _tunePage.Visible = page == AppPage.Tune;
             _tcPage.Visible = page == AppPage.Tc;
+            // The load strip belongs to the Logs overlay. Tune lists the same runs as columns.
+            _runStrip.Visible = page == AppPage.Logs;
         }
 
         public void ShowError(string title, string message) =>

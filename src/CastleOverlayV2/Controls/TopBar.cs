@@ -13,9 +13,10 @@ namespace CastleOverlayV2.Controls
     }
 
     /// <summary>
-    /// Top bar above the run strip (Docs/UI_Layout_Plan.md): app name, the Logs / Tune
-    /// page tabs, and the app-wide actions (Drag/Speed pill, auto load, project open/save,
-    /// settings).
+    /// Top bar above the run strip (Docs/UI_Layout_Plan.md): app name, the Logs / Tune / TC
+    /// page tabs, and the app-wide actions (project open/save, settings). The Logs actions
+    /// (Drag/Speed pill, auto load, from logger, auto trim, View menu) only show on the Logs
+    /// page; View also shows on TC for the RPM pole setting.
     /// </summary>
     public sealed class TopBar : UserControl
     {
@@ -30,7 +31,10 @@ namespace CastleOverlayV2.Controls
         private readonly TabButton _logsTab;
         private readonly TabButton _tuneTab;
         private readonly TabButton _tcTab;
-        private readonly TabButton _viewTab;
+        private readonly Button _viewButton;
+        private readonly Button _autoLoadButton;
+        private readonly Button _fromLoggerButton;
+        private Control? _runTypeSwitch;
         private readonly FlowLayoutPanel _actions;
         private readonly Button _saveProjectButton;
         private readonly Button _autoTrimButton;
@@ -90,19 +94,25 @@ namespace CastleOverlayV2.Controls
             openProject.Click += (_, _) => OpenProjectRequested?.Invoke();
             _actions.Controls.Add(openProject);
 
-            var autoLoad = MakeActionButton("⤓ Auto load", 96, TextAccent, "Load the most recent log + tune + RaceBox");
-            autoLoad.Click += (_, _) => AutoLoadRequested?.Invoke();
-            _actions.Controls.Add(autoLoad);
+            // Logs actions from here on. A wider gap separates them from the project buttons.
+            _autoLoadButton = MakeActionButton("⤓ Auto load", 96, TextAccent, "Load the most recent log + tune + RaceBox");
+            _autoLoadButton.Margin = new Padding(4, 0, 20, 0);
+            _autoLoadButton.Click += (_, _) => AutoLoadRequested?.Invoke();
+            _actions.Controls.Add(_autoLoadButton);
 
-            var fromLogger = MakeActionButton("⤓ From logger", 108, TextAccent,
+            _fromLoggerButton = MakeActionButton("⤓ From logger", 108, TextAccent,
                 "Find the Mini Logger over USB and download saved runs");
-            fromLogger.Click += (_, _) => DownloadFromLoggerRequested?.Invoke();
-            _actions.Controls.Add(fromLogger);
+            _fromLoggerButton.Click += (_, _) => DownloadFromLoggerRequested?.Invoke();
+            _actions.Controls.Add(_fromLoggerButton);
 
             _autoTrimButton = MakeActionButton("✂ Auto trim: On", 118, TextPrimary,
                 "On: logs are cut to 0.5 s before launch → 2.5 s after.\nOff: logs load in full, still lined up at launch.");
             _autoTrimButton.Click += (_, _) => AutoTrimToggled?.Invoke();
             _actions.Controls.Add(_autoTrimButton);
+
+            _viewButton = MakeActionButton("View ▾", 72, TextPrimary, "Chart panes and RPM motor poles");
+            _viewButton.Click += (_, _) => ShowViewMenu();
+            _actions.Controls.Add(_viewButton);
 
             Controls.Add(_actions);
 
@@ -141,23 +151,20 @@ namespace CastleOverlayV2.Controls
             _tcTab.Click += (_, _) => SelectPage(AppPage.Tc);
             left.Controls.Add(_tcTab);
 
-            _viewTab = new TabButton("View ▾");
-            _viewTab.Click += (_, _) => ShowViewMenu();
-            _toolTip.SetToolTip(_viewTab, "Chart panes and RPM motor poles");
-            left.Controls.Add(_viewTab);
-
             Controls.Add(left);
             left.BringToFront();
 
             ApplyTabState();
         }
 
-        /// <summary>Places the Drag/Speed pill to the left of the action buttons.</summary>
+        /// <summary>Places the Drag/Speed pill to the left of the action buttons (Logs page only).</summary>
         public void HostRunTypeSwitch(Control runTypeSwitch)
         {
             runTypeSwitch.Parent?.Controls.Remove(runTypeSwitch);
             runTypeSwitch.Margin = new Padding(0, 1, 12, 0);
             _actions.Controls.Add(runTypeSwitch);
+            _runTypeSwitch = runTypeSwitch;
+            ApplyTabState();
         }
 
         public void SetSaveProjectEnabled(bool enabled) => _saveProjectButton.Enabled = enabled;
@@ -184,22 +191,26 @@ namespace CastleOverlayV2.Controls
         {
             var (paneCount, fourPole) = ViewState?.Invoke() ?? (1, false);
             var menu = new ContextMenuStrip();
-            for (int count = 1; count <= 3; count++)
+            // Panes only mean something on the Logs chart; TC only needs the pole setting.
+            if (SelectedPage == AppPage.Logs)
             {
-                int selected = count;
-                var item = new ToolStripMenuItem(count == 1 ? "1 pane" : $"{count} panes", null,
-                    (_, _) => PaneCountRequested?.Invoke(selected)) { Checked = count == paneCount };
-                menu.Items.Add(item);
+                for (int count = 1; count <= 3; count++)
+                {
+                    int selected = count;
+                    var item = new ToolStripMenuItem(count == 1 ? "1 pane" : $"{count} panes", null,
+                        (_, _) => PaneCountRequested?.Invoke(selected)) { Checked = count == paneCount };
+                    menu.Items.Add(item);
+                }
+                menu.Items.Add(new ToolStripMenuItem("Panes by source (ESC, GPS, data log)", null,
+                    (_, _) => BySourcePanesRequested?.Invoke()));
+                menu.Items.Add(new ToolStripSeparator());
             }
-            menu.Items.Add(new ToolStripMenuItem("Panes by source (ESC, GPS, data log)", null,
-                (_, _) => BySourcePanesRequested?.Invoke()));
-            menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add(new ToolStripMenuItem("RPM: 2 pole", null,
                 (_, _) => RpmModeRequested?.Invoke(false)) { Checked = !fourPole });
             menu.Items.Add(new ToolStripMenuItem("RPM: 4 pole (halves the value)", null,
                 (_, _) => RpmModeRequested?.Invoke(true)) { Checked = fourPole });
             menu.Closed += (_, _) => BeginInvoke(menu.Dispose);
-            menu.Show(_viewTab, new Point(0, _viewTab.Height));
+            menu.Show(_viewButton, new Point(0, _viewButton.Height));
         }
 
         private void ApplyTabState()
@@ -207,6 +218,16 @@ namespace CastleOverlayV2.Controls
             _logsTab.Selected = SelectedPage == AppPage.Logs;
             _tuneTab.Selected = SelectedPage == AppPage.Tune;
             _tcTab.Selected = SelectedPage == AppPage.Tc;
+
+            // Each page shows only its own buttons; the project buttons and settings stay.
+            bool logs = SelectedPage == AppPage.Logs;
+            _actions.SuspendLayout();
+            _autoLoadButton.Visible = logs;
+            _fromLoggerButton.Visible = logs;
+            _autoTrimButton.Visible = logs;
+            _viewButton.Visible = logs || SelectedPage == AppPage.Tc;
+            if (_runTypeSwitch != null) _runTypeSwitch.Visible = logs;
+            _actions.ResumeLayout(true);
         }
 
         private Button MakeActionButton(string text, int width, Color foreColor, string tooltip)
