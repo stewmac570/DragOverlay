@@ -299,7 +299,7 @@ namespace CastleOverlayV2.Controls
             var panel = new Panel { Height = 120, BackColor = SurfaceWindow, Margin = new Padding(0) };
             var text = new Label
             {
-                Text = "Load a Castle log, then attach its Castle Link .dat tune to compare it here.",
+                Text = "Load a Castle log on the Logs tab, then attach its Castle Link .dat tune to compare it here.",
                 AutoSize = true,
                 ForeColor = TextSecond,
                 Location = new Point(0, 12)
