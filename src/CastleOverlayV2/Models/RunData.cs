@@ -53,6 +53,9 @@ namespace CastleOverlayV2.Models
         public double? TrimStartTime { get; set; }
         public double? TrimEndTime { get; set; }
 
+        // Trim windows before each trim or reset, newest on top, so cuts undo one at a time.
+        public Stack<(double? Start, double? End)> TrimHistory { get; set; } = new();
+
         public RunData()
         {
             DataPoints = new List<DataPoint>();
@@ -74,11 +77,12 @@ namespace CastleOverlayV2.Models
         /// Recompute <see cref="DataPoints"/> from the baseline and the current trim window.
         /// No-op for RaceBox runs or before a baseline exists. Inverted/empty windows that
         /// would discard every sample are ignored (the request is treated as a no-op).
+        /// Returns false when nothing was applied.
         /// </summary>
-        public void ApplyManualTrim()
+        public bool ApplyManualTrim()
         {
             if (HasChannelData || BaselineDataPoints == null)
-                return;
+                return false;
 
             IEnumerable<DataPoint> kept = BaselineDataPoints;
             if (TrimStartTime is double start)
@@ -88,9 +92,35 @@ namespace CastleOverlayV2.Models
 
             var result = kept.ToList();
             if (result.Count == 0)
-                return; // would empty the run — ignore the trim
+                return false; // would empty the run — ignore the trim
 
             DataPoints = result;
+            return true;
+        }
+
+        /// <summary>Set a new trim window, remembering the old one for undo. False if it would empty the run.</summary>
+        public bool SetTrimWindow(double? start, double? end)
+        {
+            var previous = (TrimStartTime, TrimEndTime);
+            TrimStartTime = start;
+            TrimEndTime = end;
+            if (!ApplyManualTrim())
+            {
+                (TrimStartTime, TrimEndTime) = previous;
+                return false;
+            }
+            TrimHistory.Push(previous);
+            return true;
+        }
+
+        /// <summary>Put back the trim window from before the last trim or reset. False if there is none.</summary>
+        public bool UndoTrim()
+        {
+            if (TrimHistory.Count == 0 || BaselineDataPoints == null)
+                return false;
+            (TrimStartTime, TrimEndTime) = TrimHistory.Pop();
+            ApplyManualTrim();
+            return true;
         }
     }
 }
