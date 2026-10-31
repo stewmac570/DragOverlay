@@ -48,6 +48,10 @@ namespace CastleOverlayV2.Plot
         public event Action<double>? TrimBeforeRequested;
         public event Action<double>? TrimAfterRequested;
         public event Action? TrimResetRequested;
+        public event Action? TrimUndoRequested;
+
+        /// <summary>Asked when the trim menu opens: true when the selected run has a cut to undo.</summary>
+        public Func<bool>? CanUndoTrim { get; set; }
         public event Action<IReadOnlyList<double>>? PaneHeightsChanged;
         public event Action<IReadOnlyDictionary<int, string>>? PaneFocusedChannelsChanged;
 
@@ -55,6 +59,7 @@ namespace CastleOverlayV2.Plot
         private ToolStripMenuItem? _trimBeforeItem;
         private ToolStripMenuItem? _trimAfterItem;
         private ToolStripMenuItem? _trimResetItem;
+        private ToolStripMenuItem? _trimUndoItem;
         private bool _manualTrimAvailable;
         private double _lastRightClickPlotX;
 
@@ -337,10 +342,13 @@ namespace CastleOverlayV2.Plot
                 null, (_, _) => TrimAfterRequested?.Invoke(_lastRightClickPlotX));
             _trimResetItem = new ToolStripMenuItem("Reset trim",
                 null, (_, _) => TrimResetRequested?.Invoke());
+            _trimUndoItem = new ToolStripMenuItem("Undo last trim",
+                null, (_, _) => TrimUndoRequested?.Invoke()) { ShortcutKeyDisplayString = "Ctrl+Z" };
 
             _trimMenu.Items.Add(_trimBeforeItem);
             _trimMenu.Items.Add(_trimAfterItem);
             _trimMenu.Items.Add(new ToolStripSeparator());
+            _trimMenu.Items.Add(_trimUndoItem);
             _trimMenu.Items.Add(_trimResetItem);
         }
 
@@ -787,6 +795,7 @@ namespace CastleOverlayV2.Plot
             if (_trimBeforeItem != null) _trimBeforeItem.Enabled = _manualTrimAvailable;
             if (_trimAfterItem != null) _trimAfterItem.Enabled = _manualTrimAvailable;
             if (_trimResetItem != null) _trimResetItem.Enabled = _manualTrimAvailable;
+            if (_trimUndoItem != null) _trimUndoItem.Enabled = _manualTrimAvailable && CanUndoTrim?.Invoke() == true;
             _trimMenu.Show(source, location);
         }
 

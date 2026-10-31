@@ -110,6 +110,9 @@ namespace CastleOverlayV2
             _plot.TrimBeforeRequested += plotX => TrimArmedRun(plotX, before: true);
             _plot.TrimAfterRequested += plotX => TrimArmedRun(plotX, before: false);
             _plot.TrimResetRequested += ResetArmedRunTrim;
+            _plot.TrimUndoRequested += UndoArmedRunTrim;
+            _plot.CanUndoTrim = () =>
+                _armedSlot.HasValue && _runs.TryGetValue(_armedSlot.Value, out var armed) && armed.TrimHistory.Count > 0;
             _tunePanel.AttachTuneRequested += AttachTuneToRun;
             _tunePanel.RadioSettingsChanged += UpdateRadioSettings;
 
@@ -380,6 +383,7 @@ namespace CastleOverlayV2
                     reloaded.TrimEndTime = old.TrimEndTime;
                     reloaded.ApplyManualTrim();
                 }
+                reloaded.TrimHistory = old.TrimHistory;
                 _plot.SetRunVisibility(slot, visible);
                 _view.SetSlotToggleText(slot, visible);
             }
@@ -700,8 +704,8 @@ namespace CastleOverlayV2
 
         /// <summary>
         /// Manually trim the armed Castle run, removing samples before (or after) the
-        /// right-clicked time. Reversible — operates over the run's baseline and can be
-        /// undone with <see cref="ResetArmedRunTrim"/>.
+        /// right-clicked time. Reversible — operates over the run's baseline; undo one cut
+        /// with <see cref="UndoArmedRunTrim"/> or all of them with <see cref="ResetArmedRunTrim"/>.
         /// </summary>
         private void TrimArmedRun(double plotX, bool before)
         {
@@ -720,12 +724,10 @@ namespace CastleOverlayV2
             // alignment offset needs removing.
             double runTime = plotX - run.TimeShiftMs / 1000.0;
 
-            if (before)
-                run.TrimStartTime = runTime;
-            else
-                run.TrimEndTime = runTime;
-
-            run.ApplyManualTrim();
+            bool applied = before
+                ? run.SetTrimWindow(runTime, run.TrimEndTime)
+                : run.SetTrimWindow(run.TrimStartTime, runTime);
+            if (!applied) return; // would have removed every sample
             Logger.Log($"✂️ Manual trim slot {_armedSlot.Value}: {(before ? "before" : "after")} t={runTime:F3}s → {run.DataPoints.Count} pts");
             PlotAllRuns();
         }
@@ -738,10 +740,26 @@ namespace CastleOverlayV2
             if (run.HasChannelData || run.BaselineDataPoints == null)
                 return;
 
+            if (run.TrimStartTime == null && run.TrimEndTime == null)
+                return;
+
+            run.TrimHistory.Push((run.TrimStartTime, run.TrimEndTime));
             run.TrimStartTime = null;
             run.TrimEndTime = null;
             run.ApplyManualTrim();
             Logger.Log($"✂️ Manual trim reset slot {_armedSlot.Value} → {run.DataPoints.Count} pts");
+            PlotAllRuns();
+        }
+
+        /// <summary>Undo the last trim or reset on the armed run (chart menu or Ctrl+Z).</summary>
+        public void UndoArmedRunTrim()
+        {
+            if (!_armedSlot.HasValue || !_runs.TryGetValue(_armedSlot.Value, out var run))
+                return;
+            if (run.HasChannelData || !run.UndoTrim())
+                return;
+
+            Logger.Log($"✂️ Manual trim undo slot {_armedSlot.Value} → {run.DataPoints.Count} pts");
             PlotAllRuns();
         }
 

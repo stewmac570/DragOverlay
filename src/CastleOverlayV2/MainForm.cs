@@ -535,6 +535,12 @@ namespace CastleOverlayV2
                     return true;
                 }
 
+                if (keyData == (Keys.Control | Keys.Z))
+                {
+                    _presenter.UndoArmedRunTrim();
+                    return true;
+                }
+
                 if (keyCode == Keys.Left || keyCode == Keys.Right)
                 {
                     int direction = keyCode == Keys.Left ? -1 : 1;
