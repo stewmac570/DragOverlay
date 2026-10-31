@@ -43,6 +43,7 @@ public sealed class TcPanel : UserControl
     private readonly FormsPlot _chart = new();
     private readonly DataGridView _points = new();
     private IReadOnlyList<TcRpmSample> _rpmTrace = Array.Empty<TcRpmSample>();
+    private ScottPlot.AxisRules.LockedVertical? _rpmLock;
     private TcLoggerStatus? _sessionStatus;
     private bool _updatingGrid;
     private bool _updatingSources;
@@ -494,6 +495,7 @@ public sealed class TcPanel : UserControl
         {
             if (_dragPointIndex < 0) _chart.Cursor = Cursors.Default;
         };
+        FitAndLockRpm();
     }
 
     private static void ApplyAxisStyle(ScottPlot.IAxis axis)
@@ -588,14 +590,25 @@ public sealed class TcPanel : UserControl
             line.MarkerSize = 6;
         }
         _chart.Plot.Legend.IsVisible = _rpmTrace.Count > 0;
-        if (fitView) _chart.Plot.Axes.AutoScale();
+        if (fitView) FitAndLockRpm();
         _chart.Refresh();
     }
 
     private void FitChart()
     {
-        _chart.Plot.Axes.AutoScale();
+        FitAndLockRpm();
         _chart.Refresh();
+    }
+
+    // Like the Logs chart: the RPM scale is locked so the scroll wheel only zooms time.
+    // Fit re-reads the data and locks the new RPM range.
+    private void FitAndLockRpm()
+    {
+        if (_rpmLock is not null) _chart.Plot.Axes.Rules.Remove(_rpmLock);
+        _chart.Plot.Axes.AutoScale();
+        var limits = _chart.Plot.Axes.GetLimits();
+        _rpmLock = new ScottPlot.AxisRules.LockedVertical(_chart.Plot.Axes.Left, limits.Bottom, limits.Top);
+        _chart.Plot.Axes.Rules.Add(_rpmLock);
     }
 
     private void ChartMouseDown(object? sender, MouseEventArgs e)
