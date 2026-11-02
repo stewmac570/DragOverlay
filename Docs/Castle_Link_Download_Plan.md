@@ -23,13 +23,13 @@ Castle app steps: download, viewer, name, save, import.
   Treating that as a second Castle Link is an inference.
 - `USBPcapCMD` is installed. Wireshark's own capture does not work on this PC
   because Npcap is missing, and it is not needed for this job.
-
-- The capture script works. First capture: 2026-11-02, a Cobra 8 Ace on
-  firmware 1.36, session number 33.
+- The capture script works. Two captures on 2026-11-02, a Cobra 8 Ace on
+  firmware 1.36, sessions 33 and 32.
 - Serial settings seen in the capture: 9600 8N1.
 - Every message checksum passes: all bytes in a frame add up to 0 (mod 256).
-- Decoding session 33 rebuilt all 289 rows and matched the exported CSV for
-  every channel that had a live value.
+- The decoder and formulas below rebuilt both logs and matched every cell of
+  both exported CSVs: 767 rows, 9,204 cells, no misses. Cells were compared to
+  the precision the CSV prints.
 
 ## Protocol as captured
 
@@ -50,7 +50,7 @@ Commands seen in the download, in order:
 | `32` | Prepare the session list | Purpose unknown |
 | `D8` | Read one session list entry | Bytes 5-6 are session number, 7-9 are size in pages |
 | `33`, `D9`, `D7` | Select a session. `D7` carries the number | Exact role of `33` and `D9` unknown |
-| `31` | Read the selected session | Sent with block numbers 0-7 for a 4-page session; how the count scales is unknown |
+| `31` | Read the selected session | Sent with block numbers 0 up to pages + 3: 8 requests for 4 pages, 14 for 10 pages |
 
 Log format:
 
@@ -63,26 +63,32 @@ Log format:
   high byte alone.
 - Values follow in bit order, lowest bit first.
 
-| Bit | Channel | Scale seen |
-| --- | --- | --- |
-| 0 | Voltage | raw / 8 (61 = 7.63) |
-| 3 | Temperature | raw is deg C, CSV is deg F (26 = 78.8) |
-| 4 | Throttle | 131 = 1.5266, 132 = 1.5344 |
-| 8 | Gov. Gain | raw (203 = 203) |
-| 9 | BEC Voltage | about raw x 0.0404 (137 = 5.53) |
-| 10 | Motor Temp. | raw is deg C, CSV is deg F (200 = 392.00) |
-| 11 | Acceleration | raw / 16 (2 = 0.13) |
+| Bit | Channel | Formula | Range proven in the captures |
+| --- | --- | --- | --- |
+| 0 | Voltage | raw / 8 | 5.25 to 7.75 |
+| 1 | Ripple | raw / 8 | 0 to 0.125 |
+| 2 | Current | raw x 3 | 0 to 18 |
+| 3 | Temperature | raw is deg C; CSV is raw x 1.8 + 32 | 77 to 78.8 |
+| 4 | Throttle | 0.5 + raw / 127.6 | 1.5266 to 1.7774 |
+| 5 | Power-Out | raw x 100 / 255 | 0 to 17.647 |
+| 6 and 7 | Speed | (bit 6 x 256 + bit 7) x 10 | 0 to 41950 |
+| 8 | Gov. Gain | raw | 203 to 204 |
+| 9 | BEC Voltage | raw x 0.0404 | 5.45 to 5.62 |
+| 10 | Motor Temp. | raw x 1.8 + 32 | 392 only |
+| 11 | Acceleration | raw / 16 | 0 to 0.13 |
+| 12 | Motor Timing | raw, by elimination | 0 only |
+
+Every value is one byte. Speed is the only channel that uses two slots.
 
 ## What is not verified
 
-- Bits 1, 2, 5, 6, 7 and 12. They were zero all through session 33, so which
-  channel each one carries is unknown. Expected there: Ripple, Current,
-  Power-Out, Speed and Motor Timing. One bit has no expected channel yet.
-- Whether any value takes more than one byte. Every value seen fitted in one,
-  but session 33 was idle. Speed and Current in a real pass may not fit.
-- Scales for throttle and BEC beyond the few values above.
-- Whether the `06` and `0E` reads, and the block count for `31`, are needed
-  for a clean download. That needs a test against the ESC.
+- The formulas above the ranges in the table. Neither log is a hard pass:
+  the highest power seen is 17.6% and the highest current 18. The formulas may
+  hold, but that is a prediction until a bigger log is compared to its CSV.
+- Bit 12 being Motor Timing. It was always 0.
+- Motor Temp. at any value but 200.
+- Whether the `06` and `0E` reads are needed for a clean download. That needs
+  a test against the ESC.
 - Whether the Castle Link board or the ESC stores the log.
 - The second serial number on COM13 being a second Castle Link.
 
@@ -96,8 +102,8 @@ including the keyboard.
 2. Capture a full log download. Use `tools/castle-link/Capture Castle download.bat`.
    Each run goes in its own folder under `Tests/castle-link-captures/`, with the
    CSV exported from the same log so the decoded bytes can be checked against it.
-   First capture done. A second capture of a real pass is needed.
-3. Decode the request and response sequence and the log data format. Partly
-   done; see the unverified list.
+   Done, two captures.
+3. Decode the request and response sequence and the log data format. Done for
+   the range seen; see the unverified list.
 4. Add a "Get Castle log" button to DragOverlay.
 5. Auto-name the file and line it up with the matching logger pass.
