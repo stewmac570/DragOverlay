@@ -34,6 +34,7 @@ namespace CastleOverlayV2.Controls
         private readonly Button _viewButton;
         private readonly Button _autoLoadButton;
         private readonly Button _fromLoggerButton;
+        private readonly Button _getCastleLogButton;
         private Control? _runTypeSwitch;
         private readonly FlowLayoutPanel _actions;
         private readonly Button _saveProjectButton;
@@ -43,6 +44,7 @@ namespace CastleOverlayV2.Controls
         public event Action<AppPage>? PageSelected;
         public event Action? AutoLoadRequested;
         public event Action? DownloadFromLoggerRequested;
+        public event Action? GetCastleLogRequested;
         public event Action? AutoTrimToggled;
         public event Action? OpenProjectRequested;
         public event Action? SaveProjectRequested;
@@ -104,6 +106,11 @@ namespace CastleOverlayV2.Controls
                 "Find the Mini Logger over USB and download saved runs");
             _fromLoggerButton.Click += (_, _) => DownloadFromLoggerRequested?.Invoke();
             _actions.Controls.Add(_fromLoggerButton);
+
+            _getCastleLogButton = MakeActionButton("⤓ Get Castle log", 118, TextAccent,
+                "Download logs straight from the ESC through the Castle Link");
+            _getCastleLogButton.Click += (_, _) => GetCastleLogRequested?.Invoke();
+            _actions.Controls.Add(_getCastleLogButton);
 
             _autoTrimButton = MakeActionButton("✂ Auto trim: On", 118, TextPrimary,
                 "On: logs are cut to 0.5 s before launch → 2.5 s after.\nOff: logs load in full, still lined up at launch.");
@@ -224,6 +231,7 @@ namespace CastleOverlayV2.Controls
             _actions.SuspendLayout();
             _autoLoadButton.Visible = logs;
             _fromLoggerButton.Visible = logs;
+            _getCastleLogButton.Visible = logs;
             _autoTrimButton.Visible = logs;
             _viewButton.Visible = logs || SelectedPage == AppPage.Tc;
             if (_runTypeSwitch != null) _runTypeSwitch.Visible = logs;

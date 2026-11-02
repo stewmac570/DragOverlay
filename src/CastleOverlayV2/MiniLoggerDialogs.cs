@@ -42,16 +42,16 @@ internal static class MiniLoggerDialogTheme
 
 internal sealed class MiniLoggerLookingForm : Form
 {
-    public MiniLoggerLookingForm()
+    public MiniLoggerLookingForm(string title = "Mini Logger", string message = "Looking for the Mini Logger…")
     {
         MiniLoggerDialogTheme.Apply(this);
-        Text = "Mini Logger";
+        Text = title;
         Width = 330;
         Height = 115;
         ControlBox = false;
         Controls.Add(new Label
         {
-            Text = "Looking for the Mini Logger…",
+            Text = message,
             Dock = DockStyle.Fill,
             TextAlign = ContentAlignment.MiddleCenter,
             ForeColor = MiniLoggerDialogTheme.Text
@@ -101,6 +101,51 @@ internal sealed class MiniLoggerRunSelectionForm : Form
 
     public IReadOnlyList<MiniLoggerRunInfo> SelectedRuns =>
         _runs.CheckedIndices.Cast<int>().Select(index => _items[index]).ToList();
+}
+
+/// <summary>Lists the ESC's sessions, newest first, with only the newest ticked.</summary>
+internal sealed class CastleSessionSelectionForm : Form
+{
+    private readonly CheckedListBox _sessions = new();
+    private readonly IReadOnlyList<CastleSessionInfo> _items;
+
+    public CastleSessionSelectionForm(IReadOnlyList<CastleSessionInfo> sessions)
+    {
+        _items = sessions;
+        MiniLoggerDialogTheme.Apply(this);
+        Text = "Logs on the ESC";
+        Width = 390;
+        Height = 420;
+
+        _sessions.Dock = DockStyle.Fill;
+        _sessions.CheckOnClick = true;
+        _sessions.BackColor = MiniLoggerDialogTheme.Input;
+        _sessions.ForeColor = MiniLoggerDialogTheme.Text;
+        _sessions.BorderStyle = BorderStyle.FixedSingle;
+        for (int index = 0; index < sessions.Count; index++)
+            _sessions.Items.Add(sessions[index], index == 0);
+
+        var buttons = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Bottom,
+            Height = 48,
+            Padding = new Padding(0, 8, 8, 0),
+            FlowDirection = FlowDirection.RightToLeft
+        };
+        Button cancel = MiniLoggerDialogTheme.Button("Cancel");
+        cancel.DialogResult = DialogResult.Cancel;
+        Button download = MiniLoggerDialogTheme.Button("Download");
+        download.DialogResult = DialogResult.OK;
+        buttons.Controls.Add(cancel);
+        buttons.Controls.Add(download);
+        Controls.Add(_sessions);
+        Controls.Add(buttons);
+        AcceptButton = download;
+        CancelButton = cancel;
+    }
+
+    public IReadOnlyList<CastleSessionInfo> SelectedSessions =>
+        _sessions.CheckedIndices.Cast<int>().Select(index => _items[index]).ToList();
 }
 
 internal sealed class MiniLoggerDownloadForm : Form, IMiniLoggerDownloadSession

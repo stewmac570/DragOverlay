@@ -25,6 +25,7 @@ namespace CastleOverlayV2
         private readonly ChannelDrawer _drawer;
         private readonly TunePanel _tunePanel;
         private readonly Func<IMiniLoggerUsbClient> _miniLoggerUsbFactory;
+        private readonly Func<ICastleLinkClient> _castleLinkFactory;
 
         // Active runs by slot. Castle = 1..3, GPS = 4..6, data logs = 7..9 (see RunSlots).
         private readonly Dictionary<int, RunData> _runs = new();
@@ -60,7 +61,8 @@ namespace CastleOverlayV2
             PlotManager plot,
             ChannelDrawer drawer,
             TunePanel tunePanel,
-            Func<IMiniLoggerUsbClient>? miniLoggerUsbFactory = null)
+            Func<IMiniLoggerUsbClient>? miniLoggerUsbFactory = null,
+            Func<ICastleLinkClient>? castleLinkFactory = null)
         {
             _view = view;
             _config = config;
@@ -68,6 +70,7 @@ namespace CastleOverlayV2
             _drawer = drawer;
             _tunePanel = tunePanel;
             _miniLoggerUsbFactory = miniLoggerUsbFactory ?? (() => new MiniLoggerUsb());
+            _castleLinkFactory = castleLinkFactory ?? (() => new CastleLinkUsb());
 
             _isFourPoleMode = _config.Config.IsFourPoleMode;
             _keepFullLogs = !_config.Config.AutoTrim;
@@ -971,6 +974,138 @@ namespace CastleOverlayV2
             {
                 _view.ShowInfo("Mini Logger",
                     $"The first three runs were loaded. The other {downloaded.Count - 3} run(s) were saved in:\n{sessionFolder}");
+            }
+        }
+
+        /// <summary>Find the Castle Link, download the picked sessions, save them as CSVs and load them.</summary>
+        public async Task DownloadFromCastleLinkAsync()
+        {
+            const string title = "Castle Link";
+            using ICastleLinkClient link = _castleLinkFactory();
+            List<string> saved;
+            try
+            {
+                _view.SetCastleLinkBusy("Connecting to the Castle Link…");
+                CastleLinkConnectResult connection = await Task.Run(() => link.Connect());
+                if (connection.Status == CastleLinkConnectStatus.PortBusy)
+                {
+                    _view.ShowError(title,
+                        "The Castle Link's USB port could not be opened.\n\nClose Castle Link 2 and try again.");
+                    return;
+                }
+                if (connection.Status == CastleLinkConnectStatus.NotFound)
+                {
+                    _view.ShowInfo(title, "No Castle Link was found.\n\nPlug it into the PC and try again.");
+                    return;
+                }
+                if (connection.Status == CastleLinkConnectStatus.NoEsc)
+                {
+                    _view.ShowInfo(title,
+                        "The Castle Link is connected, but the ESC did not answer.\n\n" +
+                        "Plug the ESC into the Castle Link and try again.");
+                    return;
+                }
+
+                IReadOnlyList<CastleSessionInfo> sessions = await Task.Run(() => link.ListSessions());
+                if (sessions.Count == 0)
+                {
+                    _view.ShowInfo(title, "No logs are saved on the ESC.");
+                    return;
+                }
+
+                _view.SetCastleLinkBusy(null);
+                IReadOnlyList<CastleSessionInfo>? selected = await SelectCastleSessionsAsync(link, sessions);
+                if (selected is null || selected.Count == 0)
+                    return;
+
+                saved = await DownloadCastleSessionsAsync(link, selected);
+            }
+            catch (CastleLinkStoppedRespondingException)
+            {
+                _view.ShowError(title, "The Castle Link stopped answering. Check both cables and try again.");
+                return;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or System.Management.ManagementException)
+            {
+                Logger.Log($"Castle Link download failed: {ex.Message}");
+                _view.ShowError(title, "The download failed.\n\n" + ex.Message);
+                return;
+            }
+            finally
+            {
+                _view.SetCastleLinkBusy(null);
+            }
+
+            await LoadCastleDownloadsAsync(saved);
+        }
+
+        /// <summary>The picker blocks the UI thread, so the idle messages run alongside it.</summary>
+        private async Task<IReadOnlyList<CastleSessionInfo>?> SelectCastleSessionsAsync(
+            ICastleLinkClient link, IReadOnlyList<CastleSessionInfo> sessions)
+        {
+            using var stopKeepAlive = new CancellationTokenSource();
+            CancellationToken token = stopKeepAlive.Token;
+            Task keepAlive = Task.Run(async () =>
+            {
+                while (!token.IsCancellationRequested)
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(1), token);
+                    link.KeepAlive();
+                }
+            }, token);
+
+            IReadOnlyList<CastleSessionInfo>? selected = _view.SelectCastleSessions(sessions);
+            stopKeepAlive.Cancel();
+            try
+            {
+                await keepAlive;
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            return selected;
+        }
+
+        private async Task<List<string>> DownloadCastleSessionsAsync(
+            ICastleLinkClient link, IReadOnlyList<CastleSessionInfo> selected)
+        {
+            string folder = _config.Config.CastleLogDirectory;
+            if (string.IsNullOrWhiteSpace(folder))
+            {
+                folder = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Castle Logs");
+                _config.Config.CastleLogDirectory = folder;
+                _config.Save();
+            }
+            Directory.CreateDirectory(folder);
+
+            string stamp = DateTime.Now.ToString("yyyy-MM-dd HHmm", System.Globalization.CultureInfo.InvariantCulture);
+            var saved = new List<string>();
+            foreach (CastleSessionInfo session in selected)
+            {
+                _view.SetCastleLinkBusy($"Downloading session {session.Number}…");
+                string csv = await Task.Run(() => CastleLogDecoder.ToCsv(
+                    CastleLogDecoder.Decode(link.DownloadSession(session)), session.Number, link.EscFirmware));
+                string path = Path.Combine(folder, $"Castle session {session.Number} {stamp}.csv");
+                await File.WriteAllTextAsync(path, csv);
+                saved.Add(path);
+            }
+            return saved;
+        }
+
+        /// <summary>Fills empty Castle slots first, then replaces from Run 1. Extra files stay saved.</summary>
+        private async Task LoadCastleDownloadsAsync(IReadOnlyList<string> paths)
+        {
+            var emptyFirst = Enumerable.Range(1, 3).OrderBy(slot => _runs.ContainsKey(slot) ? 1 : 0).ToList();
+            for (int index = 0; index < Math.Min(3, paths.Count); index++)
+            {
+                DeleteRun(emptyFirst[index]);
+                await LoadCastleRunFromPathAsync(emptyFirst[index], paths[index]);
+            }
+            if (paths.Count > 3)
+            {
+                _view.ShowInfo("Castle Link",
+                    $"The first three logs were loaded. The others were saved in:\n{Path.GetDirectoryName(paths[0])}");
             }
         }
 

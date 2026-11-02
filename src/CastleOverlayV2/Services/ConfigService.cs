@@ -22,9 +22,10 @@ namespace CastleOverlayV2.Services
         /// <summary>
         /// Initializes the ConfigService with the default config file path.
         /// </summary>
-        public ConfigService()
+        /// <param name="folder">Tests pass a temp folder so they never touch the user's settings.</param>
+        public ConfigService(string? folder = null)
         {
-            string appDataPath = Path.Combine(
+            string appDataPath = folder ?? Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
                 "DragOverlay");
 
