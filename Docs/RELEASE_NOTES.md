@@ -1,34 +1,45 @@
-# DragOverlay v1.18
+# DragOverlay v1.19
 
-Thanks for using DragOverlay! This update adds RT Pro GPS logs and gives data logs their own buttons.
+Thanks for using DragOverlay! This update pulls Castle logs straight off the ESC and adds split charts, Mini Logger downloads and a TC tab.
 
 ## What's new
 
-### 📡 RT Pro GPS logs
-RT Pro telemetry files (`RTProTree_..._telemetry.csv`) now load just like RaceBox logs:
+### ⤓ Get Castle log
+Plug the Castle Link into the ESC and the PC, then press **Get Castle log** on the Logs page. You don't need the Castle app.
 
-- They show on the **GPS Speed, Distance and G-Force** channels.
-- **66 ft and 132 ft split lines** are worked out from the speed.
-- A file holds a whole session, so DragOverlay picks your **fastest pass** and starts the clock at the standstill just before it.
+- Pick from the logs on the ESC. The newest is ticked for you.
+- The log is named, saved in your Castle log folder and loaded.
+- Close Castle Link 2 first, because only one program can use the Castle Link at a time.
 
-### 🔘 GPS and Data Log buttons
-The buttons along the top are now three groups:
+Tested on a Cobra 8 Ace with firmware 1.36. Other ESCs have not been tested.
 
-- **Load Castle 1–3** for Castle ESC logs.
-- **Load GPS 1–3** for RaceBox and RT Pro logs.
-- **Load Data Log 1–3** for Mini Logger logs, which now have their own slots.
+### 📊 Split view
+The chart can split into 1 to 3 stacked panes that share one time axis, each with its own scales. Set it from the **View** menu, or sort the panes by source.
 
-Pick a file with the wrong button and it goes into the right group anyway. Projects saved with an earlier version still open.
+### 🔌 Mini Logger over USB
+**From logger** finds the Mini Logger on USB and downloads its saved runs. Car gearing and slip channels are also new, and the front wheel size and FDR are in the car settings.
 
-### ↔️ Buttons fit the window
-The buttons shrink and grow with the window, so all nine always fit on one row. Long file names end in "…".
+### 🎛️ TC tab
+A new TC tab loads TC logger runs, shows the RPM curve and lets you edit Castle TC curves on the chart. It has its own **Load log** button, and it uses its own logs.
+
+### ✂️ Trimming
+- **Auto trim** has an on/off button in the top bar.
+- **Undo the last trim** from the chart menu or with Ctrl+Z.
+
+### Smaller changes
+- Each tab shows only its own buttons.
+- Data logs have their own folder setting.
 
 ## Fixes
-- Projects that include an RT Pro GPS run now reopen.
+- Castle RPM at the cursor no longer halves twice in 4-pole mode.
+- Bench-test Castle logs now line up.
+- Mini Logger files that kept their BEGIN and END lines now load.
+- The chart no longer shows side scales.
+- The TC chart zooms in time only, like the Logs chart.
 
 ## How to install
 
-1. Download **`DragOverlay-Setup-v1.18.exe`** from the **Assets** below.
+1. Download **`DragOverlay-Setup-v1.19.exe`** from the **Assets** below.
 2. Run it and follow the prompts.
 3. Launch **DragOverlay** from the Start menu.
 
