@@ -18,3 +18,6 @@
 
 # Publish output
 publish/
+
+# Raw USB captures record every device on the PC, including the keyboard
+Tests/castle-link-captures/
