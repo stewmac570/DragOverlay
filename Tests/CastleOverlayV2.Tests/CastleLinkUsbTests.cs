@@ -36,6 +36,20 @@ public sealed class CastleLinkUsbTests
         AssertMatchesExport(CastleLogDecoder.ToCsv(rows, number, client.EscFirmware), number);
     }
 
+    // Real hard passes read from the ESC: session 14 reaches 100% power, 552 amps and 192,730 RPM.
+    [Theory]
+    [InlineData(14, 2351)]
+    [InlineData(31, 1234)]
+    public void Hard_pass_logs_match_castles_own_export_including_b_markers(int number, int expectedRows)
+    {
+        byte[] log = File.ReadAllBytes(Path.Combine(SamplesFolder(), $"session-{number}.bin"));
+
+        string csv = CastleLogDecoder.ToCsv(CastleLogDecoder.Decode(log), number, "GL00136");
+
+        Assert.Equal(expectedRows, DataRows(File.ReadAllLines(Path.Combine(SamplesFolder(), $"session-{number}.csv"))).Length);
+        AssertMatchesExport(csv, number);
+    }
+
     [Fact]
     public void Decoder_rejects_a_damaged_log()
     {
@@ -72,7 +86,8 @@ public sealed class CastleLinkUsbTests
     {
         string[] decoded = DataRows(decodedCsv.Split(Environment.NewLine));
         string[] exported = DataRows(File.ReadAllLines(Path.Combine(SamplesFolder(), $"session-{number}.csv")));
-        Assert.Equal(exported.Length, decoded.Length);
+        // Castle's export can leave off the final record: session 31 has one row fewer than the ESC.
+        Assert.InRange(decoded.Length, exported.Length, exported.Length + 1);
         for (int row = 0; row < exported.Length; row++)
         {
             double[] want = Cells(exported[row]);
@@ -80,6 +95,7 @@ public sealed class CastleLinkUsbTests
             for (int cell = 0; cell < want.Length; cell++)
                 Assert.True(Math.Abs(want[cell] - got[cell]) <= CellTolerance[cell],
                     $"Row {row}, column {cell}: wanted {want[cell]}, got {got[cell]}");
+            Assert.Equal(exported[row].Contains('b'), decoded[row].Contains('b'));
         }
     }
 
@@ -87,7 +103,7 @@ public sealed class CastleLinkUsbTests
         lines.Where(line => line.Trim().Length > 0 && !line.StartsWith('#')).Skip(2).ToArray();
 
     private static double[] Cells(string line) =>
-        line.Split(',').Select(cell => double.Parse(cell.Trim(), CultureInfo.InvariantCulture)).ToArray();
+        line.Split(',').Select(cell => double.Parse(cell.Replace("b", "").Trim(), CultureInfo.InvariantCulture)).ToArray();
 
     private static List<string> CapturedRequests(int number) =>
         ReplayTransport.Conversation(number)
