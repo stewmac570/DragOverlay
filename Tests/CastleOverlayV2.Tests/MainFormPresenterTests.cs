@@ -111,6 +111,7 @@ public sealed class MainFormPresenterTests
                 Assert.StartsWith("Castle session 33 ", Path.GetFileName(saved));
                 Assert.Contains(view.SlotLoaded, loaded => loaded.slot == 1 && loaded.fullPath == saved);
                 Assert.Empty(view.Errors);
+                Assert.Empty(view.Infos); // an idle log loads with no drag check popup
                 Assert.Null(view.CastleLinkBusy[^1]);
             }
             finally
@@ -209,7 +210,7 @@ public sealed class MainFormPresenterTests
         }
 
         public byte[] DownloadSession(CastleSessionInfo session, CancellationToken cancellationToken = default) =>
-            new byte[] { 0x02, 0xFE, 0x02, 0xFE };
+            Enumerable.Repeat(new byte[] { 0x02, 0xFE }, 200).SelectMany(record => record).ToArray();
 
         public void Dispose()
         {

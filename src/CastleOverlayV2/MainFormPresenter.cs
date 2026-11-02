@@ -158,7 +158,7 @@ namespace CastleOverlayV2
         /// Load a Castle CSV at an explicit path into <paramref name="slot"/>, bypassing the
         /// file dialog. Shared by the manual load button and Auto Load.
         /// </summary>
-        private async Task LoadCastleRunFromPathAsync(int slot, string path)
+        private async Task LoadCastleRunFromPathAsync(int slot, string path, bool showWarnings = true)
         {
             try
             {
@@ -198,7 +198,7 @@ namespace CastleOverlayV2
                 _view.SetSlotLoadedUI(slot, path, _plot.GetRunVisibility(slot));
 
                 // Surface any non-fatal warning (e.g. "no drag pass detected").
-                if (result.HasMessage) ShowResultMessage(result);
+                if (showWarnings && result.HasMessage) ShowResultMessage(result);
             }
             catch (Exception ex)
             {
@@ -1100,7 +1100,8 @@ namespace CastleOverlayV2
             for (int index = 0; index < Math.Min(3, paths.Count); index++)
             {
                 DeleteRun(emptyFirst[index]);
-                await LoadCastleRunFromPathAsync(emptyFirst[index], paths[index]);
+                // A download is just the log: no "no drag pass" popup if it has no launch in it.
+                await LoadCastleRunFromPathAsync(emptyFirst[index], paths[index], showWarnings: false);
             }
             if (paths.Count > 3)
             {
