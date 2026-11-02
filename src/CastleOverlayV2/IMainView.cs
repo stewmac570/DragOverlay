@@ -32,6 +32,9 @@ namespace CastleOverlayV2
         void SetMiniLoggerSearchState(bool searching);
         IReadOnlyList<MiniLoggerRunInfo>? SelectMiniLoggerRuns(IReadOnlyList<MiniLoggerRunInfo> runs);
         IMiniLoggerDownloadSession BeginMiniLoggerDownload(int runCount);
+        /// <summary>Shows a small status window; null closes it.</summary>
+        void SetCastleLinkBusy(string? message);
+        IReadOnlyList<CastleSessionInfo>? SelectCastleSessions(IReadOnlyList<CastleSessionInfo> sessions);
 
         // Slot UI
         void SetSlotLoadedUI(int slot, string fullPath, bool isVisible, string? sourceTag = null);

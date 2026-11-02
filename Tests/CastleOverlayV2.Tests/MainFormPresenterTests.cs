@@ -92,4 +92,127 @@ public sealed class MainFormPresenterTests
             formsPlot.Dispose();
         }
     }
+
+    [Fact]
+    public void Get_Castle_log_saves_a_named_csv_and_loads_it_into_the_first_slot() =>
+        RunWithMessageLoop(async () =>
+        {
+            string folder = Path.Combine(Path.GetTempPath(), $"castle-link-{Guid.NewGuid():N}");
+            var link = new FakeCastleLink(CastleLinkConnectStatus.Connected);
+            var view = new FakeMainView();
+            var formsPlot = new FormsPlot();
+            try
+            {
+                MainFormPresenter presenter = PresenterWith(view, formsPlot, link, folder);
+
+                await presenter.DownloadFromCastleLinkAsync();
+
+                string saved = Assert.Single(Directory.GetFiles(folder));
+                Assert.StartsWith("Castle session 33 ", Path.GetFileName(saved));
+                Assert.Contains(view.SlotLoaded, loaded => loaded.slot == 1 && loaded.fullPath == saved);
+                Assert.Empty(view.Errors);
+                Assert.Null(view.CastleLinkBusy[^1]);
+            }
+            finally
+            {
+                formsPlot.Dispose();
+                if (Directory.Exists(folder))
+                    Directory.Delete(folder, true);
+            }
+        });
+
+    [Theory]
+    [InlineData(CastleLinkConnectStatus.NotFound, "No Castle Link")]
+    [InlineData(CastleLinkConnectStatus.NoEsc, "ESC did not answer")]
+    public async Task Get_Castle_log_explains_what_to_plug_in(CastleLinkConnectStatus status, string expected)
+    {
+        var view = new FakeMainView();
+        var formsPlot = new FormsPlot();
+        try
+        {
+            MainFormPresenter presenter = PresenterWith(view, formsPlot, new FakeCastleLink(status), "unused");
+
+            await presenter.DownloadFromCastleLinkAsync();
+
+            Assert.Contains(expected, Assert.Single(view.Infos).message);
+            Assert.Null(view.CastleLinkBusy[^1]);
+        }
+        finally
+        {
+            formsPlot.Dispose();
+        }
+    }
+
+    private static MainFormPresenter PresenterWith(
+        FakeMainView view, FormsPlot formsPlot, ICastleLinkClient link, string castleFolder)
+    {
+        // The presenter saves its config, so this must never be the user's real settings file.
+        var config = new ConfigService(Path.Combine(Path.GetTempPath(), $"castle-link-config-{Guid.NewGuid():N}"));
+        config.Config.CastleLogDirectory = castleFolder;
+        var drawer = new ChannelDrawer(
+            new List<string> { "RPM" },
+            new Dictionary<string, bool> { ["RPM"] = true });
+        return new MainFormPresenter(view, config, new PlotManager(formsPlot), drawer, new TunePanel(),
+            castleLinkFactory: () => link);
+    }
+
+    /// <summary>
+    /// Runs a test the way the app runs: controls are created and awaits resume on one thread
+    /// with a live message loop. Without the loop, an await after a control exists never resumes.
+    /// </summary>
+    private static void RunWithMessageLoop(Func<Task> test)
+    {
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            SynchronizationContext.SetSynchronizationContext(new WindowsFormsSynchronizationContext());
+            async void Start()
+            {
+                try
+                {
+                    await test();
+                }
+                catch (Exception ex)
+                {
+                    failure = ex;
+                }
+                Application.ExitThread();
+            }
+            SynchronizationContext.Current!.Post(_ => Start(), null);
+            Application.Run();
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.IsBackground = true;
+        thread.Start();
+
+        Assert.True(thread.Join(TimeSpan.FromSeconds(30)), "The test did not finish within 30 seconds.");
+        if (failure is not null)
+            throw new Xunit.Sdk.XunitException(failure.ToString());
+    }
+
+    private sealed class FakeCastleLink : ICastleLinkClient
+    {
+        private readonly CastleLinkConnectStatus _status;
+
+        public FakeCastleLink(CastleLinkConnectStatus status) => _status = status;
+
+        public string EscFirmware => "GL00136";
+
+        public CastleLinkConnectResult Connect(CancellationToken cancellationToken = default) =>
+            new(_status, "COM3");
+
+        public IReadOnlyList<CastleSessionInfo> ListSessions(CancellationToken cancellationToken = default) =>
+            new[] { new CastleSessionInfo(33, 1) };
+
+        public void KeepAlive()
+        {
+        }
+
+        public byte[] DownloadSession(CastleSessionInfo session, CancellationToken cancellationToken = default) =>
+            new byte[] { 0x02, 0xFE, 0x02, 0xFE };
+
+        public void Dispose()
+        {
+        }
+    }
 }

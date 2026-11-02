@@ -58,6 +58,12 @@ public sealed class FakeMainView : IMainView
         MiniLoggerRunsToSelect;
     public IMiniLoggerDownloadSession BeginMiniLoggerDownload(int runCount) =>
         new FakeMiniLoggerDownloadSession();
+    public readonly List<string?> CastleLinkBusy = new();
+    public Func<IReadOnlyList<CastleSessionInfo>, IReadOnlyList<CastleSessionInfo>?> CastleSessionPicker { get; set; } =
+        sessions => sessions.Take(1).ToList();
+    public void SetCastleLinkBusy(string? message) => CastleLinkBusy.Add(message);
+    public IReadOnlyList<CastleSessionInfo>? SelectCastleSessions(IReadOnlyList<CastleSessionInfo> sessions) =>
+        CastleSessionPicker(sessions);
 
     public void SetSlotLoadedUI(int slot, string fullPath, bool isVisible, string? sourceTag = null) =>
         SlotLoaded.Add((slot, fullPath, isVisible));

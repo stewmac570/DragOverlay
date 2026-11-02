@@ -28,6 +28,7 @@ namespace CastleOverlayV2
         private Panel _tcPage;
         private MainFormPresenter _presenter;
         private MiniLoggerLookingForm? _miniLoggerLooking;
+        private MiniLoggerLookingForm? _castleLinkBusy;
 
         public MainForm(ConfigService configService)
         {
@@ -126,6 +127,7 @@ namespace CastleOverlayV2
             _topBar.PageSelected += ShowPage;
             _topBar.AutoLoadRequested += () => _ = _presenter.AutoLoadAsync();
             _topBar.DownloadFromLoggerRequested += () => _ = _presenter.DownloadFromMiniLoggerAsync();
+            _topBar.GetCastleLogRequested += () => _ = _presenter.DownloadFromCastleLinkAsync();
             _topBar.AutoTrimToggled += () => _ = _presenter.SetAutoTrimAsync(!_presenter.IsAutoTrimOn);
             _topBar.OpenProjectRequested += () => _presenter.OpenProject();
             _topBar.SaveProjectRequested += () => _presenter.SaveProject();
@@ -357,6 +359,24 @@ namespace CastleOverlayV2
             var dialog = new MiniLoggerDownloadForm(runCount);
             dialog.Show(this);
             return dialog;
+        }
+
+        public void SetCastleLinkBusy(string? message)
+        {
+            _castleLinkBusy?.Close();
+            _castleLinkBusy?.Dispose();
+            _castleLinkBusy = null;
+            if (message is null)
+                return;
+            _castleLinkBusy = new MiniLoggerLookingForm("Castle Link", message);
+            _castleLinkBusy.Show(this);
+            _castleLinkBusy.Refresh();
+        }
+
+        public IReadOnlyList<CastleSessionInfo>? SelectCastleSessions(IReadOnlyList<CastleSessionInfo> sessions)
+        {
+            using var dialog = new CastleSessionSelectionForm(sessions);
+            return dialog.ShowDialog(this) == DialogResult.OK ? dialog.SelectedSessions : null;
         }
 
         /// <summary>A run was successfully loaded into <paramref name="slot"/>. Updates the run-strip chip.</summary>

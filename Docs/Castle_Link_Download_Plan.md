@@ -90,6 +90,14 @@ Every value is one byte. Speed is the only channel that uses two slots.
 - Whether the `06` and `0E` reads are needed for a clean download. That needs
   a test against the ESC.
 - Whether the Castle Link board or the ESC stores the log.
+- How the `b` marker is stored. Castle's exports show cells like `13.725b` in
+  Power-Out, and the loader treats those as invalid. Neither captured log has
+  one, so the decoder does not produce it yet.
+- The sample time. It is written as 0.050 because both logs use it, but the
+  ESC's own field for it has not been identified.
+- When the session list ends. The client reads entries up to the newest
+  session number minus 1, which is what both captures did.
+- Downloading several sessions in one connection. Each capture took one.
 - The second serial number on COM13 being a second Castle Link.
 
 Sample bytes and the matching CSV are in `Tests/castle-link-samples/`. Raw
@@ -105,5 +113,6 @@ including the keyboard.
    Done, two captures.
 3. Decode the request and response sequence and the log data format. Done for
    the range seen; see the unverified list.
-4. Add a "Get Castle log" button to DragOverlay.
+4. Add a "Get Castle log" button to DragOverlay. Built and tested against the
+   replayed captures. First run against the real ESC is still to do.
 5. Auto-name the file and line it up with the matching logger pass.
