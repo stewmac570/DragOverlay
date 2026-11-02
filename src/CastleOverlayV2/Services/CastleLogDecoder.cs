@@ -11,17 +11,22 @@ public static class CastleLogDecoder
 {
     public const int SlotCount = 13;
 
+    /// <summary>Extra row entry after the slots: 1 when the record's flag bit was set.</summary>
+    public const int FlagIndex = SlotCount;
+
+    private const int FlagBit = 14;
+
     /// <summary>Sample time of both captured logs. The ESC's own field for it is not identified.</summary>
     public const string SampleTime = "0.050";
 
     private const int Voltage = 0, Ripple = 1, Current = 2, Temperature = 3, Throttle = 4, PowerOut = 5,
         SpeedHigh = 6, SpeedLow = 7, GovGain = 8, BecVoltage = 9, MotorTemp = 10, Acceleration = 11, MotorTiming = 12;
 
-    /// <summary>Each row holds the raw value of all <see cref="SlotCount"/> slots.</summary>
+    /// <summary>Each row holds the raw value of all <see cref="SlotCount"/> slots, then the flag.</summary>
     public static IReadOnlyList<int[]> Decode(byte[] log)
     {
         var rows = new List<int[]>();
-        var current = new int[SlotCount];
+        var current = new int[SlotCount + 1];
         int offset = 0;
         while (offset < log.Length)
         {
@@ -64,6 +69,7 @@ public static class CastleLogDecoder
 
     private static void ApplyRecord(byte[] log, int start, int end, int[] current)
     {
+        current[FlagIndex] = 0; // the flag belongs to one record; it does not carry over
         if (start == end)
             return; // nothing changed: this row repeats the one before it
 
@@ -81,7 +87,11 @@ public static class CastleLogDecoder
             mask = first << 8;
         }
 
-        for (int slot = 0; slot < 15; slot++)
+        // The flag is an on/off bit with no value byte behind it.
+        current[FlagIndex] = (mask >> FlagBit) & 1;
+        mask &= ~(1 << FlagBit);
+
+        for (int slot = 0; slot < FlagBit; slot++)
         {
             if ((mask & (1 << slot)) == 0)
                 continue;
@@ -96,7 +106,9 @@ public static class CastleLogDecoder
     private static IEnumerable<string> FormatRow(int[] raw)
     {
         yield return Number(0.5 + raw[Throttle] / 127.6, "F4");
-        yield return Number(raw[PowerOut] * 100.0 / 255.0, "F3");
+        // Castle's export marks Power-Out with "b" when the flag is set and the raw value is above 1.
+        string powerMarker = raw[FlagIndex] == 1 && raw[PowerOut] > 1 ? "b" : "";
+        yield return Number(raw[PowerOut] * 100.0 / 255.0, "F3") + powerMarker;
         yield return Number(raw[Voltage] / 8.0, "F2");
         yield return Number(raw[Ripple] / 8.0, "F3");
         yield return Number(raw[Current] * 3.0, "F1");
@@ -106,7 +118,7 @@ public static class CastleLogDecoder
         yield return Number(raw[BecVoltage] * 0.0404, "F2");
         yield return Number(ToFahrenheit(raw[MotorTemp]), "F2");
         yield return Number(raw[MotorTiming], "F0");
-        yield return Number(raw[Acceleration] / 16.0, "F2");
+        yield return Number((sbyte)raw[Acceleration] / 16.0, "F2"); // signed: 254 is -0.13
     }
 
     private static double ToFahrenheit(int celsius) => celsius * 1.8 + 32;

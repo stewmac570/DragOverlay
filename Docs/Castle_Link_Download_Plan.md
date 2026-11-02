@@ -62,42 +62,45 @@ Log format:
   its low 7 bits are the high byte and a low byte follows. Otherwise it is the
   high byte alone.
 - Values follow in bit order, lowest bit first.
+- Bit 14 is an on/off flag with no value byte. It applies to that record only.
+  Castle's export adds `b` to Power-Out when the flag is on and the raw power
+  is above 1. What `b` means to Castle is not known.
 
-| Bit | Channel | Formula | Range proven in the captures |
-| --- | --- | --- | --- |
-| 0 | Voltage | raw / 8 | 5.25 to 7.75 |
-| 1 | Ripple | raw / 8 | 0 to 0.125 |
-| 2 | Current | raw x 3 | 0 to 18 |
-| 3 | Temperature | raw is deg C; CSV is raw x 1.8 + 32 | 77 to 78.8 |
-| 4 | Throttle | 0.5 + raw / 127.6 | 1.5266 to 1.7774 |
-| 5 | Power-Out | raw x 100 / 255 | 0 to 17.647 |
-| 6 and 7 | Speed | (bit 6 x 256 + bit 7) x 10 | 0 to 41950 |
-| 8 | Gov. Gain | raw | 203 to 204 |
-| 9 | BEC Voltage | raw x 0.0404 | 5.45 to 5.62 |
-| 10 | Motor Temp. | raw x 1.8 + 32 | 392 only |
-| 11 | Acceleration | raw / 16 | 0 to 0.13 |
-| 12 | Motor Timing | raw, by elimination | 0 only |
+| Bit | Channel | Formula |
+| --- | --- | --- |
+| 0 | Voltage | raw / 8 |
+| 1 | Ripple | raw / 8 |
+| 2 | Current | raw x 3 |
+| 3 | Temperature | raw is deg C; CSV is raw x 1.8 + 32 |
+| 4 | Throttle | 0.5 + raw / 127.6 |
+| 5 | Power-Out | raw x 100 / 255 |
+| 6 and 7 | Speed | (bit 6 x 256 + bit 7) x 10 |
+| 8 | Gov. Gain | raw |
+| 9 | BEC Voltage | raw x 0.0404 |
+| 10 | Motor Temp. | raw x 1.8 + 32 |
+| 11 | Acceleration | signed byte / 16 |
+| 12 | Motor Timing | raw, by elimination |
 
 Every value is one byte. Speed is the only channel that uses two slots.
 
+Sessions 14, 15, 30 and 31 were read off the ESC and compared with Castle's own
+exports: every cell matched, up to 100% power, 630 amps and 192,730 RPM. All 32
+sessions downloaded in one connection.
+
+Castle's export of session 31 has one row fewer than the ESC holds. The download
+keeps the extra last row.
+
 ## What is not verified
 
-- The formulas above the ranges in the table. Neither log is a hard pass:
-  the highest power seen is 17.6% and the highest current 18. The formulas may
-  hold, but that is a prediction until a bigger log is compared to its CSV.
-- Bit 12 being Motor Timing. It was always 0.
-- Motor Temp. at any value but 200.
-- Whether the `06` and `0E` reads are needed for a clean download. That needs
-  a test against the ESC.
+- Bit 12 being Motor Timing. No comparison showed it as anything but matching,
+  but which channel it is comes from elimination.
+- Whether the `06` and `0E` reads are needed. They are kept because the app
+  sends them.
 - Whether the Castle Link board or the ESC stores the log.
-- How the `b` marker is stored. Castle's exports show cells like `13.725b` in
-  Power-Out, and the loader treats those as invalid. Neither captured log has
-  one, so the decoder does not produce it yet.
-- The sample time. It is written as 0.050 because both logs use it, but the
-  ESC's own field for it has not been identified.
+- The sample time. It is written as 0.050, which every compared log uses, but
+  the ESC's own field for it has not been identified.
 - When the session list ends. The client reads entries up to the newest
   session number minus 1, which is what both captures did.
-- Downloading several sessions in one connection. Each capture took one.
 - The second serial number on COM13 being a second Castle Link.
 
 Sample bytes and the matching CSV are in `Tests/castle-link-samples/`. Raw
@@ -111,8 +114,7 @@ including the keyboard.
    Each run goes in its own folder under `Tests/castle-link-captures/`, with the
    CSV exported from the same log so the decoded bytes can be checked against it.
    Done, two captures.
-3. Decode the request and response sequence and the log data format. Done for
-   the range seen; see the unverified list.
-4. Add a "Get Castle log" button to DragOverlay. Built and tested against the
-   replayed captures. First run against the real ESC is still to do.
+3. Decode the request and response sequence and the log data format. Done.
+4. Add a "Get Castle log" button to DragOverlay. Done; proven against the real
+   ESC and Castle's exports.
 5. Auto-name the file and line it up with the matching logger pass.
