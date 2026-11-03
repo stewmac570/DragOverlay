@@ -278,8 +278,7 @@ namespace CastleOverlayV2
                 _configService.Config.RearWheelDiameterMm,
                 _configService.Config.PinionTeeth,
                 _configService.Config.SpurTeeth,
-                _configService.Config.TransmissionRatio,
-                _configService.Config.LaserOffsetMm);
+                _configService.Config.TransmissionRatio);
             using var dlg = new SettingsForm(_configService);
             if (dlg.ShowDialog(this) == DialogResult.OK)
             {
@@ -293,8 +292,7 @@ namespace CastleOverlayV2
                     _configService.Config.RearWheelDiameterMm,
                     _configService.Config.PinionTeeth,
                     _configService.Config.SpurTeeth,
-                    _configService.Config.TransmissionRatio,
-                    _configService.Config.LaserOffsetMm);
+                    _configService.Config.TransmissionRatio);
                 if (before != after)
                     await _presenter.ReloadMiniLoggerRunsAsync();
             }

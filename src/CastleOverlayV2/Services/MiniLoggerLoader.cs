@@ -110,8 +110,7 @@ namespace CastleOverlayV2.Services
             double? rearWheelDiameterMm = null,
             int? pinionTeeth = null,
             int? spurTeeth = null,
-            double? transmissionRatio = 1.0,
-            double laserOffsetMm = BigLoggerChannels.DefaultLaserOffsetMm)
+            double? transmissionRatio = 1.0)
         {
             Logger.Log($"[MiniLoggerLoader] Load started: {Path.GetFileName(filePath)}");
 
@@ -185,9 +184,7 @@ namespace CastleOverlayV2.Services
                     double value = double.NaN;
                     bool hasValue = index < f.Length && double.TryParse(f[index], NumberStyles.Float,
                         CultureInfo.InvariantCulture, out value);
-                    bigValues[c].Add(hasValue
-                        ? (bigColumns[c].Channel.IsRideHeight ? value - laserOffsetMm : value)
-                        : double.NaN);
+                    bigValues[c].Add(hasValue ? value : double.NaN);
                 }
             }
 

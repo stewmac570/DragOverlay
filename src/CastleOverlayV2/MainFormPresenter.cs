@@ -466,8 +466,7 @@ namespace CastleOverlayV2
                 car.RearWheelDiameterMm,
                 car.PinionTeeth,
                 car.SpurTeeth,
-                car.TransmissionRatio,
-                car.LaserOffsetMm);
+                car.TransmissionRatio);
         }
 
         /// <summary>
@@ -560,7 +559,7 @@ namespace CastleOverlayV2
             foreach (var ch in loadedChannels)
             {
                 if (states.ContainsKey(ch)) continue;
-                // rev/s is the same trace as Wheel Speed (mph), so it starts hidden. So do the gyros.
+                // rev/s is the same trace as Wheel Speed (mph), so it starts hidden.
                 bool visible = saved != null && saved.TryGetValue(ch, out var v)
                     ? v
                     : ch != MiniLoggerLoader.WheelRevsChannel &&

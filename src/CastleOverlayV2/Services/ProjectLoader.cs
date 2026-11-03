@@ -147,8 +147,7 @@ namespace CastleOverlayV2.Services
                             _configService.Config.RearWheelDiameterMm,
                             _configService.Config.PinionTeeth,
                             _configService.Config.SpurTeeth,
-                            _configService.Config.TransmissionRatio,
-                            _configService.Config.LaserOffsetMm);
+                            _configService.Config.TransmissionRatio);
                         if (!loadResult.Ok)
                         {
                             TryDeleteTempDir(tempDir);
