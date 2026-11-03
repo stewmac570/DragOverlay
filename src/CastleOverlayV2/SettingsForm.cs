@@ -28,6 +28,7 @@ namespace CastleOverlayV2
         private readonly TextBox _spurTeeth = new();
         private readonly TextBox _transmissionRatio = new();
         private readonly Label _finalDriveRatio = new();
+        private readonly TextBox _laserOffset = new();
         private readonly CheckBox _smoothingEnabled = new();
         private readonly NumericUpDown _smoothingWindow = new();
 
@@ -41,7 +42,7 @@ namespace CastleOverlayV2
             MinimizeBox = false;
             MaximizeBox = false;
             Width = 540;
-            Height = 592;
+            Height = 619;
             Font = new Font("Segoe UI", 9f);
             BackColor = SurfaceWindow;
             ForeColor = TextPrimary;
@@ -118,17 +119,18 @@ namespace CastleOverlayV2
         private Control BuildCarPanel()
         {
             const int rowHeight = 27;
-            var section = new Panel { Dock = DockStyle.Top, Height = 32 + 6 * rowHeight };
+            const int rows = 7;
+            var section = new Panel { Dock = DockStyle.Top, Height = 32 + rows * rowHeight };
             var fields = new TableLayoutPanel
             {
                 Dock = DockStyle.Bottom,
-                Height = 6 * rowHeight,
+                Height = rows * rowHeight,
                 ColumnCount = 2,
-                RowCount = 6,
+                RowCount = rows,
             };
             fields.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 215));
             fields.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110));
-            for (int i = 0; i < 6; i++)
+            for (int i = 0; i < rows; i++)
                 fields.RowStyles.Add(new RowStyle(SizeType.Absolute, rowHeight));
 
             ConfigureCarTextBox(_frontTyreDiameter);
@@ -149,6 +151,9 @@ namespace CastleOverlayV2
             AddCarRow(fields, 5, "FDR", _finalDriveRatio);
             foreach (var box in new[] { _pinionTeeth, _spurTeeth, _transmissionRatio })
                 box.TextChanged += (_, _) => UpdateFinalDriveRatio();
+
+            ConfigureCarTextBox(_laserOffset);
+            AddCarRow(fields, 6, "Ride height laser offset (mm)", _laserOffset);
 
             section.Controls.Add(fields);
             section.Controls.Add(MakeSectionLabel("Car"));
@@ -330,6 +335,7 @@ namespace CastleOverlayV2
             _spurTeeth.Text = c.SpurTeeth?.ToString(CultureInfo.InvariantCulture) ?? "";
             _transmissionRatio.Text = FormatNullable(c.TransmissionRatio);
             UpdateFinalDriveRatio();
+            _laserOffset.Text = FormatNullable(c.LaserOffsetMm);
             _smoothingEnabled.Checked = c.VoltageSmoothingEnabled;
             _smoothingWindow.Value = Math.Max(3, Math.Min(15, c.VoltageSmoothingWindow | 1));
         }
@@ -342,6 +348,15 @@ namespace CastleOverlayV2
                 !TryParsePositiveInt(_spurTeeth.Text, "Spur teeth", out int? spur) ||
                 !TryParsePositiveDouble(_transmissionRatio.Text, "Transmission ratio", out double? ratio))
                 return false;
+            // Blank means the default. Zero and negative offsets are allowed: they are a correction.
+            double laserOffset = BigLoggerChannels.DefaultLaserOffsetMm;
+            if (!string.IsNullOrWhiteSpace(_laserOffset.Text) &&
+                (!double.TryParse(_laserOffset.Text.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture,
+                    out laserOffset) || !double.IsFinite(laserOffset)))
+            {
+                ShowValidationError("Ride height laser offset must be a number.");
+                return false;
+            }
             if (frontDiameter is null)
             {
                 ShowValidationError("Front wheel diameter must be a positive number.");
@@ -358,6 +373,7 @@ namespace CastleOverlayV2
             c.PinionTeeth = pinion;
             c.SpurTeeth = spur;
             c.TransmissionRatio = ratio;
+            c.LaserOffsetMm = laserOffset;
             c.VoltageSmoothingEnabled = _smoothingEnabled.Checked;
             int win = (int)_smoothingWindow.Value;
             if (win % 2 == 0) win += 1; // force odd

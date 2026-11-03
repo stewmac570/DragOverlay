@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 
 namespace CastleOverlayV2.Utils
 {
@@ -14,7 +15,7 @@ namespace CastleOverlayV2.Utils
             "Logger RPM", "Logger Throttle %", "Logger Throttle Out %", "Logger TC State",
             "Logger Wheel Speed", "Logger Rear Speed",
             "Logger Slip %", "Logger Wheel rev/s",
-        };
+        }.Concat(Services.BigLoggerChannels.All.Select(channel => channel.Channel)).ToArray();
 
         public static string DisplayName(string channelName) => channelName switch
         {
@@ -32,7 +33,7 @@ namespace CastleOverlayV2.Utils
             "Logger Rear Speed" => "Rear Speed",
             "Logger Slip %" => "Slip %",
             "Logger Wheel rev/s" => "Wheel rev/s",
-            _ => channelName
+            _ => Services.BigLoggerChannels.Find(channelName)?.DisplayName ?? channelName
         };
 
         public static string Format(string channelName, double v) => channelName switch
@@ -58,7 +59,7 @@ namespace CastleOverlayV2.Utils
             "Logger Rear Speed" => v.ToString("F1"),
             "Logger Slip %" => v.ToString("F0"),
             "Logger Wheel rev/s" => v.ToString("F1"),
-            _ => v.ToString("F2"),
+            _ => v.ToString(Services.BigLoggerChannels.Find(channelName)?.Format ?? "F2"),
         };
     }
 }

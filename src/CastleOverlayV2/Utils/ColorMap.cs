@@ -48,6 +48,8 @@ namespace CastleOverlayV2.Utils
         {
             if (ChannelColors.TryGetValue(channelName, out var color))
                 return color;
+            if (Services.BigLoggerChannels.Find(channelName) is { } bigChannel)
+                return bigChannel.Color;
 
             return new ScottPlot.Color(0x9A, 0xA3, 0xB2);
         }

@@ -47,6 +47,9 @@ namespace CastleOverlayV2.Models
         /// <summary>Additional gearbox reduction. 1.0 means no gearbox.</summary>
         public double? TransmissionRatio { get; set; } = 1.0;
 
+        /// <summary>Taken off the Big logger's laser readings to give ride height. They read about 8 mm long.</summary>
+        public double LaserOffsetMm { get; set; } = Services.BigLoggerChannels.DefaultLaserOffsetMm;
+
         // ---- TC curve builder (blank/null until the user enters a value) ----
         public double? TcCurveMargin { get; set; }
         public bool? TcCurveMarginIsPercent { get; set; }

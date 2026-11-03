@@ -185,6 +185,50 @@ public sealed class MiniLoggerUsbTests : IDisposable
         Assert.False(File.Exists(path + ".partial"));
     }
 
+    [Fact]
+    public void Big_logger_is_found_and_lists_runs_from_summary()
+    {
+        var transport = new FakeTransport("BIGLOGGER 1",
+            "Run 17: 12 s, wheel 0, motor 0, throttle 0, pack 7.40 V",
+            "Run 18: 6 s, wheel 395, motor 10434, throttle 12314, pack 7.65 V", "END");
+        using var client = Client(transport);
+        Assert.Equal(MiniLoggerConnectStatus.Connected, client.Connect().Status);
+
+        IReadOnlyList<MiniLoggerRunInfo> runs = client.ListRuns();
+
+        Assert.Equal(new[] { "id", "summary" }, transport.Writes);
+        Assert.Equal(new[] { 17, 18 }, runs.Select(run => run.Number));
+        Assert.Equal(6, runs[1].Seconds);
+        Assert.Equal(7.65, runs[1].PackVolts);
+        Assert.Equal("Run 18  (6 s, pack 7.65 V)", runs[1].ToString());
+    }
+
+    [Fact]
+    public void Big_logger_without_summary_falls_back_to_list()
+    {
+        var transport = new FakeTransport("BIGLOGGER 1",
+            "Commands: status, live, list, dump N, dumpall, erase all", "Run 4: 300 KB", "END");
+        using var client = Client(transport);
+        client.Connect();
+
+        IReadOnlyList<MiniLoggerRunInfo> runs = client.ListRuns();
+
+        Assert.Equal(new[] { "id", "summary", "list" }, transport.Writes);
+        Assert.Equal(new[] { new MiniLoggerRunInfo(4, 300) }, runs);
+    }
+
+    [Fact]
+    public void Mini_logger_never_gets_the_summary_command()
+    {
+        var transport = ConnectedTransport("Run 1: 25 KB", "END");
+        using var client = Client(transport);
+        client.Connect();
+
+        client.ListRuns();
+
+        Assert.Equal(new[] { "id", "list" }, transport.Writes);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_workDir))
