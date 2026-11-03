@@ -432,9 +432,10 @@ namespace CastleOverlayV2
                 }
 
                 var run = result.Value!;
-                double? offsetMs = AlignmentHelper.GetMiniLoggerOffsetMs(run, ReferenceCastleRun());
+                RunData? castleForAlignment = ReferenceCastleRunForAlignment();
+                double? offsetMs = await Task.Run(() => AlignmentHelper.GetMiniLoggerOffsetMs(run, castleForAlignment));
                 run.TimeShiftMs = offsetMs ?? 0;
-                Logger.Log($"Mini Logger slot {uiSlot}: throttle-align offset={run.TimeShiftMs:F1}ms");
+                Logger.Log($"Mini Logger slot {uiSlot}: align offset={run.TimeShiftMs:F1}ms");
 
                 _runs[plotSlot] = run;
                 _plot.SetRun(plotSlot, run);
@@ -529,6 +530,24 @@ namespace CastleOverlayV2
                  .OrderBy(kv => kv.Key)
                  .Select(kv => kv.Value)
                  .FirstOrDefault();
+
+        /// <summary>
+        /// The reference Castle run with every sample, for the RPM match. Auto trim cuts the drawn
+        /// log to 3 s, which is too little RPM to match reliably (it picked the wrong blip on the
+        /// 3 Nov 2026 bench test), so the file is read again in full. The launch stays at t = 0.
+        /// </summary>
+        private RunData? ReferenceCastleRunForAlignment()
+        {
+            RunData? castle = ReferenceCastleRun();
+            if (castle is null || _keepFullLogs || string.IsNullOrEmpty(castle.SourcePath) || !File.Exists(castle.SourcePath))
+                return castle;
+
+            var full = new CsvLoader(_config).Load(castle.SourcePath, trimForDrag: !_isSpeedRunMode, keepFullLog: true);
+            if (!full.Ok || full.Value is null || full.Value.DataPoints.Count == 0)
+                return castle;
+            full.Value.TimeShiftMs = castle.TimeShiftMs;
+            return full.Value;
+        }
 
         private void EnsureMiniLoggerChannelsInToggleBar()
         {
@@ -688,7 +707,7 @@ namespace CastleOverlayV2
                 return;
 
             double? offsetMs = run.IsMiniLogger
-                ? AlignmentHelper.GetMiniLoggerOffsetMs(run, ReferenceCastleRun())
+                ? AlignmentHelper.GetMiniLoggerOffsetMs(run, ReferenceCastleRunForAlignment())
                 : AlignmentHelper.GetAutoOffsetMs(run);
             if (!offsetMs.HasValue)
             {

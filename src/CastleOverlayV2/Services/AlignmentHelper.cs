@@ -42,12 +42,113 @@ namespace CastleOverlayV2.Services
         }
 
         /// <summary>
-        /// Offset (ms) that lines the Mini Logger's throttle step up with the Castle run's
-        /// throttle step: both traces cross half of their own peak throttle at the same plot
-        /// time. With no Castle run, the Mini Logger throttle step goes to t = 0.
-        /// Returns null when either throttle trace has no clear step.
+        /// Offset (ms) that lines a Mini Logger or Big logger run up with the Castle run.
+        /// It matches the whole RPM trace of both logs (<see cref="RpmMatchOffsetMs"/>). When
+        /// either log has no usable RPM, it falls back to the throttle step: both traces cross
+        /// half of their own peak throttle at the same plot time. With no Castle run, the
+        /// logger's throttle step goes to t = 0. Returns null when nothing lines up.
         /// </summary>
         public static double? GetMiniLoggerOffsetMs(RunData miniRun, RunData? castleRun)
+        {
+            if (castleRun is not null && RpmMatchOffsetMs(miniRun, castleRun) is double rpmOffset)
+                return rpmOffset;
+            return ThrottleStepOffsetMs(miniRun, castleRun);
+        }
+
+        private const double RpmMinimumCorrelation = 0.5;
+
+        /// <summary>
+        /// Offset (ms) at which the logger's RPM trace best matches the Castle run's RPM trace,
+        /// scored by correlation so the two logs' different RPM scales don't matter. It searches
+        /// every offset where the logs overlap. The throttle step is not used as a starting point:
+        /// on the 3 Nov 2026 bench test each log picked a different blip as its launch, which put
+        /// the throttle step 3.4 s out. Null when either trace never changes or the best match is weak.
+        /// </summary>
+        public static double? RpmMatchOffsetMs(RunData miniRun, RunData castleRun)
+        {
+            List<MiniLoggerSample> samples = miniRun.MiniLoggerSamples;
+            if (samples.Count < 100 || castleRun.DataPoints.Count < 20)
+                return null;
+
+            // Logger RPM on a 1 ms grid (the logger writes 1000 rows a second), so each lookup is direct.
+            double gridStart = samples[0].LogsPageTimeSeconds;
+            int gridLength = (int)Math.Round((samples[^1].LogsPageTimeSeconds - gridStart) * 1000.0) + 1;
+            if (gridLength < 100 || gridLength > 50_000_000)
+                return null;
+            var grid = new double[gridLength];
+            var filled = new bool[gridLength];
+            foreach (MiniLoggerSample sample in samples)
+            {
+                int index = (int)Math.Round((sample.LogsPageTimeSeconds - gridStart) * 1000.0);
+                if (index >= 0 && index < gridLength)
+                {
+                    grid[index] = sample.MotorRpm;
+                    filled[index] = true;
+                }
+            }
+            for (int i = 1; i < gridLength; i++)
+                if (!filled[i])
+                    grid[i] = grid[i - 1];
+
+            double castleShift = castleRun.TimeShiftMs / 1000.0;
+            double[] castleTimes = castleRun.DataPoints.Select(p => p.Time + castleShift).ToArray();
+            double[] castleRpm = castleRun.DataPoints.Select(p => p.Speed).ToArray();
+            if (castleRpm.Max() - castleRpm.Min() <= 0 || grid.Max() - grid.Min() <= 0)
+                return null;
+
+            double gridEnd = gridStart + (gridLength - 1) / 1000.0;
+            double low = castleTimes[0] - gridEnd;
+            double high = castleTimes[^1] - gridStart;
+            if (high <= low)
+                return null;
+
+            double? Score(double lag)
+            {
+                // The logger sample shown at castle time t was recorded at logs-page time t - lag.
+                int count = 0;
+                double sumX = 0, sumY = 0, sumXX = 0, sumYY = 0, sumXY = 0;
+                for (int i = 0; i < castleTimes.Length; i++)
+                {
+                    int index = (int)Math.Round((castleTimes[i] - lag - gridStart) * 1000.0);
+                    if (index < 0 || index >= gridLength)
+                        continue;
+                    double x = castleRpm[i], y = grid[index];
+                    count++;
+                    sumX += x; sumY += y; sumXX += x * x; sumYY += y * y; sumXY += x * y;
+                }
+                if (count < Math.Max(20, castleTimes.Length / 2))
+                    return null;
+                double varX = sumXX - sumX * sumX / count;
+                double varY = sumYY - sumY * sumY / count;
+                if (varX <= 0 || varY <= 0)
+                    return null;
+                return (sumXY - sumX * sumY / count) / Math.Sqrt(varX * varY);
+            }
+
+            double bestLag = double.NaN, bestScore = double.NegativeInfinity;
+            void Search(double from, double to, double step)
+            {
+                for (double lag = from; lag <= to + step / 2; lag += step)
+                {
+                    if (Score(lag) is double score && score > bestScore)
+                    {
+                        bestScore = score;
+                        bestLag = lag;
+                    }
+                }
+            }
+
+            Search(low, high, 0.010);
+            if (double.IsNaN(bestLag))
+                return null;
+            double coarse = bestLag;
+            Search(Math.Max(low, coarse - 0.010), Math.Min(high, coarse + 0.010), 0.001);
+
+            Logger.Log($"[AlignmentHelper] RPM match: offset {bestLag * 1000.0:F0} ms, correlation {bestScore:F3}");
+            return bestScore >= RpmMinimumCorrelation ? bestLag * 1000.0 : null;
+        }
+
+        private static double? ThrottleStepOffsetMs(RunData miniRun, RunData? castleRun)
         {
             if (!miniRun.Data.TryGetValue(MiniLoggerLoader.ThrottleChannel, out var miniThr))
                 return null;
