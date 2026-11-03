@@ -47,18 +47,18 @@ namespace CastleOverlayV2.Tests
         [Fact]
         public void Big_logger_csv_loads_every_extra_channel_and_skips_empty_cells()
         {
-            // The Big logger header, as firmware/big_logger writes it.
-            const string header = "Time (s),Throttle (ms),Motor RPM,Wheel (rev/s),Pack Volts (V),Accel X (g),Accel Y (g),Accel Z (g)," +
-                                  "Gyro X (dps),Gyro Y (dps),Gyro Z (dps),Front Laser (mm),Rear Laser (mm)";
+            // The Big logger header, as firmware/big_logger writes it (rc-logger PR #23).
+            const string header = "Time (s),Throttle (ms),Motor RPM,Wheel (rev/s),Pack Volts (V),Accel Fwd (g),Pitch (deg),Roll (deg)," +
+                                  "Front Laser (mm),Rear Laser (mm)";
             var sb = new StringBuilder(header).AppendLine();
             for (int i = 0; i < 3000; i++)
             {
                 double t = i / 1000.0;
-                string first4 = string.Create(CultureInfo.InvariantCulture, $"{t:0.0000},{(t < 1.0 ? 1.50 : 1.90):0.000},0,0.00");
-                // Before the first IMU reading every extra cell is empty; the rear laser drops out sometimes.
+                string first4 = string.Create(CultureInfo.InvariantCulture, $"{t:0.000},{(t < 1.0 ? 1.50 : 1.90):0.000},0,0.00");
+                // Before the first reading columns 5 to 8 are empty; the rear laser drops out sometimes.
                 string extra = i < 10
-                    ? ",,,,,,,,,"
-                    : $",7.65,1.25,-0.50,0.98,10,-20,30,58,{(i % 100 == 0 ? "" : "66")}";
+                    ? ",,,,,,"
+                    : $",7.65,1.250,-2.50,0.75,7.2,{(i % 100 == 0 ? "" : "9.4")}";
                 sb.AppendLine(first4 + extra);
             }
             string path = Path.Combine(Path.GetTempPath(), $"biglogger-{Guid.NewGuid():N}.csv");
@@ -66,17 +66,19 @@ namespace CastleOverlayV2.Tests
             try
             {
                 Assert.True(MiniLoggerLoader.IsMiniLoggerCsv(path));
-                var result = MiniLoggerLoader.Load(path, keepFullLog: true, laserOffsetMm: 8);
+                var result = MiniLoggerLoader.Load(path, keepFullLog: true);
                 Assert.True(result.Ok, result.Message);
                 var data = result.Value!.Data;
 
                 foreach (var channel in BigLoggerChannels.All)
                     Assert.True(data.ContainsKey(channel.Channel), channel.Channel);
+                Assert.Equal(6, BigLoggerChannels.All.Count);
                 Assert.Equal(2990, data["Logger Pack Volts"].Count);
                 Assert.Equal(7.65, data["Logger Pack Volts"][0].Y);
-                Assert.Equal(-0.50, data["Logger Accel Y"][0].Y);
-                Assert.Equal(-20, data["Logger Gyro Y"][0].Y);
-                Assert.Equal(50, data["Logger Front Ride Height"][0].Y);   // 58 read, 8 mm offset
+                Assert.Equal(1.25, data["Logger Accel Fwd"][0].Y);
+                Assert.Equal(-2.50, data["Logger Pitch"][0].Y);
+                Assert.Equal(0.75, data["Logger Roll"][0].Y);
+                Assert.Equal(7.2, data["Logger Front Ride Height"][0].Y);   // already ride height: no offset
                 Assert.Equal(2990 - 29, data["Logger Rear Ride Height"].Count); // empty cells are skipped
                 Assert.Equal(3000, data[MiniLoggerLoader.ThrottleChannel].Count);
             }
