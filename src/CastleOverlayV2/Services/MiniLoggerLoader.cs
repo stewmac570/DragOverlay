@@ -8,9 +8,10 @@ using System.Linq;
 namespace CastleOverlayV2.Services
 {
     /// <summary>
-    /// Loads a Mini Logger run CSV (rc-logger firmware/mini_logger, 1000 Hz).
+    /// Loads a Mini Logger or Big logger run CSV (rc-logger firmware/mini_logger and big_logger, 1000 Hz).
     /// Columns: Time (s), Throttle (ms), Motor RPM, Wheel (rev/s). Motor RPM is real motor
-    /// RPM (already divided by pole pairs). Throttle 0 = no receiver signal.
+    /// RPM (already divided by pole pairs). Throttle 0 = no receiver signal. The Big logger adds
+    /// the columns in <see cref="BigLoggerChannels"/>.
     ///
     /// The run is re-zeroed so t = 0 is the throttle step of the drag pass (throttle crossing
     /// 50% of rest → peak), then trimmed to the same -0.5 s → +2.5 s window as Castle logs.
@@ -29,11 +30,11 @@ namespace CastleOverlayV2.Services
         public const string SlipChannel = "Logger Slip %";
         public const string WheelRevsChannel = "Logger Wheel rev/s";
 
-        public static readonly string[] Channels =
+        public static readonly string[] Channels = new[]
         {
             ThrottleChannel, ThrottleOutChannel, TcStateChannel, RpmChannel, WheelSpeedChannel,
             RearSpeedChannel, SlipChannel, WheelRevsChannel
-        };
+        }.Concat(BigLoggerChannels.All.Select(channel => channel.Channel)).ToArray();
 
         public const double DefaultTyreDiameterMm = 70.0;
         private const double MetersPerSecToMph = 2.23694;
@@ -109,7 +110,8 @@ namespace CastleOverlayV2.Services
             double? rearWheelDiameterMm = null,
             int? pinionTeeth = null,
             int? spurTeeth = null,
-            double? transmissionRatio = 1.0)
+            double? transmissionRatio = 1.0,
+            double laserOffsetMm = BigLoggerChannels.DefaultLaserOffsetMm)
         {
             Logger.Log($"[MiniLoggerLoader] Load started: {Path.GetFileName(filePath)}");
 
@@ -138,6 +140,14 @@ namespace CastleOverlayV2.Services
             int tcStateIndex = Array.FindIndex(header,
                 name => name.Trim().Equals("TC State", StringComparison.OrdinalIgnoreCase));
             bool hasTcColumns = throttleOutIndex >= 0 && tcStateIndex >= 0;
+
+            // Big logger columns, found by name. An empty cell means no reading yet (NaN here).
+            var bigColumns = BigLoggerChannels.All
+                .Select(channel => (Channel: channel, Index: Array.FindIndex(header,
+                    name => name.Trim().Equals(channel.Column, StringComparison.OrdinalIgnoreCase))))
+                .Where(column => column.Index >= 0)
+                .ToList();
+            var bigValues = bigColumns.Select(_ => new List<double>()).ToList();
 
             string? line;
             while ((line = reader.ReadLine()) != null)
@@ -168,6 +178,16 @@ namespace CastleOverlayV2.Services
                 {
                     throttleOutMs.Add(outMs);
                     tcStates.Add(state);
+                }
+                for (int c = 0; c < bigColumns.Count; c++)
+                {
+                    int index = bigColumns[c].Index;
+                    double value = double.NaN;
+                    bool hasValue = index < f.Length && double.TryParse(f[index], NumberStyles.Float,
+                        CultureInfo.InvariantCulture, out value);
+                    bigValues[c].Add(hasValue
+                        ? (bigColumns[c].Channel.IsRideHeight ? value - laserOffsetMm : value)
+                        : double.NaN);
                 }
             }
 
@@ -221,6 +241,7 @@ namespace CastleOverlayV2.Services
             var rpsPts = new List<DataPoint>();
             var throttleOutPts = new List<DataPoint>();
             var tcStatePts = new List<DataPoint>();
+            var bigPts = bigColumns.Select(_ => new List<DataPoint>()).ToList();
             double effectiveTransmissionRatio = transmissionRatio ?? 1.0;
             bool produceRearChannels = rearWheelDiameterMm is > 0 &&
                 pinionTeeth is > 0 && spurTeeth is > 0 &&
@@ -252,6 +273,9 @@ namespace CastleOverlayV2.Services
                     slipPts.Add(new DataPoint { Time = t, Y = SlipPercent(rearSpeedMph, frontSpeedMph) });
                 }
                 rpsPts.Add(new DataPoint { Time = t, Y = wheelRps[i] });
+                for (int c = 0; c < bigColumns.Count; c++)
+                    if (!double.IsNaN(bigValues[c][i]))
+                        bigPts[c].Add(new DataPoint { Time = t, Y = bigValues[c][i] });
             }
 
             run.Data[ThrottleChannel] = thrPts;
@@ -268,6 +292,9 @@ namespace CastleOverlayV2.Services
                 run.Data[SlipChannel] = slipPts;
             }
             run.Data[WheelRevsChannel] = rpsPts;
+            for (int c = 0; c < bigColumns.Count; c++)
+                if (bigPts[c].Count > 0)
+                    run.Data[bigColumns[c].Channel.Channel] = bigPts[c];
             // PlotManager skips runs with empty DataPoints — populate with time-only dummies.
             run.DataPoints = thrPts.Select(p => new DataPoint { Time = p.Time }).ToList();
 

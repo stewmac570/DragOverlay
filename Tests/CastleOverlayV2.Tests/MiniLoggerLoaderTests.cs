@@ -45,6 +45,64 @@ namespace CastleOverlayV2.Tests
         }
 
         [Fact]
+        public void Big_logger_csv_loads_every_extra_channel_and_skips_empty_cells()
+        {
+            // The Big logger header, as firmware/big_logger writes it.
+            const string header = "Time (s),Throttle (ms),Motor RPM,Wheel (rev/s),Pack Volts (V),Accel X (g),Accel Y (g),Accel Z (g)," +
+                                  "Gyro X (dps),Gyro Y (dps),Gyro Z (dps),Front Laser (mm),Rear Laser (mm)";
+            var sb = new StringBuilder(header).AppendLine();
+            for (int i = 0; i < 3000; i++)
+            {
+                double t = i / 1000.0;
+                string first4 = string.Create(CultureInfo.InvariantCulture, $"{t:0.0000},{(t < 1.0 ? 1.50 : 1.90):0.000},0,0.00");
+                // Before the first IMU reading every extra cell is empty; the rear laser drops out sometimes.
+                string extra = i < 10
+                    ? ",,,,,,,,,"
+                    : $",7.65,1.25,-0.50,0.98,10,-20,30,58,{(i % 100 == 0 ? "" : "66")}";
+                sb.AppendLine(first4 + extra);
+            }
+            string path = Path.Combine(Path.GetTempPath(), $"biglogger-{Guid.NewGuid():N}.csv");
+            File.WriteAllText(path, sb.ToString());
+            try
+            {
+                Assert.True(MiniLoggerLoader.IsMiniLoggerCsv(path));
+                var result = MiniLoggerLoader.Load(path, keepFullLog: true, laserOffsetMm: 8);
+                Assert.True(result.Ok, result.Message);
+                var data = result.Value!.Data;
+
+                foreach (var channel in BigLoggerChannels.All)
+                    Assert.True(data.ContainsKey(channel.Channel), channel.Channel);
+                Assert.Equal(2990, data["Logger Pack Volts"].Count);
+                Assert.Equal(7.65, data["Logger Pack Volts"][0].Y);
+                Assert.Equal(-0.50, data["Logger Accel Y"][0].Y);
+                Assert.Equal(-20, data["Logger Gyro Y"][0].Y);
+                Assert.Equal(50, data["Logger Front Ride Height"][0].Y);   // 58 read, 8 mm offset
+                Assert.Equal(2990 - 29, data["Logger Rear Ride Height"].Count); // empty cells are skipped
+                Assert.Equal(3000, data[MiniLoggerLoader.ThrottleChannel].Count);
+            }
+            finally
+            {
+                File.Delete(path);
+            }
+        }
+
+        [Fact]
+        public void Mini_logger_csv_gets_no_big_logger_channels()
+        {
+            string path = WriteRun();
+            try
+            {
+                var data = MiniLoggerLoader.Load(path).Value!.Data;
+
+                Assert.DoesNotContain(data.Keys, key => BigLoggerChannels.Find(key) is not null);
+            }
+            finally
+            {
+                File.Delete(path);
+            }
+        }
+
+        [Fact]
         public void Loads_a_raw_capture_with_begin_and_end_lines()
         {
             string path = WriteRun();

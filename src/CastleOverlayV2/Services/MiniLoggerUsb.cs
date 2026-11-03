@@ -8,10 +8,22 @@ using CastleOverlayV2.Models;
 
 namespace CastleOverlayV2.Services;
 
-public sealed record MiniLoggerRunInfo(int Number, long SizeKb)
+/// <summary>
+/// A saved run. The Mini Logger's <c>list</c> gives its size; the Big logger's <c>summary</c>
+/// gives its length in seconds and peak pack volts instead.
+/// </summary>
+public sealed record MiniLoggerRunInfo(int Number, long SizeKb, int? Seconds = null, double? PackVolts = null)
 {
+    // A Big logger CSV row is about 70 bytes and there are 1000 rows a second. Only used for progress.
+    private const long BigLoggerBytesPerSecond = 70_000;
+
     public string FileName => $"run_{Number:0000}.csv";
-    public override string ToString() => $"Run {Number}  ({SizeKb:N0} KB)";
+
+    public long ExpectedCsvBytes => Seconds is int seconds ? seconds * BigLoggerBytesPerSecond : SizeKb * 1024;
+
+    public override string ToString() => Seconds is int seconds
+        ? string.Create(CultureInfo.InvariantCulture, $"Run {Number}  ({seconds} s, pack {PackVolts:0.00} V)")
+        : $"Run {Number}  ({SizeKb:N0} KB)";
 }
 
 public sealed record MiniLoggerDownloadProgress(
@@ -90,11 +102,15 @@ public sealed class MiniLoggerUsb : IMiniLoggerUsbClient
     private static readonly Regex RunLine = new(
         @"^Run (?<number>\d+): (?<size>\d+) KB$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    private static readonly Regex SummaryLine = new(
+        @"^Run (?<number>\d+): (?<seconds>\d+) s, wheel \d+, motor \d+, throttle \d+, pack (?<pack>[0-9.]+) V$",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private readonly IMiniLoggerPortDiscovery _portDiscovery;
     private readonly IMiniLoggerTransportFactory _transportFactory;
     private readonly IMiniLoggerDelay _delay;
     private IMiniLoggerLineTransport? _transport;
+    private bool _isBigLogger;
 
     public MiniLoggerUsb()
         : this(new WmiMiniLoggerPortDiscovery(), new SerialMiniLoggerTransportFactory(), new ThreadMiniLoggerDelay())
@@ -130,12 +146,15 @@ public sealed class MiniLoggerUsb : IMiniLoggerUsbClient
                 candidate.DiscardInput();
                 candidate.WriteLine("id");
 
+                // The Mini Logger replies "MINILOGGER 2", the Big logger "BIGLOGGER 1".
                 string? reply = ReadUntil(candidate,
-                    line => line.StartsWith("MINILOGGER ", StringComparison.Ordinal),
+                    line => line.StartsWith("MINILOGGER ", StringComparison.Ordinal) ||
+                            line.StartsWith("BIGLOGGER ", StringComparison.Ordinal),
                     HandshakeTimeout, cancellationToken);
                 if (reply is not null)
                 {
                     _transport = candidate;
+                    _isBigLogger = reply.StartsWith("BIGLOGGER ", StringComparison.Ordinal);
                     return new MiniLoggerConnectResult(MiniLoggerConnectStatus.Connected, portName);
                 }
             }
@@ -160,6 +179,13 @@ public sealed class MiniLoggerUsb : IMiniLoggerUsbClient
     public IReadOnlyList<MiniLoggerRunInfo> ListRuns(CancellationToken cancellationToken = default)
     {
         IMiniLoggerLineTransport transport = ConnectedTransport();
+        if (_isBigLogger)
+        {
+            IReadOnlyList<MiniLoggerRunInfo>? summary = SummariseRuns(transport, cancellationToken);
+            if (summary is not null)
+                return summary;
+        }
+
         transport.WriteLine("list");
         var runs = new List<MiniLoggerRunInfo>();
 
@@ -180,6 +206,35 @@ public sealed class MiniLoggerUsb : IMiniLoggerUsbClient
                     CultureInfo.InvariantCulture, out long sizeKb))
             {
                 runs.Add(new MiniLoggerRunInfo(number, sizeKb));
+            }
+        }
+    }
+
+    /// <summary>
+    /// The Big logger's <c>summary</c>: one line per run without downloading it. Returns null when
+    /// the firmware doesn't know the command (it answers with its command list), so the caller
+    /// falls back to <c>list</c>.
+    /// </summary>
+    private static IReadOnlyList<MiniLoggerRunInfo>? SummariseRuns(
+        IMiniLoggerLineTransport transport, CancellationToken cancellationToken)
+    {
+        transport.WriteLine("summary");
+        var runs = new List<MiniLoggerRunInfo>();
+        while (true)
+        {
+            string line = ReadRequiredLine(transport, cancellationToken);
+            if (line == "END")
+                return runs;
+            if (line.StartsWith("Commands:", StringComparison.Ordinal))
+                return null;
+
+            Match match = SummaryLine.Match(line);
+            if (match.Success &&
+                int.TryParse(match.Groups["number"].Value, NumberStyles.None, CultureInfo.InvariantCulture, out int number) &&
+                int.TryParse(match.Groups["seconds"].Value, NumberStyles.None, CultureInfo.InvariantCulture, out int seconds) &&
+                double.TryParse(match.Groups["pack"].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out double pack))
+            {
+                runs.Add(new MiniLoggerRunInfo(number, 0, seconds, pack));
             }
         }
     }
@@ -216,7 +271,7 @@ public sealed class MiniLoggerUsb : IMiniLoggerUsbClient
 
             long bytesReceived = 0;
             long lastReported = 0;
-            long expectedBytes = run.SizeKb * 1024;
+            long expectedBytes = run.ExpectedCsvBytes;
             using (var writer = new StreamWriter(partialPath, false, new UTF8Encoding(false), 64 * 1024))
             {
                 bool headerWritten = false;
@@ -484,7 +539,10 @@ public sealed class WmiMiniLoggerPortDiscovery : IMiniLoggerPortDiscovery
         {
             string deviceId = Convert.ToString(device["DeviceID"], CultureInfo.InvariantCulture) ?? "";
             string name = Convert.ToString(device["Name"], CultureInfo.InvariantCulture) ?? "";
-            if (!deviceId.Contains("VID_303A", StringComparison.OrdinalIgnoreCase))
+            // VID_303A: Espressif, the Mini Logger's XIAO ESP32-S3. VID_2341: Arduino, the Big
+            // logger's Nano ESP32. Other boards share both IDs, so the "id" reply decides.
+            if (!deviceId.Contains("VID_303A", StringComparison.OrdinalIgnoreCase) &&
+                !deviceId.Contains("VID_2341", StringComparison.OrdinalIgnoreCase))
                 continue;
             Match match = ComPort.Match(name);
             if (match.Success)

@@ -278,7 +278,8 @@ namespace CastleOverlayV2
                 _configService.Config.RearWheelDiameterMm,
                 _configService.Config.PinionTeeth,
                 _configService.Config.SpurTeeth,
-                _configService.Config.TransmissionRatio);
+                _configService.Config.TransmissionRatio,
+                _configService.Config.LaserOffsetMm);
             using var dlg = new SettingsForm(_configService);
             if (dlg.ShowDialog(this) == DialogResult.OK)
             {
@@ -292,7 +293,8 @@ namespace CastleOverlayV2
                     _configService.Config.RearWheelDiameterMm,
                     _configService.Config.PinionTeeth,
                     _configService.Config.SpurTeeth,
-                    _configService.Config.TransmissionRatio);
+                    _configService.Config.TransmissionRatio,
+                    _configService.Config.LaserOffsetMm);
                 if (before != after)
                     await _presenter.ReloadMiniLoggerRunsAsync();
             }
@@ -324,7 +326,7 @@ namespace CastleOverlayV2
         public bool ConfirmMiniLoggerUsbSafety() =>
             MessageBox.Show(
                 "Before connecting the USB cable:\n\n" +
-                "SWITCH THE CAR OFF and UNPLUG THE LOGGER'S RECEIVER LEAD.\n\n" +
+                "SWITCH THE CAR OFF, then UNPLUG THE LOGGER'S RECEIVER LEAD or pull its red pin.\n\n" +
                 "The car's BEC can feed back into the PC through the USB cable.",
                 "Mini Logger USB safety",
                 MessageBoxButtons.OKCancel,

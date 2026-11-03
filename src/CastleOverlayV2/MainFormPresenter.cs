@@ -466,7 +466,8 @@ namespace CastleOverlayV2
                 car.RearWheelDiameterMm,
                 car.PinionTeeth,
                 car.SpurTeeth,
-                car.TransmissionRatio);
+                car.TransmissionRatio,
+                car.LaserOffsetMm);
         }
 
         /// <summary>
@@ -559,10 +560,11 @@ namespace CastleOverlayV2
             foreach (var ch in loadedChannels)
             {
                 if (states.ContainsKey(ch)) continue;
-                // rev/s is the same trace as Wheel Speed (mph), so it starts hidden.
+                // rev/s is the same trace as Wheel Speed (mph), so it starts hidden. So do the gyros.
                 bool visible = saved != null && saved.TryGetValue(ch, out var v)
                     ? v
-                    : ch != MiniLoggerLoader.WheelRevsChannel;
+                    : ch != MiniLoggerLoader.WheelRevsChannel &&
+                      (BigLoggerChannels.Find(ch)?.VisibleByDefault ?? true);
                 _drawer.AddChannel(ch, visible);
                 added = true;
             }
@@ -889,7 +891,7 @@ namespace CastleOverlayV2
             if (connection.Status != MiniLoggerConnectStatus.Connected)
             {
                 _view.ShowInfo("Mini Logger",
-                    "No Mini Logger was found.\n\nPlug the Mini Logger in with the USB cable and try again.");
+                    "No Mini Logger or Big logger was found.\n\nPlug the logger in with the USB cable and try again.");
                 return;
             }
 
@@ -946,7 +948,7 @@ namespace CastleOverlayV2
                     MiniLoggerRunInfo run = selectedRuns[index];
                     string destination = Path.Combine(sessionFolder, run.FileName);
                     downloadUi.Report(new MiniLoggerDownloadProgress(
-                        run.Number, index + 1, selectedRuns.Count, 0, run.SizeKb * 1024));
+                        run.Number, index + 1, selectedRuns.Count, 0, run.ExpectedCsvBytes));
                     MiniLoggerDumpResult result = await Task.Run(() => logger.DumpRun(
                         run, destination, progress, index + 1, selectedRuns.Count,
                         downloadUi.CancellationToken));
@@ -1540,11 +1542,7 @@ namespace CastleOverlayV2
             "RPM", "Throttle %", "Voltage", "Current", "Ripple", "PowerOut",
             "ESC Temp", "MotorTemp", "MotorTiming", "Acceleration",
             "RaceBox Speed", "RaceBox Distance", "RaceBox G-Force X",
-            MiniLoggerLoader.ThrottleChannel, MiniLoggerLoader.ThrottleOutChannel,
-            MiniLoggerLoader.TcStateChannel, MiniLoggerLoader.RpmChannel,
-            MiniLoggerLoader.WheelSpeedChannel, MiniLoggerLoader.RearSpeedChannel,
-            MiniLoggerLoader.SlipChannel, MiniLoggerLoader.WheelRevsChannel,
-        };
+        }.Concat(MiniLoggerLoader.Channels).ToArray();
 
         private void PushAllStatsToDrawer()
         {

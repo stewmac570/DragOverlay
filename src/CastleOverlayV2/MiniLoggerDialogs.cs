@@ -77,8 +77,9 @@ internal sealed class MiniLoggerRunSelectionForm : Form
         _runs.BackColor = MiniLoggerDialogTheme.Input;
         _runs.ForeColor = MiniLoggerDialogTheme.Text;
         _runs.BorderStyle = BorderStyle.FixedSingle;
+        // Nothing is ticked to start with: the user picks the runs they want.
         foreach (MiniLoggerRunInfo run in runs)
-            _runs.Items.Add(run, true);
+            _runs.Items.Add(run, false);
 
         var buttons = new FlowLayoutPanel
         {

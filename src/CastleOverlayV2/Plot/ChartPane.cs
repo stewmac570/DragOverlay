@@ -45,6 +45,7 @@ namespace CastleOverlayV2.Plot
         private IYAxis? _wheelRevsAxis;
         private IYAxis? _slipAxis;
         private IYAxis? _tcStateAxis;
+        private readonly Dictionary<string, IYAxis> _bigLoggerAxes = new();
         private double _miniLoggerMphPerRevPerSec =
             MiniLoggerLoader.MphPerRevPerSec(MiniLoggerLoader.DefaultTyreDiameterMm);
 
@@ -237,6 +238,15 @@ namespace CastleOverlayV2.Plot
                 _tcStateAxis = PlotControl.Plot.Axes.AddRightAxis();
                 _tcStateAxis.Label.Text = "TC State";
                 HideAxis(_tcStateAxis);
+            }
+
+            foreach (var channel in BigLoggerChannels.All)
+            {
+                if (_bigLoggerAxes.ContainsKey(channel.Channel)) continue;
+                IYAxis axis = PlotControl.Plot.Axes.AddRightAxis();
+                axis.Label.Text = channel.DisplayName;
+                HideAxis(axis);
+                _bigLoggerAxes[channel.Channel] = axis;
             }
 
             ApplyFocusToAxes(focusedChannel, getTraceColor);
@@ -437,7 +447,7 @@ namespace CastleOverlayV2.Plot
             MiniLoggerLoader.RearSpeedChannel => _raceBoxSpeedAxis!,
             MiniLoggerLoader.SlipChannel => _slipAxis!,
             MiniLoggerLoader.WheelRevsChannel => _wheelRevsAxis!,
-            _ => _throttleAxis!,
+            _ => _bigLoggerAxes.TryGetValue(channelLabel, out IYAxis? bigAxis) ? bigAxis : _throttleAxis!,
         };
 
         // Side scales are never shown (Stewart: "i dont want any scale"); values come from the
@@ -722,6 +732,9 @@ namespace CastleOverlayV2.Plot
             AddLock(_wheelRevsAxis, 0, 110 / _miniLoggerMphPerRevPerSec, channelBands);
             AddLock(_slipAxis, -20, 100, channelBands);
             AddLock(_tcStateAxis, -0.5, 4.5, channelBands);
+            foreach (var channel in BigLoggerChannels.All)
+                if (_bigLoggerAxes.TryGetValue(channel.Channel, out IYAxis? bigAxis))
+                    AddLock(bigAxis, channel.AxisMin, channel.AxisMax, channelBands);
             if (_splitLabelAxis is not null)
                 PlotControl.Plot.Axes.Rules.Add(new LockedVertical(_splitLabelAxis, 0.0, 1.0));
 
@@ -852,7 +865,7 @@ namespace CastleOverlayV2.Plot
             MiniLoggerLoader.RearSpeedChannel => _raceBoxSpeedAxis,
             MiniLoggerLoader.SlipChannel => _slipAxis,
             MiniLoggerLoader.WheelRevsChannel => _wheelRevsAxis,
-            _ => null,
+            _ => _bigLoggerAxes.TryGetValue(channelLabel, out IYAxis? bigAxis) ? bigAxis : null,
         };
 
         private IEnumerable<IAxis?> KnownAxes()
@@ -873,6 +886,8 @@ namespace CastleOverlayV2.Plot
             yield return _wheelRevsAxis;
             yield return _slipAxis;
             yield return _tcStateAxis;
+            foreach (IYAxis axis in _bigLoggerAxes.Values)
+                yield return axis;
         }
 
         private static IEnumerable<(string Label, double[] Values)> GetCastleChannels(RunData run)
