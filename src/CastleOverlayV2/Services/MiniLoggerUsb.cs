@@ -84,9 +84,14 @@ public interface IMiniLoggerUsbClient : IDisposable
         int runCount = 1,
         CancellationToken cancellationToken = default);
     TcLoggerStatus ReadTcStatus(CancellationToken cancellationToken = default);
+    /// <param name="softPoints">
+    /// The soft curve. Null leaves the logger's soft curve alone; empty clears it.
+    /// </param>
     TcCurveTransferResult SendTcCurve(
         IReadOnlyList<TcCurvePoint> points,
+        IReadOnlyList<TcCurvePoint>? softPoints = null,
         CancellationToken cancellationToken = default);
+    /// <summary>Clears the hard curve, and the soft curve when the firmware has one.</summary>
     TcCurveTransferResult ClearTcCurve(CancellationToken cancellationToken = default);
 }
 
@@ -342,11 +347,14 @@ public sealed class MiniLoggerUsb : IMiniLoggerUsbClient
 
     public TcCurveTransferResult SendTcCurve(
         IReadOnlyList<TcCurvePoint> points,
+        IReadOnlyList<TcCurvePoint>? softPoints = null,
         CancellationToken cancellationToken = default)
     {
         try
         {
             TcCurveBuilder.Validate(points);
+            if (softPoints is { Count: > 0 })
+                TcCurveBuilder.Validate(softPoints);
         }
         catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
         {
@@ -356,24 +364,25 @@ public sealed class MiniLoggerUsb : IMiniLoggerUsbClient
         TcLoggerStatus before = ReadTcStatus(cancellationToken);
         TcCurveTransferResult? refusal = RefuseTcWrite(before);
         if (refusal is not null) return refusal;
+        bool firmwareHasSoft = before.SoftCurvePointCount is not null;
+        if (softPoints is { Count: > 0 } && !firmwareHasSoft)
+            return new TcCurveTransferResult(false,
+                "This TC logger's firmware has no soft curve. Upload the TC logger firmware with the soft curve " +
+                "(rc-logger PR #25), then send again. Nothing was sent.", before);
 
         IMiniLoggerLineTransport transport = ConnectedTransport();
-        string reply = WriteTcCommand(transport, "tc curve begin", cancellationToken);
-        if (reply.StartsWith("ERROR", StringComparison.Ordinal))
-            return new TcCurveTransferResult(false, reply, before);
+        string? error = UploadCurve(transport, "tc curve", points, cancellationToken);
+        if (error is not null)
+            return new TcCurveTransferResult(false, error, before);
 
-        foreach (TcCurvePoint point in points)
+        if (softPoints is not null && firmwareHasSoft)
         {
-            string command = string.Create(CultureInfo.InvariantCulture,
-                $"tc curve pt {point.TimeMs} {point.Rpm}");
-            reply = WriteTcCommand(transport, command, cancellationToken);
-            if (reply.StartsWith("ERROR", StringComparison.Ordinal))
-                return new TcCurveTransferResult(false, reply, before);
+            error = softPoints.Count > 0
+                ? UploadCurve(transport, "tc soft", softPoints, cancellationToken)
+                : FailedReply(WriteTcCommand(transport, "tc soft clear", cancellationToken));
+            if (error is not null)
+                return new TcCurveTransferResult(false, "Hard curve sent, but the soft curve failed: " + error, before);
         }
-
-        reply = WriteTcCommand(transport, "tc curve end", cancellationToken);
-        if (reply.StartsWith("ERROR", StringComparison.Ordinal))
-            return new TcCurveTransferResult(false, reply, before);
 
         TcLoggerStatus after = ReadTcStatus(cancellationToken);
         if (!after.IsTcLogger)
@@ -381,9 +390,15 @@ public sealed class MiniLoggerUsb : IMiniLoggerUsbClient
         if (after.CurvePointCount != points.Count)
             return new TcCurveTransferResult(false,
                 $"The logger reports {after.CurvePointCount} curve points after sending {points.Count}.", after);
+        int softSent = softPoints?.Count ?? 0;
+        if (softPoints is not null && firmwareHasSoft && after.SoftCurvePointCount != softSent)
+            return new TcCurveTransferResult(false,
+                $"The logger reports {after.SoftCurvePointCount} soft curve points after sending {softSent}.", after);
 
+        string softText = softPoints is null || !firmwareHasSoft ? ""
+            : softSent > 0 ? $", soft curve {softSent} points" : ", soft curve cleared";
         return new TcCurveTransferResult(true,
-            $"Curve sent successfully ({points.Count} points).", after);
+            $"Curve sent successfully (hard curve {points.Count} points{softText}).", after);
     }
 
     public TcCurveTransferResult ClearTcCurve(CancellationToken cancellationToken = default)
@@ -392,16 +407,46 @@ public sealed class MiniLoggerUsb : IMiniLoggerUsbClient
         TcCurveTransferResult? refusal = RefuseTcWrite(before);
         if (refusal is not null) return refusal;
 
-        string reply = WriteTcCommand(ConnectedTransport(), "tc curve clear", cancellationToken);
-        if (reply.StartsWith("ERROR", StringComparison.Ordinal))
-            return new TcCurveTransferResult(false, reply, before);
+        IMiniLoggerLineTransport transport = ConnectedTransport();
+        string? error = FailedReply(WriteTcCommand(transport, "tc curve clear", cancellationToken));
+        if (error is not null)
+            return new TcCurveTransferResult(false, error, before);
+        bool firmwareHasSoft = before.SoftCurvePointCount is not null;
+        if (firmwareHasSoft)
+        {
+            error = FailedReply(WriteTcCommand(transport, "tc soft clear", cancellationToken));
+            if (error is not null)
+                return new TcCurveTransferResult(false, error, before);
+        }
 
         TcLoggerStatus after = ReadTcStatus(cancellationToken);
-        if (!after.IsTcLogger || after.CurvePointCount != 0)
+        if (!after.IsTcLogger || after.CurvePointCount != 0 || (firmwareHasSoft && after.SoftCurvePointCount != 0))
             return new TcCurveTransferResult(false,
                 "The logger did not confirm an empty curve after clearing.", after);
-        return new TcCurveTransferResult(true, "Logger curve cleared.", after);
+        return new TcCurveTransferResult(true, firmwareHasSoft ? "Logger curves cleared." : "Logger curve cleared.", after);
     }
+
+    /// <summary>"tc curve" or "tc soft": begin, one pt per point, end. Returns the error, or null.</summary>
+    private static string? UploadCurve(
+        IMiniLoggerLineTransport transport,
+        string prefix,
+        IReadOnlyList<TcCurvePoint> points,
+        CancellationToken cancellationToken)
+    {
+        string? error = FailedReply(WriteTcCommand(transport, prefix + " begin", cancellationToken));
+        if (error is not null) return error;
+        foreach (TcCurvePoint point in points)
+        {
+            error = FailedReply(WriteTcCommand(transport,
+                string.Create(CultureInfo.InvariantCulture, $"{prefix} pt {point.TimeMs} {point.Rpm}"),
+                cancellationToken));
+            if (error is not null) return error;
+        }
+        return FailedReply(WriteTcCommand(transport, prefix + " end", cancellationToken));
+    }
+
+    private static string? FailedReply(string reply) =>
+        reply.StartsWith("ERROR", StringComparison.Ordinal) ? reply : null;
 
     public void Dispose() => CloseTransport();
 

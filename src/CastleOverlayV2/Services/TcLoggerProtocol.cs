@@ -23,6 +23,8 @@ public sealed class TcLoggerStatus
     public int? CeilingUs { get; init; }
     public double MotorRpm { get; init; }
     public int CurvePointCount { get; init; }
+    /// <summary>Soft curve points. Null when the firmware has no soft curve (before rc-logger PR #25).</summary>
+    public int? SoftCurvePointCount { get; init; }
     public int NeutralUs { get; init; }
     public int FullUs { get; init; }
     public int BrakeUs { get; init; }
@@ -38,6 +40,9 @@ public static class TcStatusParser
 {
     private static readonly Regex Header = new(
         @"^TC (?<state>\S+) \| in (?<input>\d+) us \| out (?<output>\d+) us \| ceiling (?<ceiling>\S+) \| rpm (?<rpm>[-+0-9.]+) \| curve (?<points>\d+) points",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    private static readonly Regex SoftCurve = new(
+        @"\| soft curve (?<soft>\d+) points",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
     private static readonly Regex Travel = new(
         @"^neutral (?<neutral>\d+) us \| full (?<full>\d+) us \| brake (?<brake>\d+) us(?: \||$)",
@@ -119,6 +124,9 @@ public static class TcStatusParser
             CeilingUs = ceiling,
             MotorRpm = Double(header, "rpm"),
             CurvePointCount = Int(header, "points"),
+            SoftCurvePointCount = SoftCurve.Match(headerLine) is { Success: true } soft
+                ? Int(soft, "soft")
+                : null,
             NeutralUs = neutral,
             FullUs = full,
             BrakeUs = brake,

@@ -138,9 +138,95 @@ public sealed class TcLoggerProtocolTests
         Assert.Equal(new[] { "id", "tc status", "tc curve clear", "tc status" }, transport.Writes);
     }
 
-    private static string[] Status(string state, int points) =>
+    [Fact]
+    public void Status_reads_the_soft_curve_count_and_old_firmware_has_none()
+    {
+        TcLoggerStatus withSoft = TcStatusParser.Parse(Status("DISARMED", 12, soft: 5));
+        TcLoggerStatus old = TcStatusParser.Parse(Status("DISARMED", 12));
+
+        Assert.Equal(12, withSoft.CurvePointCount);
+        Assert.Equal(5, withSoft.SoftCurvePointCount);
+        Assert.Null(old.SoftCurvePointCount);
+    }
+
+    [Fact]
+    public void Send_both_curves_uploads_hard_then_soft_and_checks_both_counts()
+    {
+        var replies = new List<string?> { "MINILOGGER 2" };
+        replies.AddRange(Status("DISARMED", 0, soft: 0));
+        replies.AddRange(new[] { "OK", "OK", "OK", "OK 2 points", "OK", "OK", "OK 1 points" });
+        replies.AddRange(Status("DISARMED", 2, soft: 1));
+        var transport = new FakeTransport(replies.ToArray());
+        using var client = Client(transport);
+        client.Connect();
+
+        TcCurveTransferResult result = client.SendTcCurve(
+            new[] { new TcCurvePoint(0, 30000), new TcCurvePoint(1000, 40000) },
+            new[] { new TcCurvePoint(0, 25000) });
+
+        Assert.True(result.Success, result.Message);
+        Assert.Equal(new[]
+        {
+            "id", "tc status", "tc curve begin", "tc curve pt 0 30000", "tc curve pt 1000 40000", "tc curve end",
+            "tc soft begin", "tc soft pt 0 25000", "tc soft end", "tc status"
+        }, transport.Writes);
+    }
+
+    [Fact]
+    public void Empty_soft_curve_clears_the_one_on_the_logger()
+    {
+        var replies = new List<string?> { "MINILOGGER 2" };
+        replies.AddRange(Status("DISARMED", 0, soft: 7));
+        replies.AddRange(new[] { "OK", "OK", "OK 1 points", "OK 0 points" });
+        replies.AddRange(Status("DISARMED", 1, soft: 0));
+        var transport = new FakeTransport(replies.ToArray());
+        using var client = Client(transport);
+        client.Connect();
+
+        TcCurveTransferResult result = client.SendTcCurve(new[] { new TcCurvePoint(0, 30000) }, Array.Empty<TcCurvePoint>());
+
+        Assert.True(result.Success, result.Message);
+        Assert.Contains("tc soft clear", transport.Writes);
+    }
+
+    [Fact]
+    public void Soft_curve_to_old_firmware_sends_nothing()
+    {
+        var transport = TransportForSend(Status("DISARMED", 0));
+        using var client = Client(transport);
+        client.Connect();
+
+        TcCurveTransferResult result = client.SendTcCurve(
+            new[] { new TcCurvePoint(0, 30000) }, new[] { new TcCurvePoint(0, 25000) });
+
+        Assert.False(result.Success);
+        Assert.Contains("no soft curve", result.Message);
+        Assert.Equal(new[] { "id", "tc status" }, transport.Writes);
+    }
+
+    [Fact]
+    public void Clear_also_clears_the_soft_curve_when_the_firmware_has_one()
+    {
+        var replies = new List<string?> { "MINILOGGER 2" };
+        replies.AddRange(Status("DISARMED", 4, soft: 3));
+        replies.AddRange(new[] { "OK 0 points", "OK 0 points" });
+        replies.AddRange(Status("DISARMED", 0, soft: 0));
+        var transport = new FakeTransport(replies.ToArray());
+        using var client = Client(transport);
+        client.Connect();
+
+        TcCurveTransferResult result = client.ClearTcCurve();
+
+        Assert.True(result.Success, result.Message);
+        Assert.Equal(new[] { "id", "tc status", "tc curve clear", "tc soft clear", "tc status" }, transport.Writes);
+    }
+
+    // The status header as the firmware prints it. The soft count is only there on firmware with
+    // the soft curve (rc-logger PR #25), after the hard curve's upload time.
+    private static string[] Status(string state, int points, int? soft = null) =>
     [
-        $"TC {state} | in 1520 us | out 1518 us | ceiling none | rpm 12345 | curve {points} points",
+        $"TC {state} | in 1520 us | out 1518 us | ceiling none | rpm 12345 | curve {points} points" +
+            (soft is int s ? $", uploaded 4 s ago | soft curve {s} points" : ""),
         "  neutral 1520 us | full 1900 us | brake 1100 us | pulses sent 9 | pulses cut 2 | signal timeouts 0 | log lost 0",
         "  neutralUs 1500",
         "  fullUs 1900",
