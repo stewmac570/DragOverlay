@@ -31,11 +31,17 @@ namespace CastleOverlayV2.Controls
         private static readonly Color BorderControl = Color.FromArgb(0x3A, 0x42, 0x50);
         private static readonly Color AccentBlue = Color.FromArgb(0x2D, 0x6C, 0xB5);
 
-        private const int PanelWidth = 400;
-        private const int MinPanelWidth = 260;
-        private const int MaxPanelWidth = 900;
         private const int RowHeight = 30;
         private const int ValueColumnWidth = 54;
+
+        // A row is: buttons (up to NameLeft), the name, then three value columns. The list can't
+        // get narrower than that plus its scrollbar, resize grip and border, or the names vanish.
+        private const int NameLeft = 123;
+        private const int MinNameWidth = 110;
+        private static readonly int MinPanelWidth =
+            NameLeft + MinNameWidth + 2 + 3 * ValueColumnWidth + 6 + SystemInformation.VerticalScrollBarWidth + 6 + 1;
+        private static readonly int PanelWidth = Math.Max(400, MinPanelWidth);
+        private const int MaxPanelWidth = 900;
 
         // ---- Public surface ---------------------------------------------------
         public event Action<string, bool>? ChannelVisibilityChanged;
@@ -526,7 +532,10 @@ namespace CastleOverlayV2.Controls
 
             public RunColumnHeader()
             {
-                SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint, true);
+                // ResizeRedraw: without it, dragging the list wider paints only the new strip and
+                // leaves bits of the old key behind.
+                SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer |
+                         ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
                 BackColor = SurfacePanel;
             }
 
@@ -668,6 +677,10 @@ namespace CastleOverlayV2.Controls
                 Height = RowHeight;
                 Margin = new Padding(0);
                 BackColor = SurfacePanel;
+                // Repaint the whole row when the list is dragged wider, so the divider line and the
+                // picked-row bar run the full width instead of stopping at the old edge.
+                ResizeRedraw = true;
+                DoubleBuffered = true;
 
                 _tick = new SmallToggle("✔", showTextWhenOff: false);
                 _tick.Click += (_, _) =>
@@ -772,7 +785,7 @@ namespace CastleOverlayV2.Controls
                     _values[i].SetBounds(right - ValueColumnWidth, 0, ValueColumnWidth, Height);
                     right -= ValueColumnWidth;
                 }
-                int nameLeft = _pane.Visible ? 123 : 99;
+                int nameLeft = _pane.Visible ? NameLeft : 99;
                 _name.SetBounds(nameLeft, y, Math.Max(0, right - nameLeft - 2), 20);
             }
 
