@@ -149,7 +149,7 @@ public sealed class TcPanel : UserControl
         {
             Dock = DockStyle.Fill,
             Text = "Right-click the chart to trim the log (Ctrl+Z undoes) · " +
-                   "click to add a dot · drag a dot to move it · right-click a dot to delete it",
+                   "left-drag pans · double-click to add a dot · drag a dot to move it · right-click a dot to delete it",
             ForeColor = TextSecond,
             TextAlign = ContentAlignment.MiddleLeft,
             Padding = new Padding(8, 0, 0, 0)
@@ -661,7 +661,12 @@ public sealed class TcPanel : UserControl
         ApplyAxisStyle(_chart.Plot.Axes.Bottom);
         ApplyAxisStyle(_chart.Plot.Axes.Left);
         _chart.Plot.Grid.MajorLineColor = new ScottPlot.Color(0xFF, 0xFF, 0xFF, 18);
-        _chart.UserInputProcessor.LeftClickDragPan(enable: false, horizontal: true, vertical: true);
+        // Left-drag pans time, like the Logs chart (the RPM scale stays locked). Double-click adds a
+        // dot, so ScottPlot's own double-click (its benchmark overlay) is taken off.
+        _chart.UserInputProcessor.LeftClickDragPan(enable: true, horizontal: true, vertical: false);
+        _chart.UserInputProcessor.UserActionResponses.RemoveAll(response =>
+            response is ScottPlot.Interactivity.UserActionResponses.DoubleClickBenchmark);
+        _chart.MouseDoubleClick += ChartDoubleClick;
         _chart.Menu?.Clear();
         _chart.MouseDown += ChartMouseDown;
         _chart.MouseMove += ChartMouseMove;
@@ -891,14 +896,19 @@ public sealed class TcPanel : UserControl
             return;
         }
 
-        if (e.Button != MouseButtons.Left) return;
-        if (hit >= 0)
-        {
-            _dragPointIndex = hit;
-            _chart.Capture = true;
-            _chart.Cursor = Cursors.SizeAll;
-            return;
-        }
+        // Left button: grabbing a dot moves it; anywhere else ScottPlot pans the chart.
+        if (e.Button != MouseButtons.Left || hit < 0) return;
+        _dragPointIndex = hit;
+        _chart.Capture = true;
+        _chart.Cursor = Cursors.SizeAll;
+        _chart.UserInputProcessor.Disable(); // no panning while a dot is dragged
+    }
+
+    /// <summary>Double-click adds a dot to the curve being edited.</summary>
+    private void ChartDoubleClick(object? sender, MouseEventArgs e)
+    {
+        if (e.Button != MouseButtons.Left || _busy || !TryReadCurve(out var curve, out _, allowEmpty: true)) return;
+        if (HitTestCurve(curve, e.Location) >= 0) return;
 
         ScottPlot.Coordinates coordinates = _chart.Plot.GetCoordinates(new ScottPlot.Pixel(e.X, e.Y));
         if (coordinates.X < 0)
@@ -960,6 +970,7 @@ public sealed class TcPanel : UserControl
         _dragPointIndex = -1;
         _chart.Capture = false;
         _chart.Cursor = Cursors.Default;
+        _chart.UserInputProcessor.Enable();
     }
 
     private int HitTestCurve(IReadOnlyList<TcCurvePoint> curve, Point mouse)
