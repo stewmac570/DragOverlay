@@ -8,7 +8,18 @@ namespace CastleOverlayV2.Controls;
 /// <summary>A log opened with the TC tab's own Load log button. Id keeps repeat files apart.</summary>
 public sealed record TcSourceRun(int Id, RunData Run)
 {
+    /// <summary>The piece of the log the curve is built from, trimmed by hand on the TC chart.</summary>
+    public TcTrim Trim { get; } = new();
+
     public override string ToString() => $"{(Run.IsMiniLogger ? "Data Log" : "Castle")} — {Run.FileName}";
+}
+
+/// <summary>Hand trim of one TC log, in the run's own time. Null means not trimmed at that end.</summary>
+public sealed class TcTrim
+{
+    public double? Start { get; set; }
+    public double? End { get; set; }
+    public Stack<(double? Start, double? End)> History { get; } = new();
 }
 
 /// <summary>TC curve creation, editing, and Mini Logger USB operations.</summary>
@@ -43,6 +54,8 @@ public sealed class TcPanel : UserControl
     private readonly FormsPlot _chart = new();
     private readonly DataGridView _points = new();
     private IReadOnlyList<TcRpmSample> _rpmTrace = Array.Empty<TcRpmSample>();
+    // Chart time 0 in the selected run's own time: the hand-set start, else the detected launch.
+    private double _zeroRunTime;
     private ScottPlot.AxisRules.LockedVertical? _rpmLock;
     private TcLoggerStatus? _sessionStatus;
     private bool _updatingGrid;
@@ -116,7 +129,8 @@ public sealed class TcPanel : UserControl
         var chartHint = new Label
         {
             Dock = DockStyle.Fill,
-            Text = "Click to add a dot · drag a dot to move it · right-click a dot to delete it",
+            Text = "Right-click the chart to set where the curve starts and ends (Ctrl+Z undoes) · " +
+                   "click to add a dot · drag a dot to move it · right-click a dot to delete it",
             ForeColor = TextSecond,
             TextAlign = ContentAlignment.MiddleLeft,
             Padding = new Padding(8, 0, 0, 0)
@@ -248,7 +262,10 @@ public sealed class TcPanel : UserControl
         ShowSelectedRun();
     }
 
-    /// <summary>Clears any curve and draws the picked log's RPM from its launch, before Make curve.</summary>
+    /// <summary>
+    /// Clears any curve and draws the picked log's whole RPM trace, trimmed to the hand-set
+    /// start and end if there are any. Time 0 is the hand-set start, else the detected launch.
+    /// </summary>
     private void ShowSelectedRun()
     {
         _rpmTrace = Array.Empty<TcRpmSample>();
@@ -258,18 +275,116 @@ public sealed class TcPanel : UserControl
         }
         else
         {
+            const string trimHint = " Right-click the chart to set where the curve starts and ends.";
             try
             {
-                TcLaunchResult launch = TcCurveBuilder.FindLaunch(source.Run, _sessionStatus);
-                _rpmTrace = TcCurveBuilder.RunTrace(source.Run, launch, _config.Config.IsFourPoleMode);
-                _launchInfo.Text = launch.Description + " Enter a margin and curve end, then make the curve.";
+                string zeroText;
+                if (source.Trim.Start is double start)
+                {
+                    _zeroRunTime = start;
+                    zeroText = TcCurveBuilder.ManualLaunch(start).Description;
+                }
+                else
+                {
+                    TcLaunchResult launch = TcCurveBuilder.FindLaunch(source.Run, _sessionStatus);
+                    _zeroRunTime = launch.TimeSeconds;
+                    zeroText = launch.Description;
+                }
+                _rpmTrace = TrimmedTrace(source);
+                _launchInfo.Text = zeroText + trimHint;
             }
             catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
             {
-                _launchInfo.Text = "Can't show this log's RPM: " + ex.Message;
+                // No launch found: still show the whole log, so the start can be set by hand.
+                try
+                {
+                    _zeroRunTime = TcCurveBuilder.RunTime(source.Run).First;
+                    _rpmTrace = TrimmedTrace(source);
+                    _launchInfo.Text = "No launch found (" + ex.Message.TrimEnd('.') + ")." + trimHint;
+                }
+                catch (Exception inner) when (inner is ArgumentException or InvalidOperationException or IndexOutOfRangeException)
+                {
+                    _launchInfo.Text = "Can't show this log's RPM: " + ex.Message;
+                }
             }
         }
         SetCurvePoints(Array.Empty<TcCurvePoint>(), fitView: true);
+    }
+
+    private IReadOnlyList<TcRpmSample> TrimmedTrace(TcSourceRun source)
+    {
+        double zero = _zeroRunTime;
+        return TcCurveBuilder.FullTrace(source.Run, zero, _config.Config.IsFourPoleMode)
+            .Where(sample => (source.Trim.Start is not double start || sample.TimeSeconds + zero >= start) &&
+                             (source.Trim.End is not double end || sample.TimeSeconds + zero <= end))
+            .ToList();
+    }
+
+    private void ShowTrimMenu(Point location)
+    {
+        if (_source.SelectedItem is not TcSourceRun source || _rpmTrace.Count == 0) return;
+        double chartTime = _chart.Plot.GetCoordinates(new ScottPlot.Pixel(location.X, location.Y)).X;
+        var (first, last) = TcCurveBuilder.RunTime(source.Run);
+        double runTime = Math.Clamp(chartTime + _zeroRunTime, first, last);
+
+        var menu = new ContextMenuStrip();
+        menu.Items.Add("Start the curve here", null, (_, _) => SetTrim(source, runTime, source.Trim.End));
+        menu.Items.Add("End the curve here", null, (_, _) => SetTrim(source, source.Trim.Start, runTime));
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add(new ToolStripMenuItem("Undo last trim", null, (_, _) => UndoTrim())
+        {
+            ShortcutKeyDisplayString = "Ctrl+Z",
+            Enabled = source.Trim.History.Count > 0
+        });
+        menu.Items.Add(new ToolStripMenuItem("Reset trim", null, (_, _) => SetTrim(source, null, null))
+        {
+            Enabled = source.Trim.Start is not null || source.Trim.End is not null
+        });
+        menu.Closed += (_, _) => BeginInvoke(menu.Dispose);
+        menu.Show(_chart, location);
+    }
+
+    private void SetTrim(TcSourceRun source, double? start, double? end)
+    {
+        double zero = start ?? _zeroRunTime;
+        if (end is double e && e <= zero)
+        {
+            _status.Text = "The end has to be after the start of the curve.";
+            return;
+        }
+        source.Trim.History.Push((source.Trim.Start, source.Trim.End));
+        source.Trim.Start = start;
+        source.Trim.End = end;
+        ApplyTrim(source);
+    }
+
+    /// <summary>Undoes the selected log's last trim. False when there is nothing to undo.</summary>
+    private bool UndoTrim()
+    {
+        if (_source.SelectedItem is not TcSourceRun source || source.Trim.History.Count == 0) return false;
+        (source.Trim.Start, source.Trim.End) = source.Trim.History.Pop();
+        ApplyTrim(source);
+        return true;
+    }
+
+    private void ApplyTrim(TcSourceRun source)
+    {
+        ShowSelectedRun();
+        // The trimmed end is the curve end, measured from the curve start.
+        if (source.Trim.End is double end)
+            _curveEnd.Text = (end - _zeroRunTime).ToString("0.###", CultureInfo.InvariantCulture);
+        _status.Text = source.Trim.Start is null && source.Trim.End is null
+            ? "Trim cleared. The curve starts at the detected launch."
+            : "Log trimmed. Enter a margin, then Make curve builds from the part you kept.";
+    }
+
+    protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+    {
+        // Ctrl+Z undoes a trim, except while typing in a box or a point cell.
+        bool typing = _margin.Focused || _curveEnd.Focused || _points.IsCurrentCellInEditMode;
+        if (keyData == (Keys.Control | Keys.Z) && !typing && UndoTrim())
+            return true;
+        return base.ProcessCmdKey(ref msg, keyData);
     }
 
     private void InputsChanged()
@@ -303,8 +418,9 @@ public sealed class TcPanel : UserControl
                 _marginUnit.SelectedIndex == 1 ? TcMarginUnit.Percent : TcMarginUnit.Rpm,
                 end,
                 _sessionStatus,
-                _config.Config.IsFourPoleMode);
-            _rpmTrace = result.RpmTrace;
+                _config.Config.IsFourPoleMode,
+                source.Trim.Start);
+            // The chart keeps showing the trimmed log; the curve is drawn over it.
             SetCurvePoints(result.Points, fitView: true);
             string rpmMode = source.Run.IsMiniLogger
                 ? "RPM: logger motor RPM (pole setting does not apply)."
@@ -481,7 +597,7 @@ public sealed class TcPanel : UserControl
         _chart.Dock = DockStyle.Fill;
         _chart.Plot.FigureBackground.Color = new ScottPlot.Color(0x13, 0x17, 0x1E);
         _chart.Plot.DataBackground.Color = new ScottPlot.Color(0x0E, 0x12, 0x18);
-        _chart.Plot.Axes.Bottom.Label.Text = "Time from logger launch (s)";
+        _chart.Plot.Axes.Bottom.Label.Text = "Time from curve start (s)";
         _chart.Plot.Axes.Left.Label.Text = "Motor RPM";
         ApplyAxisStyle(_chart.Plot.Axes.Bottom);
         ApplyAxisStyle(_chart.Plot.Axes.Left);
@@ -621,6 +737,11 @@ public sealed class TcPanel : UserControl
             TcCurveEditor.Delete(curve, hit);
             SetCurvePoints(curve);
             _status.Text = "Point deleted.";
+            return;
+        }
+        if (e.Button == MouseButtons.Right)
+        {
+            ShowTrimMenu(e.Location);
             return;
         }
 

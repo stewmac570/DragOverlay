@@ -14,7 +14,9 @@ public enum TcLaunchSource
     TcState,
     LoggerStatus,
     FirmwareDefaults,
-    CastleRunDefaults
+    CastleRunDefaults,
+    /// <summary>The user trimmed the log on the TC chart and set the curve start by hand.</summary>
+    Manual
 }
 
 public sealed record TcLaunchResult(
@@ -29,6 +31,7 @@ public sealed record TcLaunchResult(
     public string Description => Source switch
     {
         TcLaunchSource.TcState => "Time zero: first TC ACTIVE row (TC State = 2).",
+        TcLaunchSource.Manual => "Time zero: the curve start you set on the chart.",
         TcLaunchSource.LoggerStatus => string.Create(CultureInfo.InvariantCulture,
             $"Time zero: {LaunchUs:0} µs from this session's logger status " +
             $"(neutral {NeutralUs:0}, full {FullUs:0}, launch {LaunchPercent:0.##}%)."),
@@ -150,13 +153,44 @@ public static class TcCurveBuilder
             .ToList();
     }
 
+    /// <summary>A time zero set by hand, in the run's own time (see <see cref="RunTime"/>).</summary>
+    public static TcLaunchResult ManualLaunch(double runTimeSeconds) =>
+        new(runTimeSeconds, TcLaunchSource.Manual, 0, 0, 0);
+
+    /// <summary>
+    /// Every RPM sample in the run, with time measured from <paramref name="zeroRunTimeSeconds"/>.
+    /// The TC chart shows all of it so the log can be trimmed by hand.
+    /// </summary>
+    public static IReadOnlyList<TcRpmSample> FullTrace(RunData run, double zeroRunTimeSeconds, bool isFourPoleMode = false)
+    {
+        ArgumentNullException.ThrowIfNull(run);
+        if (!run.IsMiniLogger && !run.HasChannelData && run.DataPoints.Count > 0)
+            return run.DataPoints
+                .Select(sample => new TcRpmSample(sample.Time - zeroRunTimeSeconds,
+                    isFourPoleMode ? sample.Speed * 0.5 : sample.Speed))
+                .ToList();
+        return run.MiniLoggerSamples
+            .Select(sample => new TcRpmSample(sample.TimeSeconds - zeroRunTimeSeconds, sample.MotorRpm))
+            .ToList();
+    }
+
+    /// <summary>The run's own time base: Castle sample time, or data log time from power-on.</summary>
+    public static (double First, double Last) RunTime(RunData run) =>
+        !run.IsMiniLogger && !run.HasChannelData && run.DataPoints.Count > 0
+            ? (run.DataPoints[0].Time, run.DataPoints[^1].Time)
+            : (run.MiniLoggerSamples[0].TimeSeconds, run.MiniLoggerSamples[^1].TimeSeconds);
+
+    /// <param name="zeroRunTimeSeconds">
+    /// Curve start set by hand, in the run's own time. Null finds the launch from the throttle.
+    /// </param>
     public static TcCurveBuildResult Build(
         RunData run,
         double margin,
         TcMarginUnit marginUnit,
         double curveEndSeconds,
         TcLoggerStatus? loggerStatus = null,
-        bool isFourPoleMode = false)
+        bool isFourPoleMode = false,
+        double? zeroRunTimeSeconds = null)
     {
         if (!double.IsFinite(margin) || margin < 0)
             throw new ArgumentOutOfRangeException(nameof(margin), "Margin must be zero or greater.");
@@ -164,9 +198,9 @@ public static class TcCurveBuilder
             throw new ArgumentOutOfRangeException(nameof(curveEndSeconds), "Curve end must be greater than zero.");
 
         if (!run.IsMiniLogger && !run.HasChannelData && run.DataPoints.Count > 0)
-            return BuildCastle(run, margin, marginUnit, curveEndSeconds, loggerStatus, isFourPoleMode);
+            return BuildCastle(run, margin, marginUnit, curveEndSeconds, loggerStatus, isFourPoleMode, zeroRunTimeSeconds);
 
-        TcLaunchResult launch = FindLaunch(run, loggerStatus);
+        TcLaunchResult launch = zeroRunTimeSeconds is double zero ? ManualLaunch(zero) : FindLaunch(run, loggerStatus);
         int endMs = checked((int)Math.Round(curveEndSeconds * 1000.0, MidpointRounding.AwayFromZero));
         if (endMs < 1)
             throw new ArgumentOutOfRangeException(nameof(curveEndSeconds), "Curve end must be at least 1 ms.");
@@ -294,10 +328,13 @@ public static class TcCurveBuilder
         TcMarginUnit marginUnit,
         double curveEndSeconds,
         TcLoggerStatus? loggerStatus,
-        bool isFourPoleMode)
+        bool isFourPoleMode,
+        double? zeroRunTimeSeconds)
     {
         IReadOnlyList<DataPoint> samples = run.DataPoints;
-        TcLaunchResult launch = FindCastleLaunch(samples, loggerStatus);
+        TcLaunchResult launch = zeroRunTimeSeconds is double zero
+            ? ManualLaunch(zero)
+            : FindCastleLaunch(samples, loggerStatus);
         int endMs = checked((int)Math.Round(curveEndSeconds * 1000.0, MidpointRounding.AwayFromZero));
         if (endMs < 1)
             throw new ArgumentOutOfRangeException(nameof(curveEndSeconds), "Curve end must be at least 1 ms.");

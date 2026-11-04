@@ -5,6 +5,64 @@ namespace CastleOverlayV2.Tests;
 
 public sealed class TcCurveBuilderTests
 {
+    // Hand trim on the TC tab: the curve starts where the user set it, not at a detected launch.
+    [Fact]
+    public void Hand_set_start_is_time_zero_for_a_real_data_log()
+    {
+        string path = SamplePath("bench-2026-11-03-logger.csv");
+        RunData run = MiniLoggerLoader.Load(path, keepFullLog: true).Value!;
+        const double start = 20.0;
+
+        TcCurveBuildResult result = TcCurveBuilder.Build(run, 0, TcMarginUnit.Rpm, 1.5, zeroRunTimeSeconds: start);
+
+        Assert.Equal(TcLaunchSource.Manual, result.Launch.Source);
+        Assert.Equal(start, result.Launch.TimeSeconds);
+        Assert.Equal(0, result.Points[0].TimeMs);
+        Assert.Equal(1500, result.Points[^1].TimeMs);
+        MiniLoggerSample atStart = run.MiniLoggerSamples.First(sample => sample.TimeSeconds >= start);
+        Assert.InRange(result.Points[0].Rpm, atStart.MotorRpm - 1, atStart.MotorRpm + 1);
+    }
+
+    [Fact]
+    public void Full_trace_shows_the_whole_log_measured_from_the_chosen_zero()
+    {
+        RunData run = MiniLoggerLoader.Load(SamplePath("bench-2026-11-03-logger.csv"), keepFullLog: true).Value!;
+
+        IReadOnlyList<TcRpmSample> trace = TcCurveBuilder.FullTrace(run, 20.0);
+
+        Assert.Equal(run.MiniLoggerSamples.Count, trace.Count);
+        Assert.Equal(run.MiniLoggerSamples[0].TimeSeconds - 20.0, trace[0].TimeSeconds, 6);
+        Assert.Equal(run.MiniLoggerSamples[^1].MotorRpm, trace[^1].Rpm);
+    }
+
+    [Fact]
+    public void Hand_set_start_also_works_on_a_castle_log()
+    {
+        string configFolder = Path.Combine(Path.GetTempPath(), $"tc-config-{Guid.NewGuid():N}");
+        RunData castle = new CsvLoader(new ConfigService(configFolder))
+            .Load(SamplePath("bench-2026-11-03-castle.csv"), trimForDrag: true, keepFullLog: true).Value!;
+        double start = castle.DataPoints[100].Time;
+
+        TcCurveBuildResult result = TcCurveBuilder.Build(castle, 0, TcMarginUnit.Rpm, 1.0, zeroRunTimeSeconds: start);
+
+        Assert.Equal(TcLaunchSource.Manual, result.Launch.Source);
+        Assert.Equal(0, result.Points[0].TimeMs);
+        Assert.Equal(1000, result.Points[^1].TimeMs);
+    }
+
+    private static string SamplePath(string fileName)
+    {
+        DirectoryInfo? folder = new(AppContext.BaseDirectory);
+        while (folder is not null)
+        {
+            string candidate = Path.Combine(folder.FullName, "Tests", "alignment-samples", fileName);
+            if (File.Exists(candidate))
+                return candidate;
+            folder = folder.Parent;
+        }
+        throw new FileNotFoundException(fileName);
+    }
+
     [Fact]
     public void Tc_state_active_defines_time_zero()
     {
