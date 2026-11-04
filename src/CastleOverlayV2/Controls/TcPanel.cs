@@ -129,7 +129,7 @@ public sealed class TcPanel : UserControl
         var chartHint = new Label
         {
             Dock = DockStyle.Fill,
-            Text = "Right-click the chart to set where the curve starts and ends (Ctrl+Z undoes) · " +
+            Text = "Right-click the chart to trim the log (Ctrl+Z undoes) · " +
                    "click to add a dot · drag a dot to move it · right-click a dot to delete it",
             ForeColor = TextSecond,
             TextAlign = ContentAlignment.MiddleLeft,
@@ -275,7 +275,7 @@ public sealed class TcPanel : UserControl
         }
         else
         {
-            const string trimHint = " Right-click the chart to set where the curve starts and ends.";
+            const string trimHint = " Right-click the chart to trim the log.";
             try
             {
                 string zeroText;
@@ -327,9 +327,10 @@ public sealed class TcPanel : UserControl
         var (first, last) = TcCurveBuilder.RunTime(source.Run);
         double runTime = Math.Clamp(chartTime + _zeroRunTime, first, last);
 
+        // Same words as the Logs tab trim menu. What is left after the trim is what the curve is built from.
         var menu = new ContextMenuStrip();
-        menu.Items.Add("Start the curve here", null, (_, _) => SetTrim(source, runTime, source.Trim.End));
-        menu.Items.Add("End the curve here", null, (_, _) => SetTrim(source, source.Trim.Start, runTime));
+        menu.Items.Add("Remove data before here", null, (_, _) => SetTrim(source, runTime, source.Trim.End));
+        menu.Items.Add("Remove data after here", null, (_, _) => SetTrim(source, source.Trim.Start, runTime));
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(new ToolStripMenuItem("Undo last trim", null, (_, _) => UndoTrim())
         {
@@ -349,7 +350,7 @@ public sealed class TcPanel : UserControl
         double zero = start ?? _zeroRunTime;
         if (end is double e && e <= zero)
         {
-            _status.Text = "The end has to be after the start of the curve.";
+            _status.Text = "That would remove all the data. Pick a point after the start.";
             return;
         }
         source.Trim.History.Push((source.Trim.Start, source.Trim.End));
