@@ -18,6 +18,10 @@ dotnet publish src/CastleOverlayV2/CastleOverlayV2.csproj -c Release -r win-x64 
 
 The Inno Setup installer script at `installer/installer.iss` packages `publish/win-x64/` — bump `MyAppVersion` and `Models/Config.cs::CurrentBuildNumber` together when releasing, then push a `v<version>` tag to run `.github/workflows/release.yml`. Visual Studio 2022+ also builds via `src/CastleOverlayV2/CastleOverlayV2.sln`.
 
+**Stewart's test build.** His desktop icon "DragOverlay (test build)" opens `src/CastleOverlayV2/bin/Release/net8.0-windows/CastleOverlayV2.exe`. Whenever a change is ready for him to test, build Release from the branch he is testing (`dotnet build ... -c Release`) so the icon runs it. If the build can't copy the exe, the app is open: ask him to close it. His other desktop icon is the installed copy, his stable fallback.
+
+**Local installer.** The local `publish/win-x64/` holds leftover Mac and Linux files from an old build, which bloat the installer to 35 MB. Publish into an empty folder and point ISCC at it (`/DMyPublishDir=...`) instead.
+
 ## Pinned dependencies
 
 Treat these versions as constraints, not suggestions:
