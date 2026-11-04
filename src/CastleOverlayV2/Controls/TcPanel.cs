@@ -54,6 +54,8 @@ public sealed class TcPanel : UserControl
     private readonly FormsPlot _chart = new();
     private readonly DataGridView _points = new();
     private IReadOnlyList<TcRpmSample> _rpmTrace = Array.Empty<TcRpmSample>();
+    private ScottPlot.Plottables.VerticalLine? _cursorLine;
+    private readonly CursorReadout _readout = new();
     // Chart time 0 in the selected run's own time: the hand-set start, else the detected launch.
     private double _zeroRunTime;
     private ScottPlot.AxisRules.LockedVertical? _rpmLock;
@@ -129,7 +131,7 @@ public sealed class TcPanel : UserControl
         var chartHint = new Label
         {
             Dock = DockStyle.Fill,
-            Text = "Right-click the chart to set where the curve starts and ends (Ctrl+Z undoes) · " +
+            Text = "Right-click the chart to trim the log (Ctrl+Z undoes) · " +
                    "click to add a dot · drag a dot to move it · right-click a dot to delete it",
             ForeColor = TextSecond,
             TextAlign = ContentAlignment.MiddleLeft,
@@ -275,7 +277,7 @@ public sealed class TcPanel : UserControl
         }
         else
         {
-            const string trimHint = " Right-click the chart to set where the curve starts and ends.";
+            const string trimHint = " Right-click the chart to trim the log.";
             try
             {
                 string zeroText;
@@ -327,9 +329,10 @@ public sealed class TcPanel : UserControl
         var (first, last) = TcCurveBuilder.RunTime(source.Run);
         double runTime = Math.Clamp(chartTime + _zeroRunTime, first, last);
 
+        // Same words as the Logs tab trim menu. What is left after the trim is what the curve is built from.
         var menu = new ContextMenuStrip();
-        menu.Items.Add("Start the curve here", null, (_, _) => SetTrim(source, runTime, source.Trim.End));
-        menu.Items.Add("End the curve here", null, (_, _) => SetTrim(source, source.Trim.Start, runTime));
+        menu.Items.Add("Remove data before here", null, (_, _) => SetTrim(source, runTime, source.Trim.End));
+        menu.Items.Add("Remove data after here", null, (_, _) => SetTrim(source, source.Trim.Start, runTime));
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(new ToolStripMenuItem("Undo last trim", null, (_, _) => UndoTrim())
         {
@@ -349,7 +352,7 @@ public sealed class TcPanel : UserControl
         double zero = start ?? _zeroRunTime;
         if (end is double e && e <= zero)
         {
-            _status.Text = "The end has to be after the start of the curve.";
+            _status.Text = "That would remove all the data. Pick a point after the start.";
             return;
         }
         source.Trim.History.Push((source.Trim.Start, source.Trim.End));
@@ -610,7 +613,9 @@ public sealed class TcPanel : UserControl
         _chart.MouseLeave += (_, _) =>
         {
             if (_dragPointIndex < 0) _chart.Cursor = Cursors.Default;
+            HideCursorLine();
         };
+        _chart.Controls.Add(_readout);
         FitAndLockRpm();
     }
 
@@ -705,9 +710,76 @@ public sealed class TcPanel : UserControl
             line.LineWidth = 2.5f;
             line.MarkerSize = 6;
         }
+        // The same dashed red cursor line as the Logs chart. It follows the mouse.
+        _cursorLine = _chart.Plot.Add.VerticalLine(0);
+        _cursorLine.LinePattern = ScottPlot.LinePattern.Dashed;
+        _cursorLine.Color = ScottPlot.Colors.Red;
+        _cursorLine.IsVisible = false;
         _chart.Plot.Legend.IsVisible = _rpmTrace.Count > 0;
         if (fitView) FitAndLockRpm();
         _chart.Refresh();
+    }
+
+    /// <summary>
+    /// Moves the cursor line to the mouse and shows the box beside it, like the Logs chart:
+    /// the time, the run's RPM and the TC curve's RPM there.
+    /// </summary>
+    private void UpdateCursorLine(Point mouse)
+    {
+        if (_cursorLine is null || _rpmTrace.Count == 0)
+        {
+            HideCursorLine();
+            return;
+        }
+        double time = _chart.Plot.GetCoordinates(new ScottPlot.Pixel(mouse.X, mouse.Y)).X;
+        _cursorLine.X = time;
+        _cursorLine.IsVisible = true;
+
+        var lines = new List<CursorReadout.Line>();
+        if (RpmAt(_rpmTrace, time) is double runRpm)
+            lines.Add(new CursorReadout.Line("Run RPM", Color.FromArgb(0xF2, 0x9E, 0x86),
+                new[] { runRpm.ToString("N0", CultureInfo.InvariantCulture) }));
+        if (TryReadCurve(out var curve, out _) && curve.Count > 0 && CurveRpmAt(curve, time) is double curveRpm)
+            lines.Add(new CursorReadout.Line("TC curve", Color.FromArgb(0x66, 0xE0, 0xFF),
+                new[] { curveRpm.ToString("N0", CultureInfo.InvariantCulture) }));
+        _readout.ShowAt(mouse.X, mouse.Y, time, lines);
+        _chart.Refresh();
+    }
+
+    private void HideCursorLine()
+    {
+        _readout.Visible = false;
+        if (_cursorLine is null || !_cursorLine.IsVisible) return;
+        _cursorLine.IsVisible = false;
+        _chart.Refresh();
+    }
+
+    /// <summary>RPM of the trace sample nearest <paramref name="time"/>; null outside the trace.</summary>
+    private static double? RpmAt(IReadOnlyList<TcRpmSample> trace, double time)
+    {
+        if (trace.Count == 0 || time < trace[0].TimeSeconds || time > trace[^1].TimeSeconds) return null;
+        int low = 0, high = trace.Count - 1;
+        while (high - low > 1)
+        {
+            int middle = (low + high) / 2;
+            if (trace[middle].TimeSeconds <= time) low = middle; else high = middle;
+        }
+        return time - trace[low].TimeSeconds <= trace[high].TimeSeconds - time ? trace[low].Rpm : trace[high].Rpm;
+    }
+
+    /// <summary>The curve's RPM at <paramref name="time"/>, straight between points; null outside it.</summary>
+    private static double? CurveRpmAt(IReadOnlyList<TcCurvePoint> curve, double time)
+    {
+        double ms = time * 1000.0;
+        if (ms < curve[0].TimeMs || ms > curve[^1].TimeMs) return null;
+        for (int i = 1; i < curve.Count; i++)
+        {
+            if (ms > curve[i].TimeMs) continue;
+            double span = curve[i].TimeMs - curve[i - 1].TimeMs;
+            double fraction = span <= 0 ? 1 : (ms - curve[i - 1].TimeMs) / span;
+            return curve[i - 1].Rpm + (curve[i].Rpm - curve[i - 1].Rpm) * fraction;
+        }
+        return curve[^1].Rpm;
     }
 
     private void FitChart()
@@ -786,6 +858,7 @@ public sealed class TcPanel : UserControl
 
     private void ChartMouseMove(object? sender, MouseEventArgs e)
     {
+        UpdateCursorLine(e.Location);
         if (_dragPointIndex >= 0)
         {
             if (!TryReadCurve(out var curve, out _) || _dragPointIndex >= curve.Count) return;
