@@ -326,7 +326,7 @@ namespace CastleOverlayV2
                 "Before connecting the USB cable:\n\n" +
                 "SWITCH THE CAR OFF, then UNPLUG THE LOGGER'S RECEIVER LEAD or pull its red pin.\n\n" +
                 "The car's BEC can feed back into the PC through the USB cable.",
-                "Mini Logger USB safety",
+                "Logger USB safety",
                 MessageBoxButtons.OKCancel,
                 MessageBoxIcon.Warning,
                 MessageBoxDefaultButton.Button2) == DialogResult.OK;
@@ -336,7 +336,7 @@ namespace CastleOverlayV2
             if (searching)
             {
                 _miniLoggerLooking?.Dispose();
-                _miniLoggerLooking = new MiniLoggerLookingForm();
+                _miniLoggerLooking = new MiniLoggerLookingForm("Logger", "Looking for the logger…");
                 _miniLoggerLooking.Show(this);
                 _miniLoggerLooking.Refresh();
             }
@@ -348,15 +348,15 @@ namespace CastleOverlayV2
             }
         }
 
-        public IReadOnlyList<MiniLoggerRunInfo>? SelectMiniLoggerRuns(IReadOnlyList<MiniLoggerRunInfo> runs)
+        public IReadOnlyList<MiniLoggerRunInfo>? SelectMiniLoggerRuns(IReadOnlyList<MiniLoggerRunInfo> runs, string loggerName)
         {
-            using var dialog = new MiniLoggerRunSelectionForm(runs);
+            using var dialog = new MiniLoggerRunSelectionForm(runs, loggerName);
             return dialog.ShowDialog(this) == DialogResult.OK ? dialog.SelectedRuns : null;
         }
 
-        public IMiniLoggerDownloadSession BeginMiniLoggerDownload(int runCount)
+        public IMiniLoggerDownloadSession BeginMiniLoggerDownload(int runCount, string loggerName)
         {
-            var dialog = new MiniLoggerDownloadForm(runCount);
+            var dialog = new MiniLoggerDownloadForm(runCount, loggerName);
             dialog.Show(this);
             return dialog;
         }

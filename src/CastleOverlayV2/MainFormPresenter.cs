@@ -856,7 +856,7 @@ namespace CastleOverlayV2
             RefreshTunePanelRuns();
         }
 
-        /// <summary>Find a Mini Logger over USB, download selected runs, then load the first three.</summary>
+        /// <summary>Find a Mini Logger or Big logger over USB, download selected runs, then load the first three.</summary>
         public async Task DownloadFromMiniLoggerAsync()
         {
             if (!_view.ConfirmMiniLoggerUsbSafety())
@@ -871,8 +871,8 @@ namespace CastleOverlayV2
             }
             catch (Exception ex)
             {
-                Logger.Log($"Mini Logger search failed: {ex.Message}");
-                _view.ShowError("Mini Logger", "Could not search for the Mini Logger.\n\n" + ex.Message);
+                Logger.Log($"Logger search failed: {ex.Message}");
+                _view.ShowError("Logger", "Could not search for the logger.\n\n" + ex.Message);
                 return;
             }
             finally
@@ -882,18 +882,19 @@ namespace CastleOverlayV2
 
             if (connection.Status == MiniLoggerConnectStatus.PortBusy)
             {
-                _view.ShowError("Mini Logger",
-                    "The Mini Logger's USB port could not be opened.\n\n" +
+                _view.ShowError("Logger",
+                    "The logger's USB port could not be opened.\n\n" +
                     "Close Arduino's Serial Monitor or any other program using the logger and try again.");
                 return;
             }
             if (connection.Status != MiniLoggerConnectStatus.Connected)
             {
-                _view.ShowInfo("Mini Logger",
+                _view.ShowInfo("Logger",
                     "No Mini Logger or Big logger was found.\n\nPlug the logger in with the USB cable and try again.");
                 return;
             }
 
+            string name = logger.IsBigLogger ? "Big logger" : "Mini Logger";
             IReadOnlyList<MiniLoggerRunInfo> availableRuns;
             try
             {
@@ -901,17 +902,21 @@ namespace CastleOverlayV2
             }
             catch (MiniLoggerStoppedRespondingException)
             {
-                _view.ShowError("Mini Logger", "The Mini Logger stopped answering. Please reconnect it and try again.");
+                _view.ShowError(name, $"The {name} stopped answering. Please reconnect it and try again.");
                 return;
             }
 
             if (availableRuns.Count == 0)
             {
-                _view.ShowInfo("Mini Logger", "No runs are saved on the Mini Logger.");
+                _view.ShowInfo(name, $"No runs are saved on the {name}.");
                 return;
             }
 
-            IReadOnlyList<MiniLoggerRunInfo>? selectedRuns = _view.SelectMiniLoggerRuns(availableRuns);
+            // The Big logger's summary lists oldest first; the run just driven is the one wanted.
+            if (logger.IsBigLogger)
+                availableRuns = availableRuns.OrderByDescending(run => run.Number).ToList();
+
+            IReadOnlyList<MiniLoggerRunInfo>? selectedRuns = _view.SelectMiniLoggerRuns(availableRuns, name);
             if (selectedRuns is null || selectedRuns.Count == 0)
                 return;
 
@@ -932,13 +937,13 @@ namespace CastleOverlayV2
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                _view.ShowError("Mini Logger", "Could not create the download folder.\n\n" + ex.Message);
+                _view.ShowError(name, "Could not create the download folder.\n\n" + ex.Message);
                 return;
             }
 
             var downloaded = new List<string>();
             bool cancelled = false;
-            using IMiniLoggerDownloadSession downloadUi = _view.BeginMiniLoggerDownload(selectedRuns.Count);
+            using IMiniLoggerDownloadSession downloadUi = _view.BeginMiniLoggerDownload(selectedRuns.Count, name);
             var progress = new Progress<MiniLoggerDownloadProgress>(downloadUi.Report);
             try
             {
@@ -947,7 +952,7 @@ namespace CastleOverlayV2
                     MiniLoggerRunInfo run = selectedRuns[index];
                     string destination = Path.Combine(sessionFolder, run.FileName);
                     downloadUi.Report(new MiniLoggerDownloadProgress(
-                        run.Number, index + 1, selectedRuns.Count, 0, run.ExpectedCsvBytes));
+                        run.Number, index + 1, selectedRuns.Count, 0, run.ExpectedCsvBytes, 0, run.ExpectedRows));
                     MiniLoggerDumpResult result = await Task.Run(() => logger.DumpRun(
                         run, destination, progress, index + 1, selectedRuns.Count,
                         downloadUi.CancellationToken));
@@ -957,7 +962,7 @@ namespace CastleOverlayV2
                     }
                     else
                     {
-                        _view.ShowError("Mini Logger", $"Run {run.Number} was not found on the logger.");
+                        _view.ShowError(name, $"Run {run.Number} was not found on the logger.");
                     }
                 }
             }
@@ -967,12 +972,12 @@ namespace CastleOverlayV2
             }
             catch (MiniLoggerStoppedRespondingException)
             {
-                _view.ShowError("Mini Logger", "The Mini Logger stopped answering. The partial file was deleted.");
+                _view.ShowError(name, $"The {name} stopped answering. The partial file was deleted.");
             }
             catch (Exception ex)
             {
-                Logger.Log($"Mini Logger download failed: {ex.Message}");
-                _view.ShowError("Mini Logger", "The download failed. The partial file was deleted.\n\n" + ex.Message);
+                Logger.Log($"{name} download failed: {ex.Message}");
+                _view.ShowError(name, "The download failed. The partial file was deleted.\n\n" + ex.Message);
             }
             finally
             {
@@ -987,12 +992,12 @@ namespace CastleOverlayV2
 
             if (cancelled)
             {
-                _view.ShowInfo("Mini Logger",
+                _view.ShowInfo(name,
                     $"Download cancelled. {downloaded.Count} complete run{(downloaded.Count == 1 ? " was" : "s were")} kept in:\n{sessionFolder}");
             }
             else if (downloaded.Count > 3)
             {
-                _view.ShowInfo("Mini Logger",
+                _view.ShowInfo(name,
                     $"The first three runs were loaded. The other {downloaded.Count - 3} run(s) were saved in:\n{sessionFolder}");
             }
         }

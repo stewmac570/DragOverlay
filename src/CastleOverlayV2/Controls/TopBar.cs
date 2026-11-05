@@ -103,7 +103,7 @@ namespace CastleOverlayV2.Controls
             _actions.Controls.Add(_autoLoadButton);
 
             _fromLoggerButton = MakeActionButton("⤓ From logger", 108, TextAccent,
-                "Find the Mini Logger over USB and download saved runs");
+                "Find the Mini Logger or Big logger over USB and download saved runs");
             _fromLoggerButton.Click += (_, _) => DownloadFromLoggerRequested?.Invoke();
             _actions.Controls.Add(_fromLoggerButton);
 

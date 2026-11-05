@@ -54,9 +54,9 @@ public sealed class FakeMainView : IMainView
     public void ShowInfo(string title, string message) => Infos.Add((title, message));
     public bool ConfirmMiniLoggerUsbSafety() => MiniLoggerSafetyConfirmed;
     public void SetMiniLoggerSearchState(bool searching) => MiniLoggerSearchStates.Add(searching);
-    public IReadOnlyList<MiniLoggerRunInfo>? SelectMiniLoggerRuns(IReadOnlyList<MiniLoggerRunInfo> runs) =>
+    public IReadOnlyList<MiniLoggerRunInfo>? SelectMiniLoggerRuns(IReadOnlyList<MiniLoggerRunInfo> runs, string loggerName) =>
         MiniLoggerRunsToSelect;
-    public IMiniLoggerDownloadSession BeginMiniLoggerDownload(int runCount) =>
+    public IMiniLoggerDownloadSession BeginMiniLoggerDownload(int runCount, string loggerName) =>
         new FakeMiniLoggerDownloadSession();
     public readonly List<string?> CastleLinkBusy = new();
     public Func<IReadOnlyList<CastleSessionInfo>, IReadOnlyList<CastleSessionInfo>?> CastleSessionPicker { get; set; } =
