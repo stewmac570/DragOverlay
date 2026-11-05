@@ -30,8 +30,9 @@ namespace CastleOverlayV2
         void ShowInfo(string title, string message);
         bool ConfirmMiniLoggerUsbSafety();
         void SetMiniLoggerSearchState(bool searching);
-        IReadOnlyList<MiniLoggerRunInfo>? SelectMiniLoggerRuns(IReadOnlyList<MiniLoggerRunInfo> runs);
-        IMiniLoggerDownloadSession BeginMiniLoggerDownload(int runCount);
+        /// <param name="loggerName">"Mini Logger" or "Big logger", for the window titles.</param>
+        IReadOnlyList<MiniLoggerRunInfo>? SelectMiniLoggerRuns(IReadOnlyList<MiniLoggerRunInfo> runs, string loggerName);
+        IMiniLoggerDownloadSession BeginMiniLoggerDownload(int runCount, string loggerName);
         /// <summary>Shows a small status window; null closes it.</summary>
         void SetCastleLinkBusy(string? message);
         IReadOnlyList<CastleSessionInfo>? SelectCastleSessions(IReadOnlyList<CastleSessionInfo> sessions);

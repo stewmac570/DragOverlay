@@ -193,6 +193,7 @@ public sealed class MiniLoggerUsbTests : IDisposable
             "Run 18: 6 s, wheel 395, motor 10434, throttle 12314, pack 7.65 V", "END");
         using var client = Client(transport);
         Assert.Equal(MiniLoggerConnectStatus.Connected, client.Connect().Status);
+        Assert.True(client.IsBigLogger);
 
         IReadOnlyList<MiniLoggerRunInfo> runs = client.ListRuns();
 
@@ -215,6 +216,32 @@ public sealed class MiniLoggerUsbTests : IDisposable
 
         Assert.Equal(new[] { "id", "summary", "list" }, transport.Writes);
         Assert.Equal(new[] { new MiniLoggerRunInfo(4, 300) }, runs);
+    }
+
+    [Fact]
+    public void Big_logger_download_reports_rows_against_seconds()
+    {
+        var transport = new FakeTransport("BIGLOGGER 1",
+            "BEGIN run_0018.csv", MiniLoggerLoader.HeaderLine,
+            "0.000,1.500,0,0.00", "0.001,1.500,0,0.00", "0.002,1.500,0,0.00", "END");
+        using var client = Client(transport);
+        client.Connect();
+        var reports = new List<MiniLoggerDownloadProgress>();
+
+        client.DumpRun(new MiniLoggerRunInfo(18, 0, Seconds: 6, PackVolts: 7.65),
+            Path.Combine(_workDir, "run_0018.csv"), new SynchronousProgress(reports.Add));
+
+        MiniLoggerDownloadProgress last = reports.Last();
+        Assert.Equal(3, last.RowsReceived);
+        Assert.Equal(6000, last.ExpectedRows);
+    }
+
+    [Fact]
+    public void Mini_logger_is_not_flagged_as_big_logger()
+    {
+        using var client = Client(ConnectedTransport());
+        client.Connect();
+        Assert.False(client.IsBigLogger);
     }
 
     [Fact]

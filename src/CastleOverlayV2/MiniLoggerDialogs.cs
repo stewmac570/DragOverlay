@@ -64,11 +64,11 @@ internal sealed class MiniLoggerRunSelectionForm : Form
     private readonly CheckedListBox _runs = new();
     private readonly IReadOnlyList<MiniLoggerRunInfo> _items;
 
-    public MiniLoggerRunSelectionForm(IReadOnlyList<MiniLoggerRunInfo> runs)
+    public MiniLoggerRunSelectionForm(IReadOnlyList<MiniLoggerRunInfo> runs, string loggerName = "Mini Logger")
     {
         _items = runs;
         MiniLoggerDialogTheme.Apply(this);
-        Text = "Runs on Mini Logger";
+        Text = $"Runs on {loggerName}";
         Width = 390;
         Height = 420;
 
@@ -156,10 +156,10 @@ internal sealed class MiniLoggerDownloadForm : Form, IMiniLoggerDownloadSession
     private readonly ProgressBar _progress = new();
     private readonly CancellationTokenSource _cancellation = new();
 
-    public MiniLoggerDownloadForm(int runCount)
+    public MiniLoggerDownloadForm(int runCount, string loggerName = "Mini Logger")
     {
         MiniLoggerDialogTheme.Apply(this);
-        Text = "Download from Mini Logger";
+        Text = $"Download from {loggerName}";
         Width = 430;
         Height = 190;
         ControlBox = false;
@@ -199,12 +199,22 @@ internal sealed class MiniLoggerDownloadForm : Form, IMiniLoggerDownloadSession
         if (IsDisposed) return;
 
         _runLabel.Text = $"Downloading Run {value.RunNumber} — {value.RunIndex} of {value.RunCount}";
-        double receivedKb = value.BytesReceived / 1024.0;
-        double expectedKb = value.ExpectedBytes / 1024.0;
-        _amountLabel.Text = $"{receivedKb:N0} KB of about {expectedKb:N0} KB";
-        int fraction = value.ExpectedBytes <= 0
-            ? 0
-            : (int)Math.Clamp(value.BytesReceived * 1000L / value.ExpectedBytes, 0, 1000);
+        int fraction;
+        if (value.ExpectedRows > 0)
+        {
+            // Big logger: its summary gives the run's seconds, so count rows against seconds x 1000.
+            _amountLabel.Text = $"{value.RowsReceived:N0} of about {value.ExpectedRows:N0} rows";
+            fraction = (int)Math.Clamp(value.RowsReceived * 1000L / value.ExpectedRows, 0, 1000);
+        }
+        else
+        {
+            double receivedKb = value.BytesReceived / 1024.0;
+            double expectedKb = value.ExpectedBytes / 1024.0;
+            _amountLabel.Text = $"{receivedKb:N0} KB of about {expectedKb:N0} KB";
+            fraction = value.ExpectedBytes <= 0
+                ? 0
+                : (int)Math.Clamp(value.BytesReceived * 1000L / value.ExpectedBytes, 0, 1000);
+        }
         _progress.Value = fraction;
     }
 

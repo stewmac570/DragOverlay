@@ -21,13 +21,17 @@ public sealed record MiniLoggerRunInfo(int Number, long SizeKb, int? Seconds = n
 
     public long ExpectedCsvBytes => Seconds is int seconds ? seconds * BigLoggerBytesPerSecond : SizeKb * 1024;
 
+    /// <summary>Rows the CSV should hold (1000 a recorded second), or 0 when the length is unknown.</summary>
+    public long ExpectedRows => Seconds is int seconds ? seconds * 1000L : 0;
+
     public override string ToString() => Seconds is int seconds
         ? string.Create(CultureInfo.InvariantCulture, $"Run {Number}  ({seconds} s, pack {PackVolts:0.00} V)")
         : $"Run {Number}  ({SizeKb:N0} KB)";
 }
 
 public sealed record MiniLoggerDownloadProgress(
-    int RunNumber, int RunIndex, int RunCount, long BytesReceived, long ExpectedBytes);
+    int RunNumber, int RunIndex, int RunCount, long BytesReceived, long ExpectedBytes,
+    long RowsReceived = 0, long ExpectedRows = 0);
 
 public enum MiniLoggerConnectStatus
 {
@@ -74,6 +78,8 @@ public interface IMiniLoggerDelay
 
 public interface IMiniLoggerUsbClient : IDisposable
 {
+    /// <summary>True when the logger that answered <see cref="Connect"/> is the Big logger.</summary>
+    bool IsBigLogger { get; }
     MiniLoggerConnectResult Connect(CancellationToken cancellationToken = default);
     IReadOnlyList<MiniLoggerRunInfo> ListRuns(CancellationToken cancellationToken = default);
     MiniLoggerDumpResult DumpRun(
@@ -116,6 +122,8 @@ public sealed class MiniLoggerUsb : IMiniLoggerUsbClient
     private readonly IMiniLoggerDelay _delay;
     private IMiniLoggerLineTransport? _transport;
     private bool _isBigLogger;
+
+    public bool IsBigLogger => _isBigLogger;
 
     public MiniLoggerUsb()
         : this(new WmiMiniLoggerPortDiscovery(), new SerialMiniLoggerTransportFactory(), new ThreadMiniLoggerDelay())
@@ -275,6 +283,7 @@ public sealed class MiniLoggerUsb : IMiniLoggerUsbClient
                 return new MiniLoggerDumpResult(false, null);
 
             long bytesReceived = 0;
+            long rowsReceived = -1; // the header is the first line written, not a row
             long lastReported = 0;
             long expectedBytes = run.ExpectedCsvBytes;
             using (var writer = new StreamWriter(partialPath, false, new UTF8Encoding(false), 64 * 1024))
@@ -299,20 +308,23 @@ public sealed class MiniLoggerUsb : IMiniLoggerUsbClient
                     }
 
                     writer.WriteLine(line);
+                    rowsReceived++;
                     bytesReceived += Encoding.UTF8.GetByteCount(line) + Environment.NewLine.Length;
                     if (bytesReceived - lastReported >= ProgressReportBytes)
                     {
                         lastReported = bytesReceived;
                         progress?.Report(new MiniLoggerDownloadProgress(
-                            run.Number, runIndex, runCount, bytesReceived, expectedBytes));
+                            run.Number, runIndex, runCount, bytesReceived, expectedBytes,
+                            Math.Max(0, rowsReceived), run.ExpectedRows));
                     }
                 }
 
                 progress?.Report(new MiniLoggerDownloadProgress(
-                    run.Number, runIndex, runCount, bytesReceived, expectedBytes));
+                    run.Number, runIndex, runCount, bytesReceived, expectedBytes,
+                    Math.Max(0, rowsReceived), run.ExpectedRows));
 
                 if (!headerWritten)
-                    throw new InvalidDataException("The Mini Logger did not send a CSV header.");
+                    throw new InvalidDataException("The logger did not send a CSV header.");
             }
 
             File.Move(partialPath, fullPath, overwrite: true);
