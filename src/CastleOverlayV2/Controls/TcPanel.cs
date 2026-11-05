@@ -55,6 +55,18 @@ public sealed class TcPanel : UserControl
     private readonly DataGridView _points = new();
     private IReadOnlyList<TcRpmSample> _rpmTrace = Array.Empty<TcRpmSample>();
     private ScottPlot.Plottables.VerticalLine? _cursorLine;
+
+    // Two curves (Stew, 4 Nov 2026): the throttle is pulled over the hard curve and pulses over
+    // the soft curve. The points list and the dots on the chart are the curve picked in Curve;
+    // the other one is kept here and drawn dashed.
+    private const string HardLabel = "Hard (pull)";
+    private const string SoftLabel = "Soft (pulse)";
+    private static readonly ScottPlot.Color HardColor = new(0x66, 0xE0, 0xFF);
+    private static readonly ScottPlot.Color SoftColor = new(0xFF, 0xD1, 0x66);
+    private readonly ComboBox _curveKind = new();
+    private List<TcCurvePoint> _otherCurve = new();
+    private bool _editingSoft;
+    private bool _switchingCurve;
     private readonly CursorReadout _readout = new();
     // Chart time 0 in the selected run's own time: the hand-set start, else the detected launch.
     private double _zeroRunTime;
@@ -89,6 +101,7 @@ public sealed class TcPanel : UserControl
         _loadLog.Margin = new Padding(4, 20, 12, 0);
         _loadLog.Click += (_, _) => LoadLogFromFile();
         top.Controls.Add(_loadLog);
+        top.Controls.Add(Field("Curve", _curveKind, 150));
         top.Controls.Add(Field("Margin", _margin, 90));
         top.Controls.Add(Field("Unit", _marginUnit, 74));
         top.Controls.Add(Field("Curve end (s)", _curveEnd, 95));
@@ -99,6 +112,10 @@ public sealed class TcPanel : UserControl
 
         _source.DropDownStyle = ComboBoxStyle.DropDownList;
         _source.SelectedIndexChanged += (_, _) => SourceChanged();
+        _curveKind.DropDownStyle = ComboBoxStyle.DropDownList;
+        _curveKind.Items.AddRange(new object[] { HardLabel, SoftLabel });
+        _curveKind.SelectedIndex = 0;
+        _curveKind.SelectedIndexChanged += (_, _) => CurveKindChanged();
         _marginUnit.DropDownStyle = ComboBoxStyle.DropDownList;
         _marginUnit.Items.AddRange(new object[] { "RPM", "%" });
         _marginUnit.SelectedIndex = _config.Config.TcCurveMarginIsPercent == true ? 1 : 0;
@@ -132,7 +149,7 @@ public sealed class TcPanel : UserControl
         {
             Dock = DockStyle.Fill,
             Text = "Right-click the chart to trim the log (Ctrl+Z undoes) · " +
-                   "click to add a dot · drag a dot to move it · right-click a dot to delete it",
+                   "left-drag pans · double-click to add a dot · drag a dot to move it · right-click a dot to delete it",
             ForeColor = TextSecond,
             TextAlign = ContentAlignment.MiddleLeft,
             Padding = new Padding(8, 0, 0, 0)
@@ -310,7 +327,33 @@ public sealed class TcPanel : UserControl
                 }
             }
         }
+        // A new log or a new trim moves time zero, so both curves start again.
+        _otherCurve = new List<TcCurvePoint>();
         SetCurvePoints(Array.Empty<TcCurvePoint>(), fitView: true);
+    }
+
+    /// <summary>Swaps which curve the points list and the chart dots are editing.</summary>
+    private void CurveKindChanged()
+    {
+        if (_switchingCurve) return;
+        bool wantSoft = _curveKind.SelectedIndex == 1;
+        if (wantSoft == _editingSoft) return;
+        if (!TryReadCurve(out var editing, out string error, allowEmpty: true))
+        {
+            // Keep editing the current curve until its list is fixed.
+            _switchingCurve = true;
+            _curveKind.SelectedIndex = _editingSoft ? 1 : 0;
+            _switchingCurve = false;
+            _status.Text = "Fix the points list first: " + error;
+            return;
+        }
+        List<TcCurvePoint> next = _otherCurve;
+        _otherCurve = editing;
+        _editingSoft = wantSoft;
+        SetCurvePoints(next);
+        _status.Text = _editingSoft
+            ? "Editing the soft curve: over it the throttle pulses. Make curve or click to add dots."
+            : "Editing the hard curve: over it the throttle is pulled. Make curve or click to add dots.";
     }
 
     private IReadOnlyList<TcRpmSample> TrimmedTrace(TcSourceRun source)
@@ -429,7 +472,8 @@ public sealed class TcPanel : UserControl
                 ? "RPM: logger motor RPM (pole setting does not apply)."
                 : $"Castle RPM: {(_config.Config.IsFourPoleMode ? "4-pole (halved once)" : "2-pole (as logged)")}.";
             _launchInfo.Text = result.Launch.Description + " " + rpmMode;
-            _status.Text = $"Curve made: {result.Points.Count} points. Edit the list before sending if needed.";
+            _status.Text = $"{(_editingSoft ? "Soft" : "Hard")} curve made: {result.Points.Count} points. " +
+                           "Edit the list before sending if needed.";
         }
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or OverflowException)
         {
@@ -470,21 +514,30 @@ public sealed class TcPanel : UserControl
 
     private async Task SendCurveAsync()
     {
-        if (!TryReadCurve(out var curve, out string error))
+        if (!TryReadCurve(out var editing, out string error, allowEmpty: _editingSoft))
         {
             MessageBox.Show(error, "TC curve", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
+        List<TcCurvePoint> hard = _editingSoft ? _otherCurve : editing;
+        List<TcCurvePoint> soft = _editingSoft ? editing : _otherCurve;
+        if (hard.Count == 0)
+        {
+            MessageBox.Show("Make the hard curve first. The soft curve is sent with it.", "TC curve",
+                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
         if (!ConfirmUsbSafety()) return;
 
-        SetBusy(true, "Sending curve to logger…");
+        SetBusy(true, "Sending curves to logger…");
         try
         {
+            // An empty soft curve clears the logger's soft curve, so an old one is never left behind.
             TcCurveTransferResult result = await Task.Run(() =>
             {
                 using IMiniLoggerUsbClient usb = _usbFactory();
                 EnsureConnected(usb);
-                return usb.SendTcCurve(curve);
+                return usb.SendTcCurve(hard, soft);
             });
             if (result.Status?.IsTcLogger == true) _sessionStatus = result.Status;
             _status.Text = result.Message + (result.Status?.IsTcLogger == true
@@ -506,7 +559,7 @@ public sealed class TcPanel : UserControl
 
     private async Task ClearCurveAsync()
     {
-        if (MessageBox.Show("Clear the saved TC curve from the logger?", "Clear logger curve",
+        if (MessageBox.Show("Clear the saved TC curves (hard and soft) from the logger?", "Clear logger curve",
                 MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.Yes)
             return;
         if (!ConfirmUsbSafety()) return;
@@ -560,10 +613,13 @@ public sealed class TcPanel : UserControl
             status.Settings.OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase)
                 .Select(pair => string.Create(CultureInfo.InvariantCulture, $"  {pair.Key} {pair.Value:g}")));
         return string.Format(CultureInfo.InvariantCulture,
-            "TC {0} | in {1} us | out {2} us | rpm {3:0} | curve {4} points\r\n" +
+            "TC {0} | in {1} us | out {2} us | rpm {3:0} | hard curve {4} points | {8}\r\n" +
             "neutral {5} us | full {6} us | brake {7} us\r\n",
             status.StateText, status.InputUs, status.OutputUs, status.MotorRpm,
-            status.CurvePointCount, status.NeutralUs, status.FullUs, status.BrakeUs) +
+            status.CurvePointCount, status.NeutralUs, status.FullUs, status.BrakeUs,
+            status.SoftCurvePointCount is int soft
+                ? $"soft curve {soft} points"
+                : "no soft curve in this firmware") +
             settings + (settings.Length > 0 ? "\r\n" : "") + status.Firmware;
     }
 
@@ -605,7 +661,12 @@ public sealed class TcPanel : UserControl
         ApplyAxisStyle(_chart.Plot.Axes.Bottom);
         ApplyAxisStyle(_chart.Plot.Axes.Left);
         _chart.Plot.Grid.MajorLineColor = new ScottPlot.Color(0xFF, 0xFF, 0xFF, 18);
-        _chart.UserInputProcessor.LeftClickDragPan(enable: false, horizontal: true, vertical: true);
+        // Left-drag pans time, like the Logs chart (the RPM scale stays locked). Double-click adds a
+        // dot, so ScottPlot's own double-click (its benchmark overlay) is taken off.
+        _chart.UserInputProcessor.LeftClickDragPan(enable: true, horizontal: true, vertical: false);
+        _chart.UserInputProcessor.UserActionResponses.RemoveAll(response =>
+            response is ScottPlot.Interactivity.UserActionResponses.DoubleClickBenchmark);
+        _chart.MouseDoubleClick += ChartDoubleClick;
         _chart.Menu?.Clear();
         _chart.MouseDown += ChartMouseDown;
         _chart.MouseMove += ChartMouseMove;
@@ -700,13 +761,25 @@ public sealed class TcPanel : UserControl
             raw.MarkerSize = 0;
             raw.LineWidth = 1.5f;
         }
+        // The curve not being edited: dashed, no dots.
+        if (_otherCurve.Count > 0)
+        {
+            var other = _chart.Plot.Add.Scatter(
+                _otherCurve.Select(point => point.TimeMs / 1000.0).ToArray(),
+                _otherCurve.Select(point => (double)point.Rpm).ToArray());
+            other.LegendText = _editingSoft ? "Hard curve" : "Soft curve";
+            other.Color = _editingSoft ? HardColor : SoftColor;
+            other.LinePattern = ScottPlot.LinePattern.Dashed;
+            other.LineWidth = 2f;
+            other.MarkerSize = 0;
+        }
         if (TryReadCurve(out var curve, out _) && curve.Count > 0)
         {
             var line = _chart.Plot.Add.Scatter(
                 curve.Select(point => point.TimeMs / 1000.0).ToArray(),
                 curve.Select(point => (double)point.Rpm).ToArray());
-            line.LegendText = "TC curve";
-            line.Color = new ScottPlot.Color(0x66, 0xE0, 0xFF);
+            line.LegendText = _editingSoft ? "Soft curve" : "Hard curve";
+            line.Color = _editingSoft ? SoftColor : HardColor;
             line.LineWidth = 2.5f;
             line.MarkerSize = 6;
         }
@@ -739,9 +812,15 @@ public sealed class TcPanel : UserControl
         if (RpmAt(_rpmTrace, time) is double runRpm)
             lines.Add(new CursorReadout.Line("Run RPM", Color.FromArgb(0xF2, 0x9E, 0x86),
                 new[] { runRpm.ToString("N0", CultureInfo.InvariantCulture) }));
-        if (TryReadCurve(out var curve, out _) && curve.Count > 0 && CurveRpmAt(curve, time) is double curveRpm)
-            lines.Add(new CursorReadout.Line("TC curve", Color.FromArgb(0x66, 0xE0, 0xFF),
-                new[] { curveRpm.ToString("N0", CultureInfo.InvariantCulture) }));
+        TryReadCurve(out var editing, out _, allowEmpty: true);
+        List<TcCurvePoint> hard = _editingSoft ? _otherCurve : editing;
+        List<TcCurvePoint> soft = _editingSoft ? editing : _otherCurve;
+        if (hard.Count > 0 && CurveRpmAt(hard, time) is double hardRpm)
+            lines.Add(new CursorReadout.Line("Hard curve", Color.FromArgb(HardColor.R, HardColor.G, HardColor.B),
+                new[] { hardRpm.ToString("N0", CultureInfo.InvariantCulture) }));
+        if (soft.Count > 0 && CurveRpmAt(soft, time) is double softRpm)
+            lines.Add(new CursorReadout.Line("Soft curve", Color.FromArgb(SoftColor.R, SoftColor.G, SoftColor.B),
+                new[] { softRpm.ToString("N0", CultureInfo.InvariantCulture) }));
         _readout.ShowAt(mouse.X, mouse.Y, time, lines);
         _chart.Refresh();
     }
@@ -817,14 +896,19 @@ public sealed class TcPanel : UserControl
             return;
         }
 
-        if (e.Button != MouseButtons.Left) return;
-        if (hit >= 0)
-        {
-            _dragPointIndex = hit;
-            _chart.Capture = true;
-            _chart.Cursor = Cursors.SizeAll;
-            return;
-        }
+        // Left button: grabbing a dot moves it; anywhere else ScottPlot pans the chart.
+        if (e.Button != MouseButtons.Left || hit < 0) return;
+        _dragPointIndex = hit;
+        _chart.Capture = true;
+        _chart.Cursor = Cursors.SizeAll;
+        _chart.UserInputProcessor.Disable(); // no panning while a dot is dragged
+    }
+
+    /// <summary>Double-click adds a dot to the curve being edited.</summary>
+    private void ChartDoubleClick(object? sender, MouseEventArgs e)
+    {
+        if (e.Button != MouseButtons.Left || _busy || !TryReadCurve(out var curve, out _, allowEmpty: true)) return;
+        if (HitTestCurve(curve, e.Location) >= 0) return;
 
         ScottPlot.Coordinates coordinates = _chart.Plot.GetCoordinates(new ScottPlot.Pixel(e.X, e.Y));
         if (coordinates.X < 0)
@@ -886,6 +970,7 @@ public sealed class TcPanel : UserControl
         _dragPointIndex = -1;
         _chart.Capture = false;
         _chart.Cursor = Cursors.Default;
+        _chart.UserInputProcessor.Enable();
     }
 
     private int HitTestCurve(IReadOnlyList<TcCurvePoint> curve, Point mouse)
@@ -949,7 +1034,10 @@ public sealed class TcPanel : UserControl
                            TryPositive(_curveEnd.Text, out _);
         _makeCurve.Enabled = !_busy && inputsValid;
         _readLogger.Enabled = !_busy;
-        _sendLogger.Enabled = !_busy && TryReadCurve(out _, out _);
+        _sendLogger.Enabled = !_busy && (_editingSoft
+            ? _otherCurve.Count > 0 && TryReadCurve(out _, out _, allowEmpty: true)
+            : TryReadCurve(out _, out _));
+        _curveKind.Enabled = !_busy;
         _clearLogger.Enabled = !_busy;
         _fitChart.Enabled = !_busy;
         _addPoint.Enabled = !_busy && _points.Rows.Count < TcCurveBuilder.MaximumPoints;
