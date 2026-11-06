@@ -28,17 +28,68 @@ One capture on 2026-11-06, Cobra 8 Ace on firmware 1.36, using
   says turbo 10 degrees, activation 80%, acceleration and deceleration 60
   deg/second, so those four bytes are matched by value.
 
+## Settings map
+
+Two more captures on 2026-11-06 (rounds 2 and 3), each changing most settings
+in one write and saving a `.dat`. A byte is listed as matched when it moved
+with its setting in both rounds and the value fits the `.dat` both times.
+Two-byte values are high byte first unless marked.
+
+| Byte | Setting | Value | Status |
+| --- | --- | --- | --- |
+| 0-1 | Data Log Enabled | low byte first, 8191 = all 13 channels | Matched |
+| 2-3 | Full Forward | raw | Matched |
+| 4-5 | Full Reverse | raw | Matched |
+| 6-7 | Neutral | raw | Matched |
+| 8-9 | Boost RPM start | raw x 10 | Matched once (round 3) |
+| 10-11 | Boost RPM end | raw x 10 | Matched once (round 3) |
+| 15 | Sensorless Motor Timing | raw | Inference: 5 in Smart Sense, 0 in Sensored Only |
+| 16 | Boost Timing Amount | degrees | Matched once (round 3) |
+| 17 | Motor Type | top bit = checkbox, low bits = type, 0x81 = Sensored Only | Matched |
+| 18 | Drag Brake | raw / 255 x 100 % | Matched |
+| 19 | Drag Brake Ramp | 0 = disabled, 1 = very fast, 4 = slow | Matched |
+| 20 | Punch Control | % | Matched |
+| 21 | Max Power | % | Matched |
+| 22 | Reverse Percentage | % | Matched round 3; 0 when reverse is off |
+| 23 | Brake Amount | % | Matched |
+| 24 | Reverse To Forward Brake | % | Matched round 3; 0 when reverse is off |
+| 27 | Idle/Error Beep Disable | raw | Matched |
+| 28 | Start Power | % | Matched |
+| 29 | Reverse Type | 0 = with reverse, 1 = without | Matched |
+| 30 | Motor Direction | 0 = normal, 1 = reverse | Matched |
+| 33 | Motor Temperature Cutoff | deg C, 0 = disabled | Matched |
+| 34 | Auxiliary Wire Mode | 1 = max power, 3 = max brake | Matched |
+| 35 | BEC Voltage | raw / 10 V | Matched |
+| 36 | Sample Frequency | samples per second | Matched |
+| 39 | Turbo Timing Amount | degrees | Matched |
+| 40 | Turbo Activation Throttle | % | Matched round 3 |
+| 41 | Turbo Acceleration | deg per second | Matched round 3 |
+| 42 | Turbo Deceleration | deg per second | Matched round 3 |
+| 43 | RPM Limit | kRPM, 0 = disabled | Matched |
+| 44 | Start Power Ramp Time | ms | Matched |
+| 45 | Start Power Hold Time | ms | Matched |
+
+The `.dat` keeps showing a setting's last value when that feature is off, for
+example boost RPM 1000 to 2000 and turbo activation 100% while the ESC holds 0.
+
+## Curves map
+
+Table 0 is the Forward Curve, table 4 is Boost By Throttle. Tables 1 and 2 are
+Brake Curve and Reverse Curve, order not known because both were straight lines
+in every capture. In the `.dat` each curve is a leading `0` then the 256 table
+values, joined by full stops; that matched the ESC exactly in round 3.
+
 ## What is not verified
 
-- Which table is which. Inference from shape: table 0 is the forward curve
-  (rises fast, ends at 65535), tables 1 and 2 are straight lines (one is the
-  brake curve), table 4 ends at 39321, which is the boost-by-throttle value in
-  the `.dat`. Table 3 is all zero.
-- Which byte is which setting, apart from the four above. The `.dat` is a text
-  file of about 50 named settings, so each one needs mapping to a byte and a
-  scale before DragOverlay can write a `.dat` Castle's app will open.
-- How the forward curve's control points in the `.dat` relate to the 256 values
-  the ESC holds.
+- Brake Lockout Time and Throttle Dead Band. Bytes 25 and 26 moved with them
+  (100, 150, 25 and 64, 96, 224) but no single scale fits all three rounds.
+- Cutoff Voltage and Auto-Lipo. Byte 32 went 255 to 1 in round 2 but stayed 1
+  in round 3 when the `.dat` said 255. Byte 31 went 32 to 0 in round 2 only.
+- Boost Mode Enable, Boost Timing Mode and Turbo Enable. No byte moved with
+  them on its own. Inference: on when the amount is above 0.
+- Which of tables 1 and 2 is brake and which is reverse.
+- Table 3, all zero in every capture, and Programmed Throttle.
+- Bytes 12 to 14, 37, 38, 46 and 47 never changed.
 
 ## Samples
 
@@ -49,10 +100,12 @@ In `Tests/castle-link-samples/`:
 - `tune-2026-11-06.dat`: the `.dat` Castle's app saved for that tune.
 - `tune-2026-11-06-before-settings.bin`, `tune-2026-11-06-before-curves.bin`:
   the same reads before the write.
+- `tune-2026-11-06-round2.bin` and `.dat`, `tune-2026-11-06-round3.bin` and
+  `.dat`: the ESC after each round's write, with the `.dat` saved for it.
 
 ## Steps
 
 1. Capture a tune read. Done.
-2. Map every `.dat` setting to its byte and scale. Changing one setting at a
-   time and reading again shows which byte moves.
+2. Map every `.dat` setting to its byte and scale. Mostly done; the gaps are
+   listed above.
 3. Read the tune during "Get Castle log" and save it next to the log.
