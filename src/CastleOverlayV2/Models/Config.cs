@@ -24,7 +24,7 @@ namespace CastleOverlayV2.Models
         public bool EnableDebugLogging { get; set; } = false;
 
         /// <summary>This app's version. Bump with installer.iss MyAppVersion when releasing.</summary>
-        public const string CurrentBuildNumber = "1.19";
+        public const string CurrentBuildNumber = "1.20";
 
         // Written to config.json for reference; always reset to CurrentBuildNumber on load.
         public string BuildNumber { get; set; } = CurrentBuildNumber;

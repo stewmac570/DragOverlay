@@ -10,7 +10,7 @@
 #define MyAppExeName  "CastleOverlayV2.exe"
 
 #ifndef MyAppVersion
-  #define MyAppVersion "1.19"
+  #define MyAppVersion "1.20"
 #endif
 
 #ifndef MyPublishDir
