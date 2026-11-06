@@ -45,9 +45,9 @@ Two-byte values are high byte first unless marked.
 | 10-11 | Boost end | RPM mode: raw x 10 RPM. Throttle mode: % | Matched (rounds 3 and 8) |
 | 15 | Sensorless Motor Timing | raw | Inference: 5 in Smart Sense, 0 in Sensored Only |
 | 16 | Boost Timing Amount and Mode | low 7 bits = degrees; top bit set = throttle based, clear = RPM based | Matched (rounds 3 and 6) |
-| 17 | Motor Type | top bit = checkbox, low bits = type, 0x81 = Sensored Only | Matched |
+| 17 | Motor Type | top bit = Sensor Lost Warning checkbox; low bits 0 Smart Sense Brushless, 1 Sensored Only, 2 Brushed Reversing | 0 and 1 matched |
 | 18 | Drag Brake | raw / 2.55 %, shown as a whole number with .0 | Matched |
-| 19 | Drag Brake Ramp | 0 = disabled, 1 = very fast, 4 = slow | Matched |
+| 19 | Drag Brake Ramp | list position: 0 Disabled (Instantaneous), 1 Very Fast, 2 Fast, 3 Medium, 4 Slow, 5 Very Slow | 0, 1, 4 matched |
 | 20 | Punch Control | % | Matched |
 | 21 | Max Power | % | Matched |
 | 22 | Reverse Percentage | % | Matched round 3; 0 when reverse is off |
@@ -61,8 +61,8 @@ Two-byte values are high byte first unless marked.
 | 30 | Motor Direction | 0 = normal, 1 = reverse | Matched |
 | 31 | Auto-Lipo Volts/Cell | raw / 10 V | Matched (rounds 2 and 8) |
 | 32 | Cutoff Voltage | 255 = Auto-Lipo, otherwise raw / 10 V (64 = 6.4 V, read off the app) | Matched (rounds 5 and 8) |
-| 33 | Motor Temperature Cutoff | deg C, 0 = disabled | Matched |
-| 34 | Auxiliary Wire Mode | 1 = max power, 3 = max brake | Matched |
+| 33 | Motor Temperature Cutoff | deg C, 0 = disabled | Matched (49, 71, 93) |
+| 34 | Auxiliary Wire Mode | list position: 0 None, 1 Max Power, 2 Reverse Percentage, 3 Max Brake, 4 Drag Brake, 5 Reverse Enable/Disable, 6 Torque Control, 7 Start Power Control | 1, 3, 4 matched; rest by list position |
 | 35 | BEC Voltage | raw / 10 V | Matched |
 | 36 | Sample Frequency | samples per second | Matched |
 | 38 | Controller Orientation | 0 = power wires to the front, 1 = to the back | Matched (round 8, Stew confirmed) |
@@ -84,25 +84,58 @@ Curve, table 3 Programmed Throttle and table 4 Boost By Throttle. Brake was conf
 brake curve (round 7): only table 1 moved. In the `.dat` each curve is a leading `0` then the 256 table
 values, joined by full stops; that matched the ESC exactly in round 3.
 
+## Drop-down wording
+
+From screenshots of every list in Castle Link 2 on 2026-11-06. `(*)` marks the
+factory default; some `.dat` files carry it after the value.
+
+- Throttle Dead Band: Very Small (0.0250 ms), Very Small (0.0375 ms), Small
+  (0.0500 ms), Small (0.0625 ms), Small (0.0750 ms), Average (0.0875 ms),
+  Average (0.1000 ms), Average (0.1125 ms), Large (0.1250 ms), Large (0.1500 ms).
+- Motor Temperature Cutoff: Disabled, Low 120/130/140 F, Medium 150/160/170/180
+  F, High 190/200/210 F, each written as `Low (120°F / 49°C)`.
+- Sensorless Motor Timing: Lowest (0), Low (5), Normal (10), High (15),
+  Highest (20).
+- Cutoff Voltage: No Cutoff, 6.4V, 9.6V, 12.8V, Auto Li-Po, Custom.
+- Controller Orientation: Power Wires to the Front, Back, Left, Right. Only
+  Front (0) and Back (1) are matched.
+- Sample Frequency: Disabled, 1, 2, 5, 10, 20 Sample / Sec.
+- Boost Timing Mode: RPM Based Boost, Throttle Percentage Based Boost.
+
+## Programmed Throttle
+
+Settings live in table 3, not in the settings bytes (round 9):
+
+- Entries 0 to 199 are the ramp from 0 to 65534.
+- Entry 200 packs two bytes: low byte = Time Scale x 100 (1.0 s = 100,
+  2.0 s = 200), high byte = Enable At Throttle % (100, then 50).
+- Interpolation changes only the ramp shape; the ESC holds no separate flag.
+
+## Curve lines in the `.dat`
+
+Two forms appear. Full table: `0.` then the 256 values, as the ESC holds them.
+Points: interpolation code, then `x.y` pairs run together, for example Boost By
+Throttle `2.0,0.255,39321` is curve type 2 with points (0, 0) and (255, 39321).
+Programmed Throttle adds the time scale in front: `2-1.0,0.199,65534` is 2.0 s,
+linear (1), points (0, 0) and (199, 65534). Inference from rounds 8 and 9:
+curve type 1 = linear, 2 = curve. A tune rebuilt from the ESC can only use the
+full table form, because the ESC does not keep the points.
+
 ## What is not verified
 
 - Boost Mode Enable and Turbo Enable have no byte of their own. Turning boost
   off (round 6) zeroed bytes 8 to 11 and 16; turning turbo off (round 2)
   zeroed bytes 39 to 42. Inference: the app shows them on when those bytes are
   not zero.
-- Programmed Throttle: turning it on (round 8) filled table 3, which was all
-  zero before, and no settings byte moved. The `.dat` line went from `0-` to
-  `1-` and its points stayed the same, so the app works out the table.
-  Values above 1 (`2-`) appear in older `.dat` files and are not explained.
 - Torque Control and Current Limiting: changing them (round 8) wrote nothing
   new to this ESC. Inference: the Cobra 8 Ace does not store them. To be
   checked on an ESC that has current limiting.
-- Drop-down wording for values not yet seen: Auxiliary Wire Mode (None, Drag
-  Brake Adjustment), Drag Brake Ramp (Medium and any others), Motor
-  Temperature Cutoff (levels between Low and High), Motor Type, Sensorless
-  Motor Timing. Older `.dat` files sometimes print the raw number instead.
+- Drag Brake Ramp Fast, Medium and Very Slow as 2, 3 and 5. Inference from
+  list position; 0, 1 and 4 are matched. Motor Type Brushed Reversing as 2,
+  same reasoning.
 - The `.dat` boost RPM range keeps the app's last values while in throttle
   mode, so it cannot be rebuilt from the ESC.
+- Programmed Throttle Enable At Throttle does not appear in the `.dat` line.
 - Bytes 12 to 14, 37, 46 and 47 never changed.
 
 Round 8 check: rebuilding `download test 7.dat` from the ESC bytes matched 34
@@ -122,6 +155,8 @@ In `Tests/castle-link-samples/`:
   `.dat`: the ESC after each round's write, with the `.dat` saved for it.
 - `tune-2026-11-06-round8.bin` and `.dat`: the ESC at the end of the live
   recording, with `download test 7.dat`.
+- `tune-2026-11-06-round9.bin` and `.dat`: the same after the programmed
+  throttle, aux wire and temperature writes, with `download test 8.dat`.
 
 ## Steps
 
