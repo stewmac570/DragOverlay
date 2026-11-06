@@ -47,7 +47,7 @@ Two-byte values are high byte first unless marked.
 | 16 | Boost Timing Amount and Mode | low 7 bits = degrees; top bit set = throttle based, clear = RPM based | Matched (rounds 3 and 6) |
 | 17 | Motor Type | top bit = Sensor Lost Warning checkbox; low bits 0 Smart Sense Brushless, 1 Sensored Only, 2 Brushed Reversing | 0 and 1 matched |
 | 18 | Drag Brake | raw / 2.55 %, shown as a whole number with .0 | Matched |
-| 19 | Drag Brake Ramp | list position: 0 Disabled (Instantaneous), 1 Very Fast, 2 Fast, 3 Medium, 4 Slow, 5 Very Slow | 0, 1, 4 matched |
+| 19 | Drag Brake Ramp | list position: 0 Disabled (Instantaneous), 1 Very Fast, 2 Fast, 3 Medium, 4 Slow, 5 Very Slow | 0, 1, 3, 4, 5 matched; Fast = 2 by elimination |
 | 20 | Punch Control | % | Matched |
 | 21 | Max Power | % | Matched |
 | 22 | Reverse Percentage | % | Matched round 3; 0 when reverse is off |
@@ -130,9 +130,8 @@ full table form, because the ESC does not keep the points.
 - Torque Control and Current Limiting: changing them (round 8) wrote nothing
   new to this ESC. Inference: the Cobra 8 Ace does not store them. To be
   checked on an ESC that has current limiting.
-- Drag Brake Ramp Fast, Medium and Very Slow as 2, 3 and 5. Inference from
-  list position; 0, 1 and 4 are matched. Motor Type Brushed Reversing as 2,
-  same reasoning.
+- Drag Brake Ramp Fast as 2: the only value left once 0, 1, 3, 4 and 5 were
+  matched. Motor Type Brushed Reversing as 2, by list position.
 - The `.dat` boost RPM range keeps the app's last values while in throttle
   mode, so it cannot be rebuilt from the ESC.
 - Programmed Throttle Enable At Throttle does not appear in the `.dat` line.
