@@ -54,6 +54,10 @@ public interface ICastleLinkDelay
 public interface ICastleLinkClient : IDisposable
 {
     string EscFirmware { get; }
+
+    /// <summary>The tune read on connect: 48 settings bytes then 2,560 curve bytes, or null.</summary>
+    byte[]? TuneBytes { get; }
+
     CastleLinkConnectResult Connect(CancellationToken cancellationToken = default);
     IReadOnlyList<CastleSessionInfo> ListSessions(CancellationToken cancellationToken = default);
     void KeepAlive();
@@ -75,6 +79,7 @@ public sealed class CastleLinkUsb : ICastleLinkClient
     private const int BlocksBeforeLog = 4;
     private const int BootBlockCount = 6;
     private const int MemoryBlockCount = 320;
+    private const int TuneBlockLength = 8;
 
     private static readonly TimeSpan ReplyTimeout = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan SetupPause = TimeSpan.FromMilliseconds(250);
@@ -87,6 +92,8 @@ public sealed class CastleLinkUsb : ICastleLinkClient
     private ICastleLinkTransport? _transport;
 
     public string EscFirmware { get; private set; } = "";
+
+    public byte[]? TuneBytes { get; private set; }
 
     public CastleLinkUsb()
         : this(new WmiCastleLinkPortDiscovery(), () => new SerialCastleLinkTransport(), new ThreadCastleLinkDelay())
@@ -218,10 +225,14 @@ public sealed class CastleLinkUsb : ICastleLinkClient
             Exchange(Request(0xD1, 0, 0, 0, 0, 1, 6), cancellationToken);
             _delay.Wait(SetupPause, cancellationToken);
             Exchange(Request(0xD4, 0, 0, 0, 0, 0, 2), cancellationToken);
+            // These two reads are the ESC's tune: settings then curves. See Docs/Castle_Link_Tune_Read.md.
+            var tune = new byte[(BootBlockCount + MemoryBlockCount) * TuneBlockLength];
             for (int block = 0; block < BootBlockCount; block++)
-                Exchange(Request(0x06, 0, (byte)block), cancellationToken);
+                CopyTuneBlock(Exchange(Request(0x06, 0, (byte)block), cancellationToken), 0x06, tune, block);
             for (int block = 0; block < MemoryBlockCount; block++)
-                Exchange(Request(0x0E, (byte)(block >> 8), (byte)block), cancellationToken);
+                CopyTuneBlock(Exchange(Request(0x0E, (byte)(block >> 8), (byte)block), cancellationToken), 0x0E,
+                    tune, BootBlockCount + block);
+            TuneBytes = tune;
             Exchange(Request(0xD4, 0, 0, 0, 0, 0, 1), cancellationToken);
             _delay.Wait(ListPause, cancellationToken);
             return new CastleLinkConnectResult(CastleLinkConnectStatus.Connected, portName);
@@ -231,6 +242,13 @@ public sealed class CastleLinkUsb : ICastleLinkClient
             // The Link itself answered, so the silence is past it.
             return new CastleLinkConnectResult(CastleLinkConnectStatus.NoEsc, portName);
         }
+    }
+
+    private static void CopyTuneBlock(byte[] reply, byte command, byte[] tune, int index)
+    {
+        if (reply.Length != ShortFrameLength || reply[1] != command)
+            throw new InvalidDataException("The Castle Link sent the wrong reply while reading the tune.");
+        Array.Copy(reply, ShortFrameLength - TuneBlockLength, tune, index * TuneBlockLength, TuneBlockLength);
     }
 
     private CastleSessionInfo ReadSessionEntry(int entry, CancellationToken cancellationToken)

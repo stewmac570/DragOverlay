@@ -162,4 +162,9 @@ In `Tests/castle-link-samples/`:
 1. Capture a tune read. Done.
 2. Map every `.dat` setting to its byte and scale. Mostly done; the gaps are
    listed above.
-3. Read the tune during "Get Castle log" and save it next to the log.
+3. Read the tune during "Get Castle log" and save it next to the log. Done:
+   `Services/CastleTuneDat.cs` writes `Castle session N <date>.dat` beside each
+   CSV and attaches it to the run. Lines the ESC does not hold (current
+   limiting, torque control, the inactive boost range) are left out, and
+   Programmed Throttle is written as DragOverlay's own two lines (time scale,
+   enable at throttle) because the ESC does not keep Castle's curve points.
