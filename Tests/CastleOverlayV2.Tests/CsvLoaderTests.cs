@@ -16,6 +16,9 @@ namespace CastleOverlayV2.Tests
                 "debug_log.txt");
             byte[]? originalLog = File.Exists(logPath) ? File.ReadAllBytes(logPath) : null;
 
+            // A clean machine (the release build) has no DragOverlay folder yet.
+            Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
+
             try
             {
                 var configService = (ConfigService)RuntimeHelpers.GetUninitializedObject(
@@ -39,7 +42,8 @@ namespace CastleOverlayV2.Tests
             {
                 if (originalLog is null)
                 {
-                    File.Delete(logPath);
+                    if (File.Exists(logPath))
+                        File.Delete(logPath);
                 }
                 else
                 {
