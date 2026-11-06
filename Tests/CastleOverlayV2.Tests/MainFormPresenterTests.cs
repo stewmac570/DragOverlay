@@ -122,6 +122,50 @@ public sealed class MainFormPresenterTests
             }
         });
 
+    [Fact]
+    public void Get_Castle_log_saves_the_esc_tune_beside_the_log_and_attaches_it() =>
+        RunWithMessageLoop(async () =>
+        {
+            string folder = Path.Combine(Path.GetTempPath(), $"castle-link-{Guid.NewGuid():N}");
+            var link = new FakeCastleLink(CastleLinkConnectStatus.Connected)
+            {
+                TuneBytes = File.ReadAllBytes(Path.Combine(SamplesFolder(), "tune-2026-11-06-round8.bin"))
+            };
+            var view = new FakeMainView();
+            var formsPlot = new FormsPlot();
+            try
+            {
+                MainFormPresenter presenter = PresenterWith(view, formsPlot, link, folder);
+
+                await presenter.DownloadFromCastleLinkAsync();
+
+                string csv = Assert.Single(Directory.GetFiles(folder, "*.csv"));
+                string dat = Assert.Single(Directory.GetFiles(folder, "*.dat"));
+                Assert.Equal(Path.ChangeExtension(csv, ".dat"), dat);
+                Assert.Contains("Max Power: 60%", File.ReadAllText(dat));
+                Assert.Equal(Path.GetFileName(dat), presenter.RunTune(1)?.SourceFileName);
+            }
+            finally
+            {
+                formsPlot.Dispose();
+                if (Directory.Exists(folder))
+                    Directory.Delete(folder, true);
+            }
+        });
+
+    private static string SamplesFolder()
+    {
+        DirectoryInfo? folder = new(AppContext.BaseDirectory);
+        while (folder is not null)
+        {
+            string candidate = Path.Combine(folder.FullName, "Tests", "castle-link-samples");
+            if (Directory.Exists(candidate))
+                return candidate;
+            folder = folder.Parent;
+        }
+        throw new DirectoryNotFoundException("Tests/castle-link-samples was not found.");
+    }
+
     [Theory]
     [InlineData(CastleLinkConnectStatus.NotFound, "No Castle Link")]
     [InlineData(CastleLinkConnectStatus.NoEsc, "ESC did not answer")]
@@ -198,6 +242,8 @@ public sealed class MainFormPresenterTests
         public FakeCastleLink(CastleLinkConnectStatus status) => _status = status;
 
         public string EscFirmware => "GL00136";
+
+        public byte[]? TuneBytes { get; init; }
 
         public CastleLinkConnectResult Connect(CancellationToken cancellationToken = default) =>
             new(_status, "COM3");

@@ -53,6 +53,9 @@ namespace CastleOverlayV2
         public bool IsSpeedRunMode => _isSpeedRunMode;
         public bool IsAutoTrimOn => !_keepFullLogs;
         public bool IsAnyRunLoaded => _runs.Count > 0;
+
+        /// <summary>The tune attached to the run in <paramref name="slot"/>, if any.</summary>
+        public TuneSettings? RunTune(int slot) => _runs.TryGetValue(slot, out var run) ? run.Tune : null;
         public bool IsAlignmentArmed => _armedSlot.HasValue;
 
         public MainFormPresenter(
@@ -1114,6 +1117,13 @@ namespace CastleOverlayV2
                 string path = Path.Combine(folder, $"Castle session {session.Number} {stamp}.csv");
                 await File.WriteAllTextAsync(path, csv);
                 saved.Add(path);
+
+                // The tune on the ESC now, saved beside each log so the log records what it ran.
+                if (link.TuneBytes is { } tune)
+                {
+                    string dat = CastleTuneDat.Build(tune, link.EscFirmware, DateTime.Now);
+                    await File.WriteAllTextAsync(Path.ChangeExtension(path, ".dat"), dat);
+                }
             }
             return saved;
         }
@@ -1127,6 +1137,9 @@ namespace CastleOverlayV2
                 DeleteRun(emptyFirst[index]);
                 // A download is just the log: no "no drag pass" popup if it has no launch in it.
                 await LoadCastleRunFromPathAsync(emptyFirst[index], paths[index], showWarnings: false);
+                string tunePath = Path.ChangeExtension(paths[index], ".dat");
+                if (File.Exists(tunePath))
+                    AttachTuneFromPath(emptyFirst[index], tunePath);
             }
             if (paths.Count > 3)
             {

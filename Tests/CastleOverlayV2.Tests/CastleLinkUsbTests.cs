@@ -25,6 +25,8 @@ public sealed class CastleLinkUsbTests
 
         Assert.Equal(CastleLinkConnectStatus.Connected, connection.Status);
         Assert.Equal("GL00136", client.EscFirmware);
+        Assert.Equal(48 + 2560, client.TuneBytes!.Length);
+        Assert.Equal(4053, (client.TuneBytes[2] << 8) | client.TuneBytes[3]); // Full Forward
         Assert.Equal(32, sessions.Count);
         Assert.Equal(33, sessions[0].Number);
         Assert.Equal(2, sessions[^1].Number);
