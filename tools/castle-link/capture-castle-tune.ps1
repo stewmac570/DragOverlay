@@ -10,11 +10,8 @@ if (-not (Test-Path $usbPcap)) {
     return
 }
 
-if (Get-Process | Where-Object { $_.ProcessName -match 'Castle' }) {
-    Write-Host 'Close the Castle app, then run this again.' -ForegroundColor Red
-    Write-Host 'The recording has to start before the app first talks to the Castle Link.'
-    return
-}
+# The Castle app can stay open: a write to the ESC is recorded whenever it
+# happens, so there is no need to catch the app's first connection.
 
 New-Item -ItemType Directory -Force $runFolder | Out-Null
 

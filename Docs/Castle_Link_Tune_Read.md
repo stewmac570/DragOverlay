@@ -44,7 +44,7 @@ Two-byte values are high byte first unless marked.
 | 8-9 | Boost RPM start | raw x 10 | Matched once (round 3) |
 | 10-11 | Boost RPM end | raw x 10 | Matched once (round 3) |
 | 15 | Sensorless Motor Timing | raw | Inference: 5 in Smart Sense, 0 in Sensored Only |
-| 16 | Boost Timing Amount | degrees | Matched once (round 3) |
+| 16 | Boost Timing Amount and Mode | low 7 bits = degrees; top bit set = throttle based, clear = RPM based | Matched (rounds 3 and 6) |
 | 17 | Motor Type | top bit = checkbox, low bits = type, 0x81 = Sensored Only | Matched |
 | 18 | Drag Brake | raw / 255 x 100 % | Matched |
 | 19 | Drag Brake Ramp | 0 = disabled, 1 = very fast, 4 = slow | Matched |
@@ -53,10 +53,13 @@ Two-byte values are high byte first unless marked.
 | 22 | Reverse Percentage | % | Matched round 3; 0 when reverse is off |
 | 23 | Brake Amount | % | Matched |
 | 24 | Reverse To Forward Brake | % | Matched round 3; 0 when reverse is off |
+| 25 | Throttle Dead Band | raw / 1000 ms | Matched (rounds 1 to 3) |
+| 26 | Brake Lockout Time | raw / 128 seconds | Matched (rounds 1 to 4) |
 | 27 | Idle/Error Beep Disable | raw | Matched |
 | 28 | Start Power | % | Matched |
 | 29 | Reverse Type | 0 = with reverse, 1 = without | Matched |
 | 30 | Motor Direction | 0 = normal, 1 = reverse | Matched |
+| 32 | Cutoff Voltage | raw / 10 V (64 = 6.4 V, read off the app) | Matched once (round 5) |
 | 33 | Motor Temperature Cutoff | deg C, 0 = disabled | Matched |
 | 34 | Auxiliary Wire Mode | 1 = max power, 3 = max brake | Matched |
 | 35 | BEC Voltage | raw / 10 V | Matched |
@@ -81,12 +84,13 @@ values, joined by full stops; that matched the ESC exactly in round 3.
 
 ## What is not verified
 
-- Brake Lockout Time and Throttle Dead Band. Bytes 25 and 26 moved with them
-  (100, 150, 25 and 64, 96, 224) but no single scale fits all three rounds.
-- Cutoff Voltage and Auto-Lipo. Byte 32 went 255 to 1 in round 2 but stayed 1
-  in round 3 when the `.dat` said 255. Byte 31 went 32 to 0 in round 2 only.
-- Boost Mode Enable, Boost Timing Mode and Turbo Enable. No byte moved with
-  them on its own. Inference: on when the amount is above 0.
+- Auto-Lipo, and why the `.dat` said Cutoff Voltage 255 in round 3 while byte
+  32 held 1. Byte 31 went 32 to 0 in round 2 only.
+- Boost Mode Enable and Turbo Enable have no byte of their own. Turning boost
+  off (round 6) zeroed bytes 8 to 11 and 16; turning turbo off (round 2)
+  zeroed bytes 39 to 42. Inference: the app shows them on when those bytes are
+  not zero.
+- Where the boost throttle activation range lives.
 - Which of tables 1 and 2 is brake and which is reverse.
 - Table 3, all zero in every capture, and Programmed Throttle.
 - Bytes 12 to 14, 37, 38, 46 and 47 never changed.
