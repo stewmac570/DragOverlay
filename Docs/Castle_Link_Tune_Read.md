@@ -77,9 +77,9 @@ example boost RPM 1000 to 2000 and turbo activation 100% while the ESC holds 0.
 
 ## Curves map
 
-Table 0 is the Forward Curve, table 4 is Boost By Throttle. Tables 1 and 2 are
-Brake Curve and Reverse Curve, order not known because both were straight lines
-in every capture. In the `.dat` each curve is a leading `0` then the 256 table
+Table 0 is the Forward Curve, table 1 the Brake Curve, table 2 the Reverse
+Curve and table 4 Boost By Throttle. Brake was confirmed by changing only the
+brake curve (round 7): only table 1 moved. In the `.dat` each curve is a leading `0` then the 256 table
 values, joined by full stops; that matched the ESC exactly in round 3.
 
 ## What is not verified
@@ -91,7 +91,6 @@ values, joined by full stops; that matched the ESC exactly in round 3.
   zeroed bytes 39 to 42. Inference: the app shows them on when those bytes are
   not zero.
 - Where the boost throttle activation range lives.
-- Which of tables 1 and 2 is brake and which is reverse.
 - Table 3, all zero in every capture, and Programmed Throttle.
 - Bytes 12 to 14, 37, 38, 46 and 47 never changed.
 
