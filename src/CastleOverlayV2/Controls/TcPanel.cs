@@ -559,6 +559,21 @@ public sealed class TcPanel : UserControl
         }
     }
 
+    // The curve on this tab is what the Logs chart draws over a TC run (Stew, 19 Nov 2026). With no
+    // curve here, the Logs chart falls back to the one last sent to the logger.
+    private void PublishCurves()
+    {
+        if (!TryReadCurve(out var editing, out _, allowEmpty: true)) return;
+        List<TcCurvePoint> hard = _editingSoft ? _otherCurve : editing;
+        List<TcCurvePoint> soft = _editingSoft ? editing : _otherCurve;
+        if (hard.Count == 0 && soft.Count == 0)
+            TcCurveStore.Set(
+                (IReadOnlyList<TcCurvePoint>?)_config.Config.TcSentHardCurve ?? Array.Empty<TcCurvePoint>(),
+                (IReadOnlyList<TcCurvePoint>?)_config.Config.TcSentSoftCurve ?? Array.Empty<TcCurvePoint>());
+        else
+            TcCurveStore.Set(hard, soft);
+    }
+
     // What the logger now holds: kept in the config so the Logs chart can draw it over a TC run,
     // even after DragOverlay has been closed (Stew, 19 Nov 2026).
     private void SaveSentCurves(List<TcCurvePoint> hard, List<TcCurvePoint> soft)
@@ -764,6 +779,7 @@ public sealed class TcPanel : UserControl
 
     private void RedrawChart(bool fitView = false)
     {
+        PublishCurves();
         _chart.Plot.Clear();
         if (_rpmTrace.Count > 1)
         {
