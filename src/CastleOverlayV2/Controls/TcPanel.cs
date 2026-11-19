@@ -690,6 +690,13 @@ public sealed class TcPanel : UserControl
         axis.FrameLineStyle.Color = color;
     }
 
+    // The Logs chart draws these over a TC logger run (Stew, 19 Nov 2026).
+    private void PublishCurves()
+    {
+        if (!TryReadCurve(out var editing, out _, allowEmpty: true)) return;
+        TcCurveStore.Set(_editingSoft ? _otherCurve : editing, _editingSoft ? editing : _otherCurve);
+    }
+
     private void SetCurvePoints(IEnumerable<TcCurvePoint> points, bool fitView = false)
     {
         _updatingGrid = true;
@@ -750,6 +757,7 @@ public sealed class TcPanel : UserControl
 
     private void RedrawChart(bool fitView = false)
     {
+        PublishCurves();
         _chart.Plot.Clear();
         if (_rpmTrace.Count > 1)
         {

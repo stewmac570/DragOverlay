@@ -26,7 +26,7 @@ namespace CastleOverlayV2.Plot
 
         private readonly Dictionary<int, List<VerticalLine>> _splitLinesBySlot = new();
         private readonly Dictionary<int, List<Text>> _splitLabelsBySlot = new();
-        private readonly Dictionary<int, List<VerticalSpan>> _tcSpansBySlot = new();
+        private readonly Dictionary<int, List<IPlottable>> _tcSpansBySlot = new();
         private IYAxis? _splitLabelAxis;
 
         private IYAxis? _throttleAxis;
@@ -357,12 +357,60 @@ namespace CastleOverlayV2.Plot
             if (!run.MiniLoggerSamples.Any(sample => sample.TcState.HasValue)) return;
 
             bool visible = !runVisibility.TryGetValue(slot, out bool runOn) || runOn;
-            var spans = new List<VerticalSpan>();
+            var spans = new List<IPlottable>();
             AddRanges(sample => sample.TcState == 2, new ScottPlot.Color(0x55, 0xB8, 0x73, 30));
             AddRanges(sample => sample.TcState == 2 && sample.ThrottleOutMs.HasValue &&
                                 sample.ThrottleOutMs.Value < sample.ThrottleMs,
                 new ScottPlot.Color(0xFF, 0x65, 0x57, 75));
+            AddTcCurve(TcCurveStore.Hard, new ScottPlot.Color(0xFF, 0x65, 0x57), LinePattern.Solid, "TC hard curve");
+            AddTcCurve(TcCurveStore.Soft, new ScottPlot.Color(0xF5, 0xB0, 0x41), LinePattern.Dashed, "TC soft curve");
             _tcSpansBySlot[slot] = spans;
+
+            // The TC tab's curve over the run's RPM (Stew, 19 Nov 2026). Time zero is the logger's own
+            // launch (first ACTIVE row). The line stops where the logger left ACTIVE, so it shows only
+            // the part of the curve the logger actually ran.
+            void AddTcCurve(IReadOnlyList<TcCurvePoint> curve, ScottPlot.Color color, LinePattern pattern, string label)
+            {
+                if (curve.Count == 0 || _rpmAxis is null) return;
+                int launch = run.MiniLoggerSamples.FindIndex(sample => sample.TcState == 2);
+                if (launch < 0) return;
+                int after = run.MiniLoggerSamples.FindIndex(launch, sample => sample.TcState != 2);
+                double launchSec = run.MiniLoggerSamples[launch].LogsPageTimeSeconds;
+                double endSec = (after < 0 ? run.MiniLoggerSamples[^1] : run.MiniLoggerSamples[after]).LogsPageTimeSeconds;
+
+                var xs = new List<double>();
+                var ys = new List<double>();
+                for (int i = 0; i < curve.Count; i++)
+                {
+                    double x = launchSec + curve[i].TimeMs / 1000.0;
+                    if (x <= endSec)
+                    {
+                        xs.Add(x + shiftSec);
+                        ys.Add(curve[i].Rpm);
+                        continue;
+                    }
+                    if (i > 0)  // cut the line where the logger stopped, between this point and the last
+                    {
+                        double x0 = launchSec + curve[i - 1].TimeMs / 1000.0;
+                        double f = (endSec - x0) / (x - x0);
+                        xs.Add(endSec + shiftSec);
+                        ys.Add(curve[i - 1].Rpm + f * (curve[i].Rpm - curve[i - 1].Rpm));
+                    }
+                    break;
+                }
+                if (xs.Count < 2) return;
+
+                var line = PlotControl.Plot.Add.Scatter(xs.ToArray(), ys.ToArray());
+                line.LegendText = label;
+                line.Color = color;
+                line.LinePattern = pattern;
+                line.LineWidth = 2;
+                line.MarkerSize = 0;
+                line.Axes.XAxis = PlotControl.Plot.Axes.Bottom;
+                line.Axes.YAxis = _rpmAxis;
+                line.IsVisible = visible;
+                spans.Add(line);
+            }
 
             void AddRanges(Func<MiniLoggerSample, bool> predicate, ScottPlot.Color color)
             {
