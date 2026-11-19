@@ -75,6 +75,13 @@ namespace CastleOverlayV2
             _miniLoggerUsbFactory = miniLoggerUsbFactory ?? (() => new MiniLoggerUsb());
             _castleLinkFactory = castleLinkFactory ?? (() => new CastleLinkUsb());
 
+            // Redraw the TC curve over loaded TC logger runs when the TC tab's curve changes.
+            TcCurveStore.Changed += () =>
+            {
+                if (_runs.Values.Any(run => run.MiniLoggerSamples.Any(sample => sample.TcState.HasValue)))
+                    PlotAllRuns();
+            };
+
             _isFourPoleMode = _config.Config.IsFourPoleMode;
             _keepFullLogs = !_config.Config.AutoTrim;
             _view.SetAutoTrimUI(!_keepFullLogs);
