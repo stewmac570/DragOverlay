@@ -79,11 +79,12 @@ namespace CastleOverlayV2
             TcCurveStore.Set(
                 (IReadOnlyList<TcCurvePoint>?)_config.Config.TcSentHardCurve ?? Array.Empty<TcCurvePoint>(),
                 (IReadOnlyList<TcCurvePoint>?)_config.Config.TcSentSoftCurve ?? Array.Empty<TcCurvePoint>());
-            // Redraw them when a new curve is sent.
+            // Redraw the TC curve channels when the curve changes.
             TcCurveStore.Changed += () =>
             {
-                if (_runs.Values.Any(run => run.MiniLoggerSamples.Any(sample => sample.TcState.HasValue)))
-                    PlotAllRuns();
+                if (!_runs.Values.Any(run => run.MiniLoggerSamples.Any(sample => sample.TcState.HasValue))) return;
+                EnsureMiniLoggerChannelsInToggleBar();
+                PlotAllRuns();
             };
 
             _isFourPoleMode = _config.Config.IsFourPoleMode;
@@ -565,6 +566,7 @@ namespace CastleOverlayV2
 
         private void EnsureMiniLoggerChannelsInToggleBar()
         {
+            foreach (RunData run in _runs.Values) TcCurveChannels.Apply(run);
             var states = _drawer.GetChannelStates();
             var saved = _config.Config.ChannelVisibility;
             bool added = false;
@@ -1510,6 +1512,7 @@ namespace CastleOverlayV2
         // ============================================================
         private void PlotAllRuns()
         {
+            foreach (RunData run in _runs.Values) TcCurveChannels.Apply(run);
             if (Logger.IsEnabled)
             {
                 Logger.Log("PlotAllRuns called with runs:");
