@@ -90,6 +90,9 @@ public interface IMiniLoggerUsbClient : IDisposable
         int runCount = 1,
         CancellationToken cancellationToken = default);
     TcLoggerStatus ReadTcStatus(CancellationToken cancellationToken = default);
+    /// <summary>The curve stored on the logger ("tc curve get" / "tc soft get"). Null if the logger's
+    /// firmware is older and can't report it.</summary>
+    IReadOnlyList<TcCurvePoint>? ReadTcCurve(bool soft, CancellationToken cancellationToken = default);
     /// <param name="softPoints">
     /// The soft curve. Null leaves the logger's soft curve alone; empty clears it.
     /// </param>
@@ -354,6 +357,26 @@ public sealed class MiniLoggerUsb : IMiniLoggerUsbClient
                 lines.Add(line);
             if (sawTcHeader && line == "END")
                 return TcStatusParser.Parse(lines);
+        }
+    }
+
+    public IReadOnlyList<TcCurvePoint>? ReadTcCurve(bool soft, CancellationToken cancellationToken = default)
+    {
+        IMiniLoggerLineTransport transport = ConnectedTransport();
+        transport.WriteLine(soft ? "tc soft get" : "tc curve get");
+        var points = new List<TcCurvePoint>();
+        while (true)
+        {
+            string line = ReadRequiredLine(transport, cancellationToken);
+            if (line.StartsWith("ERROR", StringComparison.Ordinal) ||
+                line.StartsWith("TC commands", StringComparison.Ordinal))
+                return null;  // older firmware: no get command
+            if (line == "END") return points;
+            string[] parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 3 && parts[0] == "PT" &&
+                int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int ms) &&
+                int.TryParse(parts[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out int rpm))
+                points.Add(new TcCurvePoint(ms, rpm));
         }
     }
 

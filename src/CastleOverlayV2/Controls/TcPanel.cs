@@ -487,11 +487,13 @@ public sealed class TcPanel : UserControl
         SetBusy(true, "Looking for the Mini Logger…");
         try
         {
-            TcLoggerStatus status = await Task.Run(() =>
+            var (status, hard, soft) = await Task.Run(() =>
             {
                 using IMiniLoggerUsbClient usb = _usbFactory();
                 EnsureConnected(usb);
-                return usb.ReadTcStatus();
+                TcLoggerStatus s = usb.ReadTcStatus();
+                if (!s.IsTcLogger) return (s, (IReadOnlyList<TcCurvePoint>?)null, (IReadOnlyList<TcCurvePoint>?)null);
+                return (s, usb.ReadTcCurve(soft: false), usb.ReadTcCurve(soft: true));
             });
             if (!status.IsTcLogger)
             {
@@ -500,7 +502,18 @@ public sealed class TcPanel : UserControl
                 return;
             }
             _sessionStatus = status;
-            _status.Text = FormatStatus(status);
+            // Put the logger's curves on this tab so they can be adjusted and sent back (Stew, 20 Nov 2026).
+            string curveNote;
+            if (hard is null)
+                curveNote = "This logger's firmware can't report its curve. Update the logger to read it here.";
+            else
+            {
+                List<TcCurvePoint> hardList = hard.ToList(), softList = (soft ?? Array.Empty<TcCurvePoint>()).ToList();
+                _otherCurve = _editingSoft ? hardList : softList;
+                SetCurvePoints(_editingSoft ? softList : hardList, fitView: true);
+                curveNote = $"Loaded the logger's curves: hard {hardList.Count} points, soft {softList.Count} points.";
+            }
+            _status.Text = curveNote + Environment.NewLine + Environment.NewLine + FormatStatus(status);
         }
         catch (Exception ex)
         {
