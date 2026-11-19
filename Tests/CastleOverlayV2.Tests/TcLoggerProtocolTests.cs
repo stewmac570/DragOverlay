@@ -61,6 +61,30 @@ public sealed class TcLoggerProtocolTests
     }
 
     [Fact]
+    public void Read_curve_returns_the_logger_points_and_ignores_banners()
+    {
+        var transport = new FakeTransport("MINILOGGER 2", "TC logger running", "PT 0 10000", "PT 500 30000", "END");
+        using var client = Client(transport);
+        client.Connect();
+
+        var points = client.ReadTcCurve(soft: false);
+
+        Assert.Equal(new[] { new TcCurvePoint(0, 10000), new TcCurvePoint(500, 30000) }, points);
+        Assert.Contains("tc curve get", transport.Writes);
+    }
+
+    [Fact]
+    public void Read_curve_on_older_firmware_returns_null()
+    {
+        var transport = new FakeTransport("MINILOGGER 2", "ERROR usage: tc soft begin, tc soft pt T_MS RPM, tc soft end, tc soft clear");
+        using var client = Client(transport);
+        client.Connect();
+
+        Assert.Null(client.ReadTcCurve(soft: true));
+        Assert.Contains("tc soft get", transport.Writes);
+    }
+
+    [Fact]
     public void Error_on_point_aborts_without_end()
     {
         var transport = TransportForSend(Status("DISARMED", 0), "OK", "OK", "ERROR times must rise");

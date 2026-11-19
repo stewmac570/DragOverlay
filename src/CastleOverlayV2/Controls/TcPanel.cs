@@ -487,11 +487,13 @@ public sealed class TcPanel : UserControl
         SetBusy(true, "Looking for the Mini Logger…");
         try
         {
-            TcLoggerStatus status = await Task.Run(() =>
+            var (status, hard, soft) = await Task.Run(() =>
             {
                 using IMiniLoggerUsbClient usb = _usbFactory();
                 EnsureConnected(usb);
-                return usb.ReadTcStatus();
+                TcLoggerStatus s = usb.ReadTcStatus();
+                if (!s.IsTcLogger) return (s, (IReadOnlyList<TcCurvePoint>?)null, (IReadOnlyList<TcCurvePoint>?)null);
+                return (s, usb.ReadTcCurve(soft: false), usb.ReadTcCurve(soft: true));
             });
             if (!status.IsTcLogger)
             {
@@ -500,7 +502,18 @@ public sealed class TcPanel : UserControl
                 return;
             }
             _sessionStatus = status;
-            _status.Text = FormatStatus(status);
+            // Put the logger's curves on this tab so they can be adjusted and sent back (Stew, 20 Nov 2026).
+            string curveNote;
+            if (hard is null)
+                curveNote = "This logger's firmware can't report its curve. Update the logger to read it here.";
+            else
+            {
+                List<TcCurvePoint> hardList = hard.ToList(), softList = (soft ?? Array.Empty<TcCurvePoint>()).ToList();
+                _otherCurve = _editingSoft ? hardList : softList;
+                SetCurvePoints(_editingSoft ? softList : hardList, fitView: true);
+                curveNote = $"Loaded the logger's curves: hard {hardList.Count} points, soft {softList.Count} points.";
+            }
+            _status.Text = curveNote + Environment.NewLine + Environment.NewLine + FormatStatus(status);
         }
         catch (Exception ex)
         {
@@ -557,6 +570,21 @@ public sealed class TcPanel : UserControl
         {
             SetBusy(false);
         }
+    }
+
+    // The curve on this tab is what the Logs chart draws over a TC run (Stew, 19 Nov 2026). With no
+    // curve here, the Logs chart falls back to the one last sent to the logger.
+    private void PublishCurves()
+    {
+        if (!TryReadCurve(out var editing, out _, allowEmpty: true)) return;
+        List<TcCurvePoint> hard = _editingSoft ? _otherCurve : editing;
+        List<TcCurvePoint> soft = _editingSoft ? editing : _otherCurve;
+        if (hard.Count == 0 && soft.Count == 0)
+            TcCurveStore.Set(
+                (IReadOnlyList<TcCurvePoint>?)_config.Config.TcSentHardCurve ?? Array.Empty<TcCurvePoint>(),
+                (IReadOnlyList<TcCurvePoint>?)_config.Config.TcSentSoftCurve ?? Array.Empty<TcCurvePoint>());
+        else
+            TcCurveStore.Set(hard, soft);
     }
 
     // What the logger now holds: kept in the config so the Logs chart can draw it over a TC run,
@@ -764,6 +792,7 @@ public sealed class TcPanel : UserControl
 
     private void RedrawChart(bool fitView = false)
     {
+        PublishCurves();
         _chart.Plot.Clear();
         if (_rpmTrace.Count > 1)
         {
