@@ -543,7 +543,9 @@ public sealed class TcPanel : UserControl
             _status.Text = result.Message + (result.Status?.IsTcLogger == true
                 ? Environment.NewLine + Environment.NewLine + FormatStatus(result.Status)
                 : "");
-            if (!result.Success)
+            if (result.Success)
+                SaveSentCurves(hard, soft);
+            else
                 MessageBox.Show(result.Message, "Send TC curve", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         catch (Exception ex)
@@ -555,6 +557,16 @@ public sealed class TcPanel : UserControl
         {
             SetBusy(false);
         }
+    }
+
+    // What the logger now holds: kept in the config so the Logs chart can draw it over a TC run,
+    // even after DragOverlay has been closed (Stew, 19 Nov 2026).
+    private void SaveSentCurves(List<TcCurvePoint> hard, List<TcCurvePoint> soft)
+    {
+        _config.Config.TcSentHardCurve = hard.ToList();
+        _config.Config.TcSentSoftCurve = soft.ToList();
+        _config.Save();
+        TcCurveStore.Set(hard, soft);
     }
 
     private async Task ClearCurveAsync()
@@ -575,7 +587,9 @@ public sealed class TcPanel : UserControl
             });
             if (result.Status?.IsTcLogger == true) _sessionStatus = result.Status;
             _status.Text = result.Message;
-            if (!result.Success)
+            if (result.Success)
+                SaveSentCurves(new List<TcCurvePoint>(), new List<TcCurvePoint>());
+            else
                 MessageBox.Show(result.Message, "Clear logger curve", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         catch (Exception ex)
@@ -690,13 +704,6 @@ public sealed class TcPanel : UserControl
         axis.FrameLineStyle.Color = color;
     }
 
-    // The Logs chart draws these over a TC logger run (Stew, 19 Nov 2026).
-    private void PublishCurves()
-    {
-        if (!TryReadCurve(out var editing, out _, allowEmpty: true)) return;
-        TcCurveStore.Set(_editingSoft ? _otherCurve : editing, _editingSoft ? editing : _otherCurve);
-    }
-
     private void SetCurvePoints(IEnumerable<TcCurvePoint> points, bool fitView = false)
     {
         _updatingGrid = true;
@@ -757,7 +764,6 @@ public sealed class TcPanel : UserControl
 
     private void RedrawChart(bool fitView = false)
     {
-        PublishCurves();
         _chart.Plot.Clear();
         if (_rpmTrace.Count > 1)
         {

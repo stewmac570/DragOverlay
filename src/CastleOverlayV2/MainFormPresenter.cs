@@ -75,7 +75,11 @@ namespace CastleOverlayV2
             _miniLoggerUsbFactory = miniLoggerUsbFactory ?? (() => new MiniLoggerUsb());
             _castleLinkFactory = castleLinkFactory ?? (() => new CastleLinkUsb());
 
-            // Redraw the TC curve over loaded TC logger runs when the TC tab's curve changes.
+            // The curves last sent to the logger, drawn over TC logger runs on the Logs chart.
+            TcCurveStore.Set(
+                (IReadOnlyList<TcCurvePoint>?)_config.Config.TcSentHardCurve ?? Array.Empty<TcCurvePoint>(),
+                (IReadOnlyList<TcCurvePoint>?)_config.Config.TcSentSoftCurve ?? Array.Empty<TcCurvePoint>());
+            // Redraw them when a new curve is sent.
             TcCurveStore.Changed += () =>
             {
                 if (_runs.Values.Any(run => run.MiniLoggerSamples.Any(sample => sample.TcState.HasValue)))
