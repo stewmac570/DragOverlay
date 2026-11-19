@@ -52,6 +52,11 @@ namespace CastleOverlayV2.Models
         public bool? TcCurveMarginIsPercent { get; set; }
         public double? TcCurveEndSeconds { get; set; }
 
+        // The curves last sent to the logger, so the Logs chart can draw them over a TC run after a
+        // restart (Stew, 19 Nov 2026). Empty until the first send.
+        public List<TcCurvePoint>? TcSentHardCurve { get; set; }
+        public List<TcCurvePoint>? TcSentSoftCurve { get; set; }
+
         // Auto trim on: logs are cut to -0.5 s .. +2.5 s around the launch. Off: full logs.
         public bool AutoTrim { get; set; } = true;
 

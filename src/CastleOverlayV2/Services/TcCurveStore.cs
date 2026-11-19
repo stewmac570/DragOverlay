@@ -3,8 +3,8 @@ using CastleOverlayV2.Models;
 namespace CastleOverlayV2.Services;
 
 /// <summary>
-/// The TC tab's current hard and soft curves, so the Logs chart can draw them over a TC logger
-/// run. The TC tab sets them whenever its curves change; the Logs chart replots on <see cref="Changed"/>.
+/// The hard and soft curves last sent to the logger, so the Logs chart can draw them over a TC
+/// logger run. Loaded from the config at start-up, and set again by the TC tab on each send.
 /// </summary>
 public static class TcCurveStore
 {

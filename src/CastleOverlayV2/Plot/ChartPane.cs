@@ -432,7 +432,7 @@ namespace CastleOverlayV2.Plot
                         : run.MiniLoggerSamples[end].LogsPageTimeSeconds + shiftSec;
                     if (right > left)
                     {
-                        var span = PlotControl.Plot.Add.VerticalSpan(left, right, color);
+                        var span = PlotControl.Plot.Add.HorizontalSpan(left, right, color);  // a time range: spans X, full height
                         span.LineWidth = 0;
                         span.EnableAutoscale = false;
                         span.IsVisible = visible;
