@@ -67,6 +67,8 @@ public sealed class TcPanel : UserControl
     private List<TcCurvePoint> _otherCurve = new();
     private bool _editingSoft;
     private bool _switchingCurve;
+    // True while the constructor runs, so an early redraw can't overwrite the kept curves.
+    private bool _restoringCurves = true;
     private readonly CursorReadout _readout = new();
     // Chart time 0 in the selected run's own time: the hand-set start, else the detected launch.
     private double _zeroRunTime;
@@ -213,7 +215,11 @@ public sealed class TcPanel : UserControl
         Controls.Add(bottom);
         Controls.Add(_launchInfo);
         Controls.Add(top);
-        UpdateEnabledState();
+
+        // Bring back the curves this tab had when DragOverlay was last closed (Stew, 22 Nov 2026).
+        _otherCurve = (_config.Config.TcTabSoftCurve ?? new List<TcCurvePoint>()).ToList();
+        _restoringCurves = false;
+        SetCurvePoints(_config.Config.TcTabHardCurve ?? new List<TcCurvePoint>(), fitView: true);
     }
 
     // The TC tab only works on logs opened here; it never uses the runs loaded on the Logs tab.
@@ -509,6 +515,8 @@ public sealed class TcPanel : UserControl
             else
             {
                 List<TcCurvePoint> hardList = hard.ToList(), softList = (soft ?? Array.Empty<TcCurvePoint>()).ToList();
+                // This is what the logger holds, so it is also the "last sent" fallback for the Logs chart.
+                SaveSentCurves(hardList, softList);
                 _otherCurve = _editingSoft ? hardList : softList;
                 SetCurvePoints(_editingSoft ? softList : hardList, fitView: true);
                 curveNote = $"Loaded the logger's curves: hard {hardList.Count} points, soft {softList.Count} points.";
@@ -579,12 +587,26 @@ public sealed class TcPanel : UserControl
         if (!TryReadCurve(out var editing, out _, allowEmpty: true)) return;
         List<TcCurvePoint> hard = _editingSoft ? _otherCurve : editing;
         List<TcCurvePoint> soft = _editingSoft ? editing : _otherCurve;
+        SaveTabCurves(hard, soft);
         if (hard.Count == 0 && soft.Count == 0)
             TcCurveStore.Set(
                 (IReadOnlyList<TcCurvePoint>?)_config.Config.TcSentHardCurve ?? Array.Empty<TcCurvePoint>(),
                 (IReadOnlyList<TcCurvePoint>?)_config.Config.TcSentSoftCurve ?? Array.Empty<TcCurvePoint>());
         else
             TcCurveStore.Set(hard, soft);
+    }
+
+    // Keeps this tab's curves in the config, so they come back when DragOverlay is opened again.
+    // Saves only when they change, because this runs on every redraw.
+    private void SaveTabCurves(List<TcCurvePoint> hard, List<TcCurvePoint> soft)
+    {
+        if (_restoringCurves) return;
+        if ((_config.Config.TcTabHardCurve ?? new List<TcCurvePoint>()).SequenceEqual(hard) &&
+            (_config.Config.TcTabSoftCurve ?? new List<TcCurvePoint>()).SequenceEqual(soft))
+            return;
+        _config.Config.TcTabHardCurve = hard.ToList();
+        _config.Config.TcTabSoftCurve = soft.ToList();
+        _config.Save();
     }
 
     // What the logger now holds: kept in the config so the Logs chart can draw it over a TC run,

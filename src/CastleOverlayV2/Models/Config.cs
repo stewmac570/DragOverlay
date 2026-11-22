@@ -57,6 +57,11 @@ namespace CastleOverlayV2.Models
         public List<TcCurvePoint>? TcSentHardCurve { get; set; }
         public List<TcCurvePoint>? TcSentSoftCurve { get; set; }
 
+        // The curves on the TC tab, kept so they are still there (and still drawn on the Logs chart)
+        // after DragOverlay is closed and opened again (Stew, 22 Nov 2026).
+        public List<TcCurvePoint>? TcTabHardCurve { get; set; }
+        public List<TcCurvePoint>? TcTabSoftCurve { get; set; }
+
         // Auto trim on: logs are cut to -0.5 s .. +2.5 s around the launch. Off: full logs.
         public bool AutoTrim { get; set; } = true;
 
