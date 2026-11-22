@@ -70,9 +70,11 @@ namespace CastleOverlayV2.Tests
                 Assert.True(result.Ok, result.Message);
                 var data = result.Value!.Data;
 
-                foreach (var channel in BigLoggerChannels.All)
+                // The six sensor columns; this file has no GPS columns.
+                foreach (var channel in BigLoggerChannels.FileColumns.Take(6))
                     Assert.True(data.ContainsKey(channel.Channel), channel.Channel);
-                Assert.Equal(6, BigLoggerChannels.All.Count);
+                Assert.False(data.ContainsKey(BigLoggerChannels.GpsSpeedChannel));
+                Assert.False(data.ContainsKey(BigLoggerChannels.GpsDistanceChannel));
                 Assert.Equal(2990, data["Logger Pack Volts"].Count);
                 Assert.Equal(7.65, data["Logger Pack Volts"][0].Y);
                 Assert.Equal(1.25, data["Logger Accel Fwd"][0].Y);
@@ -81,6 +83,45 @@ namespace CastleOverlayV2.Tests
                 Assert.Equal(7.2, data["Logger Front Ride Height"][0].Y);   // already ride height: no offset
                 Assert.Equal(2990 - 29, data["Logger Rear Ride Height"].Count); // empty cells are skipped
                 Assert.Equal(3000, data[MiniLoggerLoader.ThrottleChannel].Count);
+            }
+            finally
+            {
+                File.Delete(path);
+            }
+        }
+
+        [Fact]
+        public void Gps_speed_loads_and_distance_counts_from_launch()
+        {
+            // Big logger with GPS: 1 s at rest, then full throttle and a steady 60 mph GPS speed.
+            // GPS cells are blank for the first 100 rows (no fix yet).
+            const string header = "Time (s),Throttle (ms),Motor RPM,Wheel (rev/s),Pack Volts (V),Accel Fwd (g),Pitch (deg),Roll (deg)," +
+                                  "Front Laser (mm),Rear Laser (mm),GPS Speed (mph),GPS Speed Error (mph),GPS Sats,Latitude,Longitude,GPS Heading (deg)";
+            var sb = new StringBuilder(header).AppendLine();
+            for (int i = 0; i < 3000; i++)
+            {
+                double t = i / 1000.0;
+                string first4 = string.Create(CultureInfo.InvariantCulture, $"{t:0.000},{(t < 1.0 ? 1.50 : 1.90):0.000},0,0.00");
+                string gps = i < 100 ? ",,,,," : (t < 1.0 ? "0.0,0.2,9,-33.1,151.2,90" : "60.0,0.2,9,-33.1,151.2,90");
+                sb.AppendLine(first4 + ",7.65,0,0,0,10,10," + gps);
+            }
+            string path = Path.Combine(Path.GetTempPath(), $"biglogger-gps-{Guid.NewGuid():N}.csv");
+            File.WriteAllText(path, sb.ToString());
+            try
+            {
+                var result = MiniLoggerLoader.Load(path, keepFullLog: true);
+                Assert.True(result.Ok, result.Message);
+                var data = result.Value!.Data;
+
+                var speed = data[BigLoggerChannels.GpsSpeedChannel];
+                Assert.Equal(2900, speed.Count);
+                Assert.Equal(60.0, speed.Last().Y);
+
+                var distance = data[BigLoggerChannels.GpsDistanceChannel];
+                Assert.Equal(2900, distance.Count);
+                Assert.All(distance.Where(p => p.Time < 0), p => Assert.Equal(0, p.Y));
+                // 60 mph = 88 ft/s, for about 2 s after launch.
+                Assert.InRange(distance.Last().Y, 88 * 1.99 - 1, 88 * 2.0 + 1);
             }
             finally
             {
