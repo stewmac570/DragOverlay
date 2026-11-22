@@ -1,4 +1,4 @@
-using CastleOverlayV2.Models;
+﻿using CastleOverlayV2.Models;
 
 namespace CastleOverlayV2.Services;
 
@@ -20,7 +20,10 @@ public static class TcCurveChannels
     {
         run.Data.Remove(channel);
         List<DataPoint>? points = Points(run.MiniLoggerSamples, curve);
-        if (points is not null) run.Data[channel] = points;
+        if (points is null) return;
+        // A hand trim on the Logs chart cuts the curve too (Stew, 22 Nov 2026).
+        points = run.ClipToTrimWindow(points);
+        if (points.Count >= 2) run.Data[channel] = points;
     }
 
     public static List<DataPoint>? Points(IReadOnlyList<MiniLoggerSample> samples, IReadOnlyList<TcCurvePoint> curve)

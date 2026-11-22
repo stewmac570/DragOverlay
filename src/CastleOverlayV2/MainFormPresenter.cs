@@ -1,4 +1,4 @@
-// File: src/CastleOverlayV2/MainFormPresenter.cs
+﻿// File: src/CastleOverlayV2/MainFormPresenter.cs
 using CastleOverlayV2.Controls;
 using CastleOverlayV2.Models;
 using CastleOverlayV2.Plot;
@@ -397,11 +397,13 @@ namespace CastleOverlayV2
                 reloaded.Tune = old.Tune;
                 reloaded.TimeShiftMs = old.TimeShiftMs;
                 if (!string.IsNullOrEmpty(old.FileName)) reloaded.FileName = old.FileName;
-                if (RunSlots.IsCastle(slot) && (old.TrimStartTime.HasValue || old.TrimEndTime.HasValue))
+                if (reloaded.CanManualTrim && (old.TrimStartTime.HasValue || old.TrimEndTime.HasValue))
                 {
+                    reloaded.CaptureTrimBaseline();
                     reloaded.TrimStartTime = old.TrimStartTime;
                     reloaded.TrimEndTime = old.TrimEndTime;
                     reloaded.ApplyManualTrim();
+                    TcCurveChannels.Apply(reloaded);
                 }
                 reloaded.TrimHistory = old.TrimHistory;
                 _plot.SetRunVisibility(slot, visible);
@@ -690,8 +692,8 @@ namespace CastleOverlayV2
             _view.SetSlotArmedUI(slot, true);
             _view.ShowAlignmentUI(run.FileName, run.TimeShiftMs);
             _plot.SetAlignmentMode(true);
-            // Manual trim is Castle-only (RaceBox uses a different data shape and isn't auto-trimmed).
-            _plot.SetManualTrimAvailable(!run.HasChannelData);
+            // Castle and Mini Logger runs can be trimmed by hand; RaceBox runs can't.
+            _plot.SetManualTrimAvailable(run.CanManualTrim);
         }
 
         public void DisarmAlignment()
@@ -752,9 +754,9 @@ namespace CastleOverlayV2
         {
             if (!_armedSlot.HasValue || !_runs.TryGetValue(_armedSlot.Value, out var run))
                 return;
-            if (run.HasChannelData)
+            if (!run.CanManualTrim)
             {
-                _view.ShowInfo("Trim", "Manual trim is only available for Castle log runs.");
+                _view.ShowInfo("Trim", "Manual trim is only available for Castle and Mini Logger runs.");
                 return;
             }
 
@@ -769,6 +771,7 @@ namespace CastleOverlayV2
                 ? run.SetTrimWindow(runTime, run.TrimEndTime)
                 : run.SetTrimWindow(run.TrimStartTime, runTime);
             if (!applied) return; // would have removed every sample
+            TcCurveChannels.Apply(run);
             Logger.Log($"✂️ Manual trim slot {_armedSlot.Value}: {(before ? "before" : "after")} t={runTime:F3}s → {run.DataPoints.Count} pts");
             PlotAllRuns();
         }
@@ -778,7 +781,7 @@ namespace CastleOverlayV2
         {
             if (!_armedSlot.HasValue || !_runs.TryGetValue(_armedSlot.Value, out var run))
                 return;
-            if (run.HasChannelData || run.BaselineDataPoints == null)
+            if (!run.CanManualTrim || !run.HasTrimBaseline)
                 return;
 
             if (run.TrimStartTime == null && run.TrimEndTime == null)
@@ -788,6 +791,7 @@ namespace CastleOverlayV2
             run.TrimStartTime = null;
             run.TrimEndTime = null;
             run.ApplyManualTrim();
+            TcCurveChannels.Apply(run);
             Logger.Log($"✂️ Manual trim reset slot {_armedSlot.Value} → {run.DataPoints.Count} pts");
             PlotAllRuns();
         }
@@ -797,8 +801,9 @@ namespace CastleOverlayV2
         {
             if (!_armedSlot.HasValue || !_runs.TryGetValue(_armedSlot.Value, out var run))
                 return;
-            if (run.HasChannelData || !run.UndoTrim())
+            if (!run.CanManualTrim || !run.UndoTrim())
                 return;
+            TcCurveChannels.Apply(run);
 
             Logger.Log($"✂️ Manual trim undo slot {_armedSlot.Value} → {run.DataPoints.Count} pts");
             PlotAllRuns();

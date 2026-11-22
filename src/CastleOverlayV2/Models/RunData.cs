@@ -50,6 +50,17 @@ namespace CastleOverlayV2.Models
         // in the run's own (re-zeroed) time coordinate; null = no bound on that side.
         // Reset clears the window and restores the baseline.
         public List<DataPoint>? BaselineDataPoints { get; set; }
+        // Mini Logger runs keep their baseline per channel, because their values live in .Data
+        // (Stew, 22 Nov 2026: trim a TC log like the other logs). The TC curve channels are left
+        // out: they are rebuilt from the logger samples and clipped to the trim window.
+        public Dictionary<string, List<DataPoint>>? BaselineData { get; set; }
+
+        // Castle and Mini Logger runs can be trimmed by hand. RaceBox runs can't.
+        public bool CanManualTrim => !IsRaceBox;
+        public bool HasTrimBaseline => IsMiniLogger ? BaselineData != null : BaselineDataPoints != null;
+
+        private static bool IsRebuiltChannel(string channel) =>
+            channel == "Logger TC Curve" || channel == "Logger TC Soft Curve";
         public double? TrimStartTime { get; set; }
         public double? TrimEndTime { get; set; }
 
@@ -70,6 +81,13 @@ namespace CastleOverlayV2.Models
         /// </summary>
         public void CaptureTrimBaseline()
         {
+            if (IsMiniLogger)
+            {
+                BaselineData ??= Data
+                    .Where(pair => !IsRebuiltChannel(pair.Key))
+                    .ToDictionary(pair => pair.Key, pair => new List<DataPoint>(pair.Value));
+                return;
+            }
             BaselineDataPoints ??= new List<DataPoint>(DataPoints);
         }
 
@@ -81,6 +99,8 @@ namespace CastleOverlayV2.Models
         /// </summary>
         public bool ApplyManualTrim()
         {
+            if (IsMiniLogger)
+                return ApplyMiniLoggerTrim();
             if (HasChannelData || BaselineDataPoints == null)
                 return false;
 
@@ -97,6 +117,31 @@ namespace CastleOverlayV2.Models
             DataPoints = result;
             return true;
         }
+
+        private bool InTrimWindow(double time) =>
+            (TrimStartTime is not double start || time >= start) &&
+            (TrimEndTime is not double end || time <= end);
+
+        private bool ApplyMiniLoggerTrim()
+        {
+            if (BaselineData == null) return false;
+            var trimmed = BaselineData.ToDictionary(
+                pair => pair.Key,
+                pair => pair.Value.Where(p => InTrimWindow(p.Time)).ToList());
+            // Every reading has a throttle value, so an empty throttle channel means nothing is left.
+            if (!trimmed.Values.Any(list => list.Count > 0))
+                return false;
+
+            foreach (var pair in trimmed)
+                Data[pair.Key] = pair.Value;
+            List<DataPoint> times = trimmed.Values.OrderByDescending(list => list.Count).First();
+            DataPoints = times.Select(p => new DataPoint { Time = p.Time }).ToList();
+            return true;
+        }
+
+        /// <summary>Keeps only the points inside the trim window (for channels rebuilt after a trim).</summary>
+        public List<DataPoint> ClipToTrimWindow(List<DataPoint> points) =>
+            TrimStartTime is null && TrimEndTime is null ? points : points.Where(p => InTrimWindow(p.Time)).ToList();
 
         /// <summary>Set a new trim window, remembering the old one for undo. False if it would empty the run.</summary>
         public bool SetTrimWindow(double? start, double? end)
@@ -116,7 +161,7 @@ namespace CastleOverlayV2.Models
         /// <summary>Put back the trim window from before the last trim or reset. False if there is none.</summary>
         public bool UndoTrim()
         {
-            if (TrimHistory.Count == 0 || BaselineDataPoints == null)
+            if (TrimHistory.Count == 0 || !HasTrimBaseline)
                 return false;
             (TrimStartTime, TrimEndTime) = TrimHistory.Pop();
             ApplyManualTrim();

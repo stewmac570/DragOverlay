@@ -7,6 +7,7 @@ namespace CastleOverlayV2.Tests;
 
 // The TC tab's curve must still be there after DragOverlay is closed and opened again, so the
 // Logs chart can draw it over a TC run (Stew, 22 Nov 2026: "it didn't show the curve from the TC tab").
+[Collection("TcCurveStore")]
 public class TcTabCurveKeptTests
 {
     [Fact]
