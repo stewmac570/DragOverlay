@@ -155,6 +155,38 @@ namespace CastleOverlayV2
             if (!result.Ok) ShowResultMessage(result);
         }
 
+        /// <summary>
+        /// Open files named on the command line. A <c>.dragoverlay</c> project opens as a
+        /// project; <c>.csv</c> files load as Castle runs 1 to 3 in the order given. A file
+        /// that does not exist is reported and skipped.
+        /// </summary>
+        public async Task OpenStartupFilesAsync(IReadOnlyList<string> paths)
+        {
+            var missing = paths.Where(p => !File.Exists(p)).ToList();
+            var files = paths.Where(File.Exists).Select(Path.GetFullPath).ToList();
+            if (missing.Count > 0)
+                _view.ShowError("Open File", "These files were not found:\n\n" + string.Join("\n", missing));
+
+            string? project = files.FirstOrDefault(f =>
+                string.Equals(Path.GetExtension(f), ".dragoverlay", StringComparison.OrdinalIgnoreCase));
+            if (project != null)
+            {
+                var result = OpenProjectFrom(project);
+                if (!result.Ok) ShowResultMessage(result);
+                RefreshProjectButtonsState();
+                return;
+            }
+
+            int slot = 1;
+            foreach (var csv in files.Where(f =>
+                         string.Equals(Path.GetExtension(f), ".csv", StringComparison.OrdinalIgnoreCase)))
+            {
+                if (slot > 3) break;
+                Logger.Log($"Command line: loading {Path.GetFileName(csv)} into Run {slot}");
+                await LoadCastleRunFromPathAsync(slot++, csv);
+            }
+        }
+
         // ============================================================
         // Castle load
         // ============================================================

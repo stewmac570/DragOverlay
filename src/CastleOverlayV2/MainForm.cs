@@ -30,9 +30,18 @@ namespace CastleOverlayV2
         private MiniLoggerLookingForm? _miniLoggerLooking;
         private MiniLoggerLookingForm? _castleLinkBusy;
 
-        public MainForm(ConfigService configService)
+        public MainForm(ConfigService configService) : this(configService, Array.Empty<string>()) { }
+
+        /// <summary>
+        /// <paramref name="startupFiles"/> are files named on the command line: a
+        /// <c>.dragoverlay</c> project, or up to three Castle <c>.csv</c> logs. They open
+        /// once the window is showing.
+        /// </summary>
+        public MainForm(ConfigService configService, string[] startupFiles)
         {
             _configService = configService ?? new ConfigService();
+            if (startupFiles is { Length: > 0 })
+                Shown += async (_, _) => await _presenter.OpenStartupFilesAsync(startupFiles);
 
             InitializeComponent();
             HandleCreated += (_, _) => Utils.WindowsDarkTitleBar.Apply(Handle);
