@@ -160,8 +160,10 @@ namespace CastleOverlayV2
         /// project; <c>.csv</c> files load as Castle runs 1 to 3 in the order given. A file
         /// that does not exist is reported and skipped.
         /// </summary>
-        public async Task OpenStartupFilesAsync(IReadOnlyList<string> paths)
+        public async Task OpenStartupFilesAsync(IReadOnlyList<string> args)
         {
+            var paths = args.Where(a => !string.IsNullOrWhiteSpace(a)).ToList();
+            if (paths.Count == 0) return;
             var missing = paths.Where(p => !File.Exists(p)).ToList();
             var files = paths.Where(File.Exists).Select(Path.GetFullPath).ToList();
             if (missing.Count > 0)
