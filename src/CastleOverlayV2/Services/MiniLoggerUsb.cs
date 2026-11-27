@@ -125,9 +125,32 @@ public sealed class MiniLoggerUsb : IMiniLoggerUsbClient
 
     public bool IsBigLogger => _isBigLogger;
 
+    // USB first; with nothing plugged in, a Big logger on WiFi (LoggerWifi.cs).
     public MiniLoggerUsb()
-        : this(new WmiMiniLoggerPortDiscovery(), new SerialMiniLoggerTransportFactory(), new ThreadMiniLoggerDelay())
+        : this(new UsbThenWifiPortDiscovery(), new AutoMiniLoggerTransportFactory(), new ThreadMiniLoggerDelay())
     {
+    }
+
+    /// <summary>The name the connected logger was found under: a COM port, or "wifi:&lt;ip&gt;".</summary>
+    public string? ConnectedName { get; private set; }
+
+    /// <summary>
+    /// Sends one command and returns every reply line up to and including the first that
+    /// <paramref name="isLast"/> accepts.
+    /// </summary>
+    public IReadOnlyList<string> RunCommand(string command, Func<string, bool> isLast,
+        CancellationToken cancellationToken = default)
+    {
+        IMiniLoggerLineTransport transport = ConnectedTransport();
+        transport.WriteLine(command);
+        var lines = new List<string>();
+        while (true)
+        {
+            string line = ReadRequiredLine(transport, cancellationToken);
+            lines.Add(line);
+            if (isLast(line))
+                return lines;
+        }
     }
 
     public MiniLoggerUsb(
@@ -167,6 +190,7 @@ public sealed class MiniLoggerUsb : IMiniLoggerUsbClient
                 if (reply is not null)
                 {
                     _transport = candidate;
+                    ConnectedName = portName;
                     _isBigLogger = reply.StartsWith("BIGLOGGER ", StringComparison.Ordinal);
                     return new MiniLoggerConnectResult(MiniLoggerConnectStatus.Connected, portName);
                 }
