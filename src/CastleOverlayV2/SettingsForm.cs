@@ -297,6 +297,16 @@ namespace CastleOverlayV2
             cancel.Width = 80;
             cancel.Anchor = AnchorStyles.Right | AnchorStyles.Top;
             cancel.Location = new Point(row.Width - 90, 4);
+            var wifi = MakeDarkButton("Logger WiFi…");
+            wifi.Width = 110;
+            wifi.Anchor = AnchorStyles.Left | AnchorStyles.Top;
+            wifi.Location = new Point(0, 4);
+            wifi.Click += (_, _) =>
+            {
+                using var dlg = new LoggerWifiForm();
+                dlg.ShowDialog(this);
+            };
+            row.Controls.Add(wifi);
             row.Controls.Add(ok);
             row.Controls.Add(cancel);
             AcceptButton = ok;
