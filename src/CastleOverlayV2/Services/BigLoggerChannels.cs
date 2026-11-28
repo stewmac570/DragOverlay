@@ -12,7 +12,8 @@ public sealed record BigLoggerChannel(
     double AxisMin,
     double AxisMax,
     ScottPlot.Color Color,
-    bool VisibleByDefault);
+    bool VisibleByDefault,
+    bool Derived = false);
 
 public static class BigLoggerChannels
 {
@@ -37,7 +38,20 @@ public static class BigLoggerChannels
             new ScottPlot.Color(0x90, 0xBE, 0x6D), true),
         new BigLoggerChannel("Rear Laser (mm)", "Logger Rear Ride Height", "Rear Ride Height", "F1", 0, 50,
             new ScottPlot.Color(0x43, 0xAA, 0x8B), true),
+        // Same 0 to 110 mph scale as RaceBox speed.
+        new BigLoggerChannel(GpsSpeedColumn, GpsSpeedChannel, "GPS Speed", "F1", 0, 110,
+            new ScottPlot.Color(0xFF, 0xB7, 0x03), true),
+        // Not in the file: feet travelled since launch, worked out from GPS speed.
+        new BigLoggerChannel("GPS Distance (ft)", GpsDistanceChannel, "GPS Distance", "F0", 0, 1000,
+            new ScottPlot.Color(0x8E, 0xCA, 0xE6), true, Derived: true),
     };
+
+    public const string GpsSpeedColumn = "GPS Speed (mph)";
+    public const string GpsSpeedChannel = "Logger GPS Speed";
+    public const string GpsDistanceChannel = "Logger GPS Distance";
+
+    /// <summary>The channels read straight from a column of the file.</summary>
+    public static IEnumerable<BigLoggerChannel> FileColumns => All.Where(item => !item.Derived);
 
     public static BigLoggerChannel? Find(string channel) =>
         All.FirstOrDefault(item => item.Channel == channel);

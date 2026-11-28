@@ -144,7 +144,7 @@ namespace CastleOverlayV2.Services
             bool hasTcColumns = throttleOutIndex >= 0 && tcStateIndex >= 0;
 
             // Big logger columns, found by name. An empty cell means no reading yet (NaN here).
-            var bigColumns = BigLoggerChannels.All
+            var bigColumns = BigLoggerChannels.FileColumns
                 .Select(channel => (Channel: channel, Index: Array.FindIndex(header,
                     name => name.Trim().Equals(channel.Column, StringComparison.OrdinalIgnoreCase))))
                 .Where(column => column.Index >= 0)
@@ -242,6 +242,11 @@ namespace CastleOverlayV2.Services
             var throttleOutPts = new List<DataPoint>();
             var tcStatePts = new List<DataPoint>();
             var bigPts = bigColumns.Select(_ => new List<DataPoint>()).ToList();
+            int gpsSpeedCol = bigColumns.FindIndex(column => column.Channel.Channel == BigLoggerChannels.GpsSpeedChannel);
+            var gpsDistance = gpsSpeedCol >= 0
+                ? GpsDistanceFeet(times, bigValues[gpsSpeedCol], t0)
+                : null;
+            var gpsDistancePts = new List<DataPoint>();
             double effectiveTransmissionRatio = transmissionRatio ?? 1.0;
             bool produceRearChannels = rearWheelDiameterMm is > 0 &&
                 pinionTeeth is > 0 && spurTeeth is > 0 &&
@@ -276,6 +281,8 @@ namespace CastleOverlayV2.Services
                 for (int c = 0; c < bigColumns.Count; c++)
                     if (!double.IsNaN(bigValues[c][i]))
                         bigPts[c].Add(new DataPoint { Time = t, Y = bigValues[c][i] });
+                if (gpsDistance != null && !double.IsNaN(gpsDistance[i]))
+                    gpsDistancePts.Add(new DataPoint { Time = t, Y = gpsDistance[i] });
             }
 
             run.Data[ThrottleChannel] = thrPts;
@@ -295,11 +302,37 @@ namespace CastleOverlayV2.Services
             for (int c = 0; c < bigColumns.Count; c++)
                 if (bigPts[c].Count > 0)
                     run.Data[bigColumns[c].Channel.Channel] = bigPts[c];
+            if (gpsDistancePts.Count > 0)
+                run.Data[BigLoggerChannels.GpsDistanceChannel] = gpsDistancePts;
             // PlotManager skips runs with empty DataPoints — populate with time-only dummies.
             run.DataPoints = thrPts.Select(p => new DataPoint { Time = p.Time }).ToList();
 
             Logger.Log($"[MiniLoggerLoader] Trimmed to {thrPts.Count} samples around launch");
             return LoadResult<RunData>.Success(run);
+        }
+
+        /// <summary>
+        /// Feet travelled since launch (<paramref name="launchTime"/>), from GPS speed in mph at each
+        /// sample. Zero before launch. Rows before the first GPS reading are NaN; after it, a blank
+        /// row holds the last reading.
+        /// </summary>
+        public static double[] GpsDistanceFeet(IReadOnlyList<double> times, IReadOnlyList<double> speedMph, double launchTime)
+        {
+            const double MphToFeetPerSec = 5280.0 / 3600.0;
+            var result = new double[times.Count];
+            double distance = 0;
+            double? lastSpeed = null;
+            for (int i = 0; i < times.Count; i++)
+            {
+                if (!double.IsNaN(speedMph[i])) lastSpeed = speedMph[i];
+                if (i > 0 && lastSpeed is double mph && times[i] > launchTime)
+                {
+                    double dt = times[i] - Math.Max(times[i - 1], launchTime);
+                    if (dt > 0) distance += Math.Max(0, mph) * MphToFeetPerSec * dt;
+                }
+                result[i] = lastSpeed is null ? double.NaN : distance;
+            }
+            return result;
         }
 
         /// <summary>
