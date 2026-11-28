@@ -221,7 +221,9 @@ public sealed class MiniLoggerUsbTests : IDisposable
     [Fact]
     public void Big_logger_download_reports_rows_against_seconds()
     {
+        // Firmware from before 28 Nov 2026 answers "raw" with its command list: falls back to dump.
         var transport = new FakeTransport("BIGLOGGER 1",
+            "Commands: status, gps, live, list, summary, dump N, dumpall, erase all",
             "BEGIN run_0018.csv", MiniLoggerLoader.HeaderLine,
             "0.000,1.500,0,0.00", "0.001,1.500,0,0.00", "0.002,1.500,0,0.00", "END");
         using var client = Client(transport);
@@ -235,6 +237,75 @@ public sealed class MiniLoggerUsbTests : IDisposable
         Assert.Equal(3, last.RowsReceived);
         Assert.Equal(6000, last.ExpectedRows);
     }
+
+    [Fact]
+    public void Big_logger_download_uses_raw_files_and_rebuilds_the_csv()
+    {
+        // A tiny real-shaped run: header, one block of throttle edges (1.500 ms pulses every 7 ms)
+        // and motor edges, and three slow readings.
+        var bin = new List<byte>();
+        bin.AddRange("BLG2"u8.ToArray());
+        bin.AddRange(BitConverter.GetBytes(1000u));
+        bin.AddRange(BitConverter.GetBytes(1_000_000UL));      // start
+        bin.Add(2); bin.Add(2);                                   // wheel magnets, pole pairs
+        bin.AddRange(BitConverter.GetBytes((ushort)1000));
+        bin.AddRange(new byte[4]);                                // struct padding to 24
+        var events = new List<uint>();
+        for (uint t = 1_000_000; t < 1_010_000; t += 7000)
+        {
+            events.Add((2u << 30) | t);                           // throttle rise
+            events.Add((3u << 30) | (t + 1500));                  // throttle fall: 1500 us
+        }
+        for (uint t = 1_000_500; t < 1_010_000; t += 500)
+            events.Add((1u << 30) | t);                           // motor edge every 0.5 ms = 60000 rpm
+        events.Sort((x, y) => (x & 0x3FFFFFFF).CompareTo(y & 0x3FFFFFFF));
+        bin.AddRange(BitConverter.GetBytes((uint)events.Count));
+        bin.AddRange(BitConverter.GetBytes(0u));
+        bin.AddRange(BitConverter.GetBytes(1_020_000UL));
+        foreach (uint e in events) bin.AddRange(BitConverter.GetBytes(e));
+        var slo = new List<byte>();
+        for (uint t = 1_000_000; t < 1_003_000; t += 1000)
+        {
+            slo.AddRange(BitConverter.GetBytes(t));
+            slo.AddRange(BitConverter.GetBytes((short)1250));     // 1.25 g
+            slo.AddRange(BitConverter.GetBytes((short)-250));     // pitch -2.5
+            slo.AddRange(BitConverter.GetBytes((short)75));       // roll 0.75
+            slo.AddRange(BitConverter.GetBytes((ushort)2500));    // 2.5 V at A0 = 8.00 V pack
+            slo.AddRange(BitConverter.GetBytes((ushort)0xFFFF));
+            slo.AddRange(BitConverter.GetBytes((ushort)0xFFFF));
+        }
+        var transport = new FakeTransport("BIGLOGGER 1", $"RAW 18 {bin.Count} {slo.Count} 0", "END");
+        transport.Bytes.AddRange(bin);
+        transport.Bytes.AddRange(slo);
+        using var client = Client(transport);
+        client.Connect();
+        string path = Path.Combine(_workDir, "run_0018.csv");
+
+        var result = client.DumpRun(new MiniLoggerRunInfo(18, 0, Seconds: 1), path);
+
+        Assert.True(result.Found);
+        Assert.Contains("raw 18", transport.Writes);
+        Assert.DoesNotContain(transport.Writes, w => w.StartsWith("dump", StringComparison.Ordinal));
+        string[] lines = File.ReadAllLines(path);
+        Assert.Equal(BigLoggerRawRebuild.Header, lines[0]);
+        // Expected lines from rc-logger tools/big_logger_rebuild.py on the same bytes, which matched
+        // the logger's own dump line for line on run 14 (451,208 lines).
+        Assert.Equal(12, lines.Length);
+        Assert.Equal("0.000,0.000,0,0.00,8.00,1.250,-2.50,0.75,,,,,,,,", lines[1]);
+        Assert.Equal("0.002,1.500,60000,0.00,8.00,1.250,-2.50,0.75,,,,,,,,", lines[3]);
+        Assert.Equal("0.005,1.500,60000,0.00,8.00,1.250,-2.50,0.75,,,,,,,,", lines[6]);
+        Assert.True(MiniLoggerLoader.IsHeaderLine(lines[0]));
+    }
+
+    [Theory]
+    [InlineData(0.125, 2, "0.12")]       // an exact half rounds to even, as printf on the Nano
+    [InlineData(0.375, 2, "0.38")]
+    [InlineData(-0.001, 2, "-0.00")]     // printf keeps the sign
+    [InlineData(1.5, 3, "1.500")]
+    [InlineData(-33.1234567, 7, "-33.1234567")]
+    [InlineData(60000.0, 0, "60000")]
+    public void Rebuild_formats_numbers_like_the_logger(double value, int places, string expected) =>
+        Assert.Equal(expected, BigLoggerRawRebuild.F(value, places));
 
     [Fact]
     public void Mini_logger_is_not_flagged_as_big_logger()
@@ -314,6 +385,14 @@ public sealed class MiniLoggerUsbTests : IDisposable
             string? result = _replies.Count == 0 ? null : _replies.Dequeue();
             if (CancelAfterReads > 0 && _reads >= CancelAfterReads)
                 Cancellation?.Cancel();
+            return result;
+        }
+        public List<byte> Bytes { get; } = new();
+        public byte[]? ReadBytes(int count, TimeSpan timeout, CancellationToken cancellationToken)
+        {
+            if (Bytes.Count < count) return null;
+            byte[] result = Bytes.GetRange(0, count).ToArray();
+            Bytes.RemoveRange(0, count);
             return result;
         }
         public void Close() { }

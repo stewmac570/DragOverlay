@@ -95,6 +95,8 @@ public sealed class AutoMiniLoggerLineTransport : IMiniLoggerLineTransport
     public void DiscardInput() => Inner().DiscardInput();
     public void WriteLine(string line) => Inner().WriteLine(line);
     public string? ReadLine(TimeSpan timeout, CancellationToken cancellationToken) => Inner().ReadLine(timeout, cancellationToken);
+    public byte[]? ReadBytes(int count, TimeSpan timeout, CancellationToken cancellationToken) =>
+        Inner().ReadBytes(count, timeout, cancellationToken);
     public void Close() => _inner?.Close();
     public void Dispose() { _inner?.Dispose(); _inner = null; }
 
@@ -108,8 +110,7 @@ public sealed class TcpMiniLoggerLineTransport : IMiniLoggerLineTransport
     private TcpClient? _client;
     private NetworkStream? _stream;
     private readonly byte[] _readBuffer = new byte[64 * 1024];
-    private readonly StringBuilder _buffer = new();
-    private readonly Queue<string> _lines = new();
+    private readonly LoggerByteBuffer _buffer = new();
 
     public void Open(string portName, int baudRate, bool dtrEnable, bool rtsEnable)
     {
@@ -126,49 +127,35 @@ public sealed class TcpMiniLoggerLineTransport : IMiniLoggerLineTransport
         while (stream.DataAvailable)
             stream.Read(_readBuffer, 0, _readBuffer.Length);
         _buffer.Clear();
-        _lines.Clear();
     }
 
     public void WriteLine(string line)
     {
-        byte[] bytes = Encoding.ASCII.GetBytes(line + "\n");
+        byte[] bytes = Encoding.ASCII.GetBytes(line + '\n');
         Stream().Write(bytes, 0, bytes.Length);
     }
 
-    public string? ReadLine(TimeSpan timeout, CancellationToken cancellationToken)
+    public string? ReadLine(TimeSpan timeout, CancellationToken cancellationToken) =>
+        _buffer.ReadLine(Fill, timeout, cancellationToken);
+
+    public byte[]? ReadBytes(int count, TimeSpan timeout, CancellationToken cancellationToken) =>
+        _buffer.ReadBytes(count, Fill, timeout, cancellationToken);
+
+    // Moves whatever has arrived into the buffer. False if nothing was waiting.
+    private bool Fill()
     {
-        var stopwatch = Stopwatch.StartNew();
         NetworkStream stream = Stream();
-        while (stopwatch.Elapsed < timeout)
+        if (!stream.DataAvailable)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (_lines.Count > 0)
-                return _lines.Dequeue();
-            if (!stream.DataAvailable)
-            {
-                if (_client is { Connected: false })
-                    throw new IOException("The logger closed the WiFi connection.");
-                cancellationToken.WaitHandle.WaitOne(5);
-                continue;
-            }
-            int n = stream.Read(_readBuffer, 0, _readBuffer.Length);
-            if (n == 0)
+            if (_client is { Connected: false })
                 throw new IOException("The logger closed the WiFi connection.");
-            for (int i = 0; i < n; i++)
-            {
-                char ch = (char)_readBuffer[i];
-                if (ch == '\n')
-                {
-                    _lines.Enqueue(_buffer.ToString());
-                    _buffer.Clear();
-                }
-                else
-                {
-                    _buffer.Append(ch);
-                }
-            }
+            return false;
         }
-        return _lines.Count > 0 ? _lines.Dequeue() : null;
+        int n = stream.Read(_readBuffer, 0, _readBuffer.Length);
+        if (n == 0)
+            throw new IOException("The logger closed the WiFi connection.");
+        _buffer.Append(_readBuffer, n);
+        return true;
     }
 
     public void Close()
