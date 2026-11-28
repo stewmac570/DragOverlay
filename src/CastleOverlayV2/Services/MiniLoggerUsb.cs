@@ -63,6 +63,12 @@ public interface IMiniLoggerLineTransport : IDisposable
     void DiscardInput();
     void WriteLine(string line);
     string? ReadLine(TimeSpan timeout, CancellationToken cancellationToken);
+    /// <summary>
+    /// Exactly <paramref name="count"/> raw bytes (the Big logger's <c>raw N</c>), from the same
+    /// stream as the lines. Null if they don't all arrive within <paramref name="timeout"/> of the last one.
+    /// </summary>
+    byte[]? ReadBytes(int count, TimeSpan timeout, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("This connection can't read raw bytes.");
     void Close();
 }
 
@@ -296,6 +302,16 @@ public sealed class MiniLoggerUsb : IMiniLoggerUsbClient
             if (File.Exists(partialPath))
                 File.Delete(partialPath);
 
+            // The Big logger sends its saved files and the CSV is rebuilt here: seconds instead of
+            // minutes. Firmware from before 28 Nov 2026 doesn't know "raw" and falls back to dump.
+            if (_isBigLogger)
+            {
+                MiniLoggerDumpResult? rawResult = DumpRunRaw(transport, run, partialPath, fullPath, progress,
+                    runIndex, runCount, cancellationToken);
+                if (rawResult is not null)
+                    return rawResult;
+            }
+
             transport.WriteLine($"dump {run.Number.ToString(CultureInfo.InvariantCulture)}");
             string expectedBegin = $"BEGIN {run.FileName}";
             string? first = ReadUntil(transport,
@@ -359,6 +375,77 @@ public sealed class MiniLoggerUsb : IMiniLoggerUsbClient
             TryDelete(partialPath);
             throw;
         }
+    }
+
+    /// <summary>
+    /// <c>raw N</c>: "RAW N bin slo gps", the three files' bytes, then "END". Rebuilt into the same
+    /// CSV the logger's dump would send (<see cref="BigLoggerRawRebuild"/>). Null when the firmware
+    /// doesn't know the command, so the caller falls back to dump.
+    /// </summary>
+    private MiniLoggerDumpResult? DumpRunRaw(
+        IMiniLoggerLineTransport transport,
+        MiniLoggerRunInfo run,
+        string partialPath,
+        string fullPath,
+        IProgress<MiniLoggerDownloadProgress>? progress,
+        int runIndex,
+        int runCount,
+        CancellationToken cancellationToken)
+    {
+        transport.WriteLine($"raw {run.Number.ToString(CultureInfo.InvariantCulture)}");
+        string? first = ReadUntil(transport,
+            line => line.StartsWith("RAW ", StringComparison.Ordinal) ||
+                    line == $"Run {run.Number} not found" ||
+                    line.StartsWith("Commands:", StringComparison.Ordinal),
+            ReplyTimeout, cancellationToken);
+        if (first is null)
+            throw new MiniLoggerStoppedRespondingException();
+        if (first.StartsWith("Commands:", StringComparison.Ordinal))
+            return null;
+        if (first.EndsWith(" not found", StringComparison.Ordinal))
+            return new MiniLoggerDumpResult(false, null);
+
+        string[] parts = first.Split(' ');
+        if (parts.Length < 5 ||
+            !int.TryParse(parts[2], NumberStyles.None, CultureInfo.InvariantCulture, out int binSize) ||
+            !int.TryParse(parts[3], NumberStyles.None, CultureInfo.InvariantCulture, out int sloSize) ||
+            !int.TryParse(parts[4], NumberStyles.None, CultureInfo.InvariantCulture, out int gpsSize))
+            throw new InvalidDataException("The logger's raw reply was not understood: " + first);
+
+        long total = (long)binSize + sloSize + gpsSize;
+        long received = 0;
+        byte[] ReadPart(int size)
+        {
+            var bytes = new byte[size];
+            int done = 0;
+            while (done < size)
+            {
+                int chunk = Math.Min(256 * 1024, size - done);
+                byte[]? piece = transport.ReadBytes(chunk, ReplyTimeout, cancellationToken);
+                if (piece is null)
+                    throw new MiniLoggerStoppedRespondingException();
+                Array.Copy(piece, 0, bytes, done, chunk);
+                done += chunk;
+                received += chunk;
+                progress?.Report(new MiniLoggerDownloadProgress(
+                    run.Number, runIndex, runCount, received, total, 0, run.ExpectedRows));
+            }
+            return bytes;
+        }
+        byte[] bin = ReadPart(binSize);
+        byte[] slo = ReadPart(sloSize);
+        byte[] gps = ReadPart(gpsSize);
+        if (ReadUntil(transport, line => line == "END", ReplyTimeout, cancellationToken) is null)
+            throw new MiniLoggerStoppedRespondingException();
+
+        long rows;
+        using (var writer = new StreamWriter(partialPath, false, new UTF8Encoding(false), 64 * 1024))
+            rows = BigLoggerRawRebuild.Write(bin, slo, gps, writer, cancellationToken);
+        progress?.Report(new MiniLoggerDownloadProgress(
+            run.Number, runIndex, runCount, total, total, rows, run.ExpectedRows));
+
+        File.Move(partialPath, fullPath, overwrite: true);
+        return new MiniLoggerDumpResult(true, fullPath);
     }
 
     public TcLoggerStatus ReadTcStatus(CancellationToken cancellationToken = default)
@@ -641,8 +728,8 @@ public sealed class SerialMiniLoggerTransportFactory : IMiniLoggerTransportFacto
 public sealed class SerialMiniLoggerLineTransport : IMiniLoggerLineTransport
 {
     private SerialPort? _port;
-    private readonly StringBuilder _buffer = new();
-    private readonly Queue<string> _lines = new();
+    private readonly LoggerByteBuffer _buffer = new();
+    private readonly byte[] _chunk = new byte[64 * 1024];
 
     public void Open(string portName, int baudRate, bool dtrEnable, bool rtsEnable)
     {
@@ -651,7 +738,7 @@ public sealed class SerialMiniLoggerLineTransport : IMiniLoggerLineTransport
             DtrEnable = dtrEnable,
             RtsEnable = rtsEnable,
             NewLine = "\n",
-            Encoding = Encoding.UTF8
+            ReadBufferSize = 1024 * 1024
         };
         _port.Open();
     }
@@ -660,7 +747,6 @@ public sealed class SerialMiniLoggerLineTransport : IMiniLoggerLineTransport
     {
         Port().DiscardInBuffer();
         _buffer.Clear();
-        _lines.Clear();
     }
 
     public void WriteLine(string line)
@@ -670,33 +756,21 @@ public sealed class SerialMiniLoggerLineTransport : IMiniLoggerLineTransport
         port.Write("\n");
     }
 
-    public string? ReadLine(TimeSpan timeout, CancellationToken cancellationToken)
+    public string? ReadLine(TimeSpan timeout, CancellationToken cancellationToken) =>
+        _buffer.ReadLine(Fill, timeout, cancellationToken);
+
+    public byte[]? ReadBytes(int count, TimeSpan timeout, CancellationToken cancellationToken) =>
+        _buffer.ReadBytes(count, Fill, timeout, cancellationToken);
+
+    // Moves whatever has arrived into the buffer. False if nothing was waiting.
+    private bool Fill()
     {
-        var stopwatch = Stopwatch.StartNew();
-        while (stopwatch.Elapsed < timeout)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (_lines.Count > 0)
-                return _lines.Dequeue();
-
-            string incoming = Port().ReadExisting();
-            foreach (char ch in incoming)
-            {
-                if (ch == '\n')
-                {
-                    _lines.Enqueue(_buffer.ToString());
-                    _buffer.Clear();
-                }
-                else
-                {
-                    _buffer.Append(ch);
-                }
-            }
-
-            if (_lines.Count == 0)
-                cancellationToken.WaitHandle.WaitOne(10);
-        }
-        return _lines.Count > 0 ? _lines.Dequeue() : null;
+        SerialPort port = Port();
+        int waiting = port.BytesToRead;
+        if (waiting <= 0) return false;
+        int n = port.Read(_chunk, 0, Math.Min(waiting, _chunk.Length));
+        _buffer.Append(_chunk, n);
+        return n > 0;
     }
 
     public void Close()
@@ -714,6 +788,75 @@ public sealed class SerialMiniLoggerLineTransport : IMiniLoggerLineTransport
 
     private SerialPort Port() =>
         _port is { IsOpen: true } port ? port : throw new InvalidOperationException("Serial port is not open.");
+}
+
+/// <summary>
+/// Bytes from the logger, handed out as text lines or as raw bytes from the same stream, so a
+/// <c>raw N</c> reply (a text line, then binary) reads cleanly. Lines are UTF-8 up to "\n".
+/// </summary>
+public sealed class LoggerByteBuffer
+{
+    private byte[] _data = new byte[256 * 1024];
+    private int _start, _end;
+
+    public void Clear() { _start = 0; _end = 0; }
+
+    public void Append(byte[] bytes, int count)
+    {
+        if (_end + count > _data.Length)
+        {
+            int used = _end - _start;
+            if (used + count > _data.Length)
+                Array.Resize(ref _data, Math.Max(_data.Length * 2, used + count));
+            Array.Copy(_data, _start, _data, 0, used);
+            _start = 0;
+            _end = used;
+        }
+        Array.Copy(bytes, 0, _data, _end, count);
+        _end += count;
+    }
+
+    public string? ReadLine(Func<bool> fill, TimeSpan timeout, CancellationToken cancellationToken)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        int searched = _start;
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            int nl = Array.IndexOf(_data, (byte)'\n', searched, _end - searched);
+            if (nl >= 0)
+            {
+                string line = Encoding.UTF8.GetString(_data, _start, nl - _start);
+                _start = nl + 1;
+                return line;
+            }
+            searched = _end;
+            if (stopwatch.Elapsed >= timeout) return null;
+            if (!fill()) cancellationToken.WaitHandle.WaitOne(5);
+        }
+    }
+
+    public byte[]? ReadBytes(int count, Func<bool> fill, TimeSpan timeout, CancellationToken cancellationToken)
+    {
+        var sinceLast = Stopwatch.StartNew();
+        int have = _end - _start;
+        while (have < count)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (fill())
+            {
+                have = _end - _start;
+                sinceLast.Restart();
+                continue;
+            }
+            if (sinceLast.Elapsed >= timeout) return null;
+            cancellationToken.WaitHandle.WaitOne(2);
+        }
+        var result = new byte[count];
+        Array.Copy(_data, _start, result, 0, count);
+        _start += count;
+        return result;
+    }
 }
 
 public sealed class ThreadMiniLoggerDelay : IMiniLoggerDelay
