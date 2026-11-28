@@ -158,6 +158,54 @@ namespace CastleOverlayV2
             if (!result.Ok) ShowResultMessage(result);
         }
 
+        /// <summary>
+        /// Open files named on the command line. A <c>.dragoverlay</c> project opens as a
+        /// project. Castle <c>.csv</c> logs load as Castle 1 to 3, <c>.dat</c> tunes attach to
+        /// them in the same order, and Big logger <c>.csv</c> runs load as Data Log 1 to 3. A file
+        /// that does not exist is reported and skipped.
+        /// </summary>
+        public async Task OpenStartupFilesAsync(IReadOnlyList<string> args)
+        {
+            var paths = args.Where(a => !string.IsNullOrWhiteSpace(a)).ToList();
+            if (paths.Count == 0) return;
+            var missing = paths.Where(p => !File.Exists(p)).ToList();
+            var files = paths.Where(File.Exists).Select(Path.GetFullPath).ToList();
+            if (missing.Count > 0)
+                _view.ShowError("Open File", "These files were not found:\n\n" + string.Join("\n", missing));
+
+            string? project = files.FirstOrDefault(f =>
+                string.Equals(Path.GetExtension(f), ".dragoverlay", StringComparison.OrdinalIgnoreCase));
+            if (project != null)
+            {
+                var result = OpenProjectFrom(project);
+                if (!result.Ok) ShowResultMessage(result);
+                RefreshProjectButtonsState();
+                return;
+            }
+
+            bool IsExt(string f, string ext) =>
+                string.Equals(Path.GetExtension(f), ext, StringComparison.OrdinalIgnoreCase);
+            var csvs = files.Where(f => IsExt(f, ".csv")).ToList();
+            var loggerCsvs = csvs.Where(MiniLoggerLoader.IsMiniLoggerCsv).ToList();
+            var castleCsvs = csvs.Except(loggerCsvs).ToList();
+            var tunes = files.Where(f => IsExt(f, ".dat")).ToList();
+
+            // Castle logs first, so logger runs can align to them.
+            for (int i = 0; i < castleCsvs.Count && i < 3; i++)
+            {
+                Logger.Log($"Command line: loading {Path.GetFileName(castleCsvs[i])} into Castle {i + 1}");
+                await LoadCastleRunFromPathAsync(i + 1, castleCsvs[i]);
+            }
+            // Tunes attach to the Castle runs in the same order.
+            for (int i = 0; i < tunes.Count && i < 3; i++)
+                if (_runs.ContainsKey(i + 1)) AttachTuneFromPath(i + 1, tunes[i]);
+            for (int i = 0; i < loggerCsvs.Count && i < 3; i++)
+            {
+                Logger.Log($"Command line: loading {Path.GetFileName(loggerCsvs[i])} into Data Log {i + 1}");
+                await LoadMiniLoggerRunFromPathAsync(i + 1, loggerCsvs[i]);
+            }
+        }
+
         // ============================================================
         // Castle load
         // ============================================================

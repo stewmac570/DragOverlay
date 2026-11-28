@@ -5,7 +5,7 @@ namespace CastleOverlayV2
     internal static class Program
     {
         [STAThread]
-        static void Main()
+        static void Main(string[] args)
         {
             // Initialize application settings (DPI, fonts, etc.)
             ApplicationConfiguration.Initialize();
@@ -18,7 +18,7 @@ namespace CastleOverlayV2
             Logger.Log($"App started — Build {configService.GetBuildNumber()}");
 
             // Start the app with config injected into MainForm
-            Application.Run(new MainForm(configService));
+            Application.Run(new MainForm(configService, args));
         }
 
     }
