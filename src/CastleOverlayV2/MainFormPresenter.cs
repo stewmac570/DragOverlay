@@ -1,4 +1,4 @@
-// File: src/CastleOverlayV2/MainFormPresenter.cs
+﻿// File: src/CastleOverlayV2/MainFormPresenter.cs
 using CastleOverlayV2.Controls;
 using CastleOverlayV2.Models;
 using CastleOverlayV2.Plot;
@@ -75,15 +75,18 @@ namespace CastleOverlayV2
             _miniLoggerUsbFactory = miniLoggerUsbFactory ?? (() => new MiniLoggerUsb());
             _castleLinkFactory = castleLinkFactory ?? (() => new CastleLinkUsb());
 
-            // The curves last sent to the logger, drawn over TC logger runs on the Logs chart.
-            TcCurveStore.Set(
+            // The curves last sent to the logger, drawn over TC logger runs on the Logs chart. Only when
+            // the TC tab (built first) has no curve of its own: the TC tab's curve comes first.
+            if (TcCurveStore.Hard.Count == 0 && TcCurveStore.Soft.Count == 0)
+                TcCurveStore.Set(
                 (IReadOnlyList<TcCurvePoint>?)_config.Config.TcSentHardCurve ?? Array.Empty<TcCurvePoint>(),
                 (IReadOnlyList<TcCurvePoint>?)_config.Config.TcSentSoftCurve ?? Array.Empty<TcCurvePoint>());
-            // Redraw them when a new curve is sent.
+            // Redraw the TC curve channels when the curve changes.
             TcCurveStore.Changed += () =>
             {
-                if (_runs.Values.Any(run => run.MiniLoggerSamples.Any(sample => sample.TcState.HasValue)))
-                    PlotAllRuns();
+                if (!_runs.Values.Any(run => run.MiniLoggerSamples.Any(sample => sample.TcState.HasValue))) return;
+                EnsureMiniLoggerChannelsInToggleBar();
+                PlotAllRuns();
             };
 
             _isFourPoleMode = _config.Config.IsFourPoleMode;
@@ -394,11 +397,13 @@ namespace CastleOverlayV2
                 reloaded.Tune = old.Tune;
                 reloaded.TimeShiftMs = old.TimeShiftMs;
                 if (!string.IsNullOrEmpty(old.FileName)) reloaded.FileName = old.FileName;
-                if (RunSlots.IsCastle(slot) && (old.TrimStartTime.HasValue || old.TrimEndTime.HasValue))
+                if (reloaded.CanManualTrim && (old.TrimStartTime.HasValue || old.TrimEndTime.HasValue))
                 {
+                    reloaded.CaptureTrimBaseline();
                     reloaded.TrimStartTime = old.TrimStartTime;
                     reloaded.TrimEndTime = old.TrimEndTime;
                     reloaded.ApplyManualTrim();
+                    TcCurveChannels.Apply(reloaded);
                 }
                 reloaded.TrimHistory = old.TrimHistory;
                 _plot.SetRunVisibility(slot, visible);
@@ -565,6 +570,7 @@ namespace CastleOverlayV2
 
         private void EnsureMiniLoggerChannelsInToggleBar()
         {
+            foreach (RunData run in _runs.Values) TcCurveChannels.Apply(run);
             var states = _drawer.GetChannelStates();
             var saved = _config.Config.ChannelVisibility;
             bool added = false;
@@ -686,8 +692,8 @@ namespace CastleOverlayV2
             _view.SetSlotArmedUI(slot, true);
             _view.ShowAlignmentUI(run.FileName, run.TimeShiftMs);
             _plot.SetAlignmentMode(true);
-            // Manual trim is Castle-only (RaceBox uses a different data shape and isn't auto-trimmed).
-            _plot.SetManualTrimAvailable(!run.HasChannelData);
+            // Castle and Mini Logger runs can be trimmed by hand; RaceBox runs can't.
+            _plot.SetManualTrimAvailable(run.CanManualTrim);
         }
 
         public void DisarmAlignment()
@@ -748,9 +754,9 @@ namespace CastleOverlayV2
         {
             if (!_armedSlot.HasValue || !_runs.TryGetValue(_armedSlot.Value, out var run))
                 return;
-            if (run.HasChannelData)
+            if (!run.CanManualTrim)
             {
-                _view.ShowInfo("Trim", "Manual trim is only available for Castle log runs.");
+                _view.ShowInfo("Trim", "Manual trim is only available for Castle and Mini Logger runs.");
                 return;
             }
 
@@ -765,6 +771,7 @@ namespace CastleOverlayV2
                 ? run.SetTrimWindow(runTime, run.TrimEndTime)
                 : run.SetTrimWindow(run.TrimStartTime, runTime);
             if (!applied) return; // would have removed every sample
+            TcCurveChannels.Apply(run);
             Logger.Log($"✂️ Manual trim slot {_armedSlot.Value}: {(before ? "before" : "after")} t={runTime:F3}s → {run.DataPoints.Count} pts");
             PlotAllRuns();
         }
@@ -774,7 +781,7 @@ namespace CastleOverlayV2
         {
             if (!_armedSlot.HasValue || !_runs.TryGetValue(_armedSlot.Value, out var run))
                 return;
-            if (run.HasChannelData || run.BaselineDataPoints == null)
+            if (!run.CanManualTrim || !run.HasTrimBaseline)
                 return;
 
             if (run.TrimStartTime == null && run.TrimEndTime == null)
@@ -784,6 +791,7 @@ namespace CastleOverlayV2
             run.TrimStartTime = null;
             run.TrimEndTime = null;
             run.ApplyManualTrim();
+            TcCurveChannels.Apply(run);
             Logger.Log($"✂️ Manual trim reset slot {_armedSlot.Value} → {run.DataPoints.Count} pts");
             PlotAllRuns();
         }
@@ -793,8 +801,9 @@ namespace CastleOverlayV2
         {
             if (!_armedSlot.HasValue || !_runs.TryGetValue(_armedSlot.Value, out var run))
                 return;
-            if (run.HasChannelData || !run.UndoTrim())
+            if (!run.CanManualTrim || !run.UndoTrim())
                 return;
+            TcCurveChannels.Apply(run);
 
             Logger.Log($"✂️ Manual trim undo slot {_armedSlot.Value} → {run.DataPoints.Count} pts");
             PlotAllRuns();
@@ -1510,6 +1519,7 @@ namespace CastleOverlayV2
         // ============================================================
         private void PlotAllRuns()
         {
+            foreach (RunData run in _runs.Values) TcCurveChannels.Apply(run);
             if (Logger.IsEnabled)
             {
                 Logger.Log("PlotAllRuns called with runs:");

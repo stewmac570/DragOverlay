@@ -24,6 +24,8 @@ namespace CastleOverlayV2.Services
         public const string ThrottleChannel = "Logger Throttle %";
         public const string ThrottleOutChannel = "Logger Throttle Out %";
         public const string TcStateChannel = "Logger TC State";
+        public const string TcCurveChannel = "Logger TC Curve";
+        public const string TcSoftCurveChannel = "Logger TC Soft Curve";
         public const string RpmChannel = "Logger RPM";
         public const string WheelSpeedChannel = "Logger Wheel Speed";
         public const string RearSpeedChannel = "Logger Rear Speed";
@@ -32,7 +34,8 @@ namespace CastleOverlayV2.Services
 
         public static readonly string[] Channels = new[]
         {
-            ThrottleChannel, ThrottleOutChannel, TcStateChannel, RpmChannel, WheelSpeedChannel,
+            ThrottleChannel, ThrottleOutChannel, TcStateChannel, TcCurveChannel, TcSoftCurveChannel,
+            RpmChannel, WheelSpeedChannel,
             RearSpeedChannel, SlipChannel, WheelRevsChannel
         }.Concat(BigLoggerChannels.All.Select(channel => channel.Channel)).ToArray();
 

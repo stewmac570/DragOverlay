@@ -1,4 +1,4 @@
-using CastleOverlayV2.Models;
+﻿using CastleOverlayV2.Models;
 using System.IO.Compression;
 using System.Text;
 
@@ -219,7 +219,7 @@ namespace CastleOverlayV2.Services
                     // Restore the reversible manual trim (Castle runs). The CsvLoader already
                     // captured the baseline; re-apply the saved window over it. Re-parsing uses
                     // the same trimForDrag, so the baseline matches what was saved.
-                    if (entry.SourceType == ProjectSourceType.Castle &&
+                    if ((entry.SourceType == ProjectSourceType.Castle || entry.SourceType == ProjectSourceType.MiniLogger) &&
                         (entry.TrimStartTime.HasValue || entry.TrimEndTime.HasValue))
                     {
                         run.CaptureTrimBaseline();
